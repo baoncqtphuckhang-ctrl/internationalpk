@@ -2,8 +2,9 @@
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect } from 'react';
-import { Search, Upload, Copy, Download, Edit, Trash2, Lock, Filter } from 'lucide-react';
+import { Search, Upload, Copy, Download, Edit, Trash2, Filter } from 'lucide-react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
+import ConfirmModal from '@/components/ConfirmModal';
 
 function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAll, onClear, onSort }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -110,6 +111,12 @@ export default function HistoryTable({
     exportTableToExcel,
     expenseCategories
 }) {
+    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa' });
+
+    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa') => {
+        setConfirmState({ isOpen: true, message, onConfirm, title });
+    };
+    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa' });
     const [sortConfig, setSortConfig] = useState({ key: 'accounting_date', direction: 'desc' });
 
     const getUnique = (key) => {
@@ -208,6 +215,15 @@ export default function HistoryTable({
 
     return (
         <div className="animate-in fade-in duration-500">
+            <ConfirmModal
+                isOpen={confirmState.isOpen}
+                title={confirmState.title}
+                message={confirmState.message}
+                onConfirm={() => { confirmState.onConfirm?.(); closeConfirm(); }}
+                onCancel={closeConfirm}
+                type="danger"
+            />
+
             <div className="mb-6 flex flex-wrap justify-between items-end gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800">Lịch sử chi tiền</h2>
@@ -226,16 +242,24 @@ export default function HistoryTable({
                         <Download size={16} /> Xuất Excel
                     </button>
                     {canDelete && isAdmin && handleDeleteAll && selectedProject && (
-                        <button onClick={() => { if(window.confirm(`Bạn có chắc chắn muốn xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}"? Hành động này không thể hoàn tác!`)) handleDeleteAll(); }} className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 shadow-lg transition">
+                        <button
+                            onClick={() => openConfirm(
+                                `Bạn sắp xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}". Hành động này không thể hoàn tác!`,
+                                handleDeleteAll,
+                                'Xóa toàn bộ dữ liệu'
+                            )}
+                            className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 shadow-lg transition"
+                        >
                             <Trash2 size={16} /> Xóa tất cả
                         </button>
                     )}
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-sm border overflow-hidden flex flex-col" style={{ maxHeight: 'calc(100vh - 320px)' }}>
-                <div className="overflow-auto custom-scrollbar flex-1" style={{ minHeight: '400px' }}>
-                    <table id="history-table" className="w-full text-left text-[13px] border-collapse sticky-header">
+            {/* Bảng: sticky scrollbar ngang bằng cách giới hạn chiều cao container */}
+            <div className="bg-white rounded-xl shadow-sm border overflow-hidden" style={{ height: 'calc(100vh - 260px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                <div className="overflow-auto custom-scrollbar flex-1" style={{ overflowX: 'auto', overflowY: 'auto' }}>
+                    <table id="history-table" className="w-full text-left text-[13px] border-collapse sticky-header min-w-[1500px]">
                         <thead className="bg-slate-100 sticky top-0 z-20 shadow-sm">
                             <tr>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 text-center w-12 align-middle">STT</th>
@@ -301,8 +325,23 @@ export default function HistoryTable({
                                     <td className="p-3 border-r border-slate-100 text-slate-500 italic">{t.created_by || '-'}</td>
                                     <td className="p-3 text-center align-middle">
                                         <div className="flex justify-center gap-2">
-                                            <button onClick={() => handleEdit(t)} className="text-amber-500 hover:bg-amber-50 p-1 rounded transition"><Edit size={14} /></button>
-                                            <button onClick={() => { if(window.confirm('Bạn có chắc chắn muốn xóa?')) handleDelete(t.id); }} className="text-red-500 hover:bg-red-50 p-1 rounded transition"><Trash2 size={14} /></button>
+                                            <button
+                                                onClick={() => handleEdit(t)}
+                                                title="Sửa dòng này"
+                                                className="text-amber-500 hover:bg-amber-50 p-1.5 rounded-lg transition"
+                                            >
+                                                <Edit size={14} />
+                                            </button>
+                                            <button
+                                                onClick={() => openConfirm(
+                                                    `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
+                                                    () => handleDelete(t.id)
+                                                )}
+                                                title="Xóa dòng này"
+                                                className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
                                         </div>
                                     </td>
                                 </tr>

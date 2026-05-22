@@ -2,7 +2,9 @@
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect } from 'react';
-import { Save, Plus, Trash2, CheckCircle2 } from 'lucide-react';
+import { Save, Trash2, AlertCircle } from 'lucide-react';
+import ConfirmModal from '@/components/ConfirmModal';
+import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
 export default function InputForm({ projects, onSubmit, isLoading, editData, incomes = [], onCancel }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
@@ -19,6 +21,10 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         amount: 0
     });
 
+    const [errors, setErrors] = useState({});
+    const [confirmSave, setConfirmSave] = useState(false);
+    const [pendingSubmit, setPendingSubmit] = useState(null);
+
     useEffect(() => {
         if (editData) {
             setType(editData.type || 'EXPENSE');
@@ -34,6 +40,7 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0
             });
+            setErrors({});
         }
     }, [editData, projects]);
 
@@ -53,143 +60,248 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         }
     }, [type, formData.project_name, incomes, editData]);
 
+    // Xóa lỗi khi user bắt đầu nhập
+    const handleChange = (field, value) => {
+        setFormData(prev => ({ ...prev, [field]: value }));
+        if (errors[field]) {
+            setErrors(prev => { const e = { ...prev }; delete e[field]; return e; });
+        }
+    };
+
+    const validate = () => {
+        const newErrors = {};
+        if (!formData.project_name) newErrors.project_name = 'Vui lòng chọn công trình';
+        if (!formData.accounting_date) newErrors.accounting_date = 'Vui lòng nhập ngày hạch toán';
+
+        if (type === 'EXPENSE') {
+            if (!formData.code?.trim()) newErrors.code = 'Vui lòng nhập mã chi phí';
+            if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Số tiền chi phải lớn hơn 0';
+            if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
+        } else {
+            if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
+            if (!formData.amount || formData.amount <= 0) newErrors.amount = 'Số tiền thu phải lớn hơn 0';
+        }
+
+        setErrors(newErrors);
+        return Object.keys(newErrors).length === 0;
+    };
+
     const handleSubmit = (e) => {
         e.preventDefault();
-        onSubmit(type, formData, editData?.id);
-        // Reset form
+        if (!validate()) return;
 
-        setFormData({
-            ...formData,
-            invoice_no: '',
-            debit: 0,
-            credit: 0,
-            note: '',
-            amount: 0
-        });
+        // Hiện confirm trước khi lưu
+        const action = editData ? 'cập nhật' : 'thêm mới';
+        setPendingSubmit({ type, formData, editId: editData?.id });
+        setConfirmSave(true);
     };
+
+    const doSubmit = () => {
+        if (!pendingSubmit) return;
+        setConfirmSave(false);
+        onSubmit(pendingSubmit.type, pendingSubmit.formData, pendingSubmit.editId);
+        setPendingSubmit(null);
+
+        if (!editData) {
+            setFormData(prev => ({
+                ...prev,
+                invoice_no: '',
+                debit: 0,
+                credit: 0,
+                note: '',
+                amount: 0
+            }));
+        }
+    };
+
+    const inputCls = (field) =>
+        `w-full p-3 border rounded-xl outline-none focus:ring-2 transition ${
+            errors[field]
+                ? 'border-red-400 focus:ring-red-100 bg-red-50'
+                : 'border-slate-300 focus:ring-blue-100 focus:border-blue-400'
+        }`;
+
+    const labelCls = 'block text-sm font-bold text-slate-700 mb-1';
+    const errorMsg = (field) => errors[field] ? (
+        <span className="flex items-center gap-1 text-red-500 text-xs mt-1 font-medium">
+            <AlertCircle size={12} /> {errors[field]}
+        </span>
+    ) : null;
 
     return (
         <div className="max-w-4xl mx-auto animate-in slide-in-from-bottom-4 duration-500">
+            <ConfirmModal
+                isOpen={confirmSave}
+                title={editData ? 'Xác nhận cập nhật' : 'Xác nhận lưu dữ liệu'}
+                message={editData
+                    ? `Bạn có chắc chắn muốn cập nhật dữ liệu này không?`
+                    : `Bạn có chắc chắn muốn lưu dữ liệu ${type === 'EXPENSE' ? 'chi phí' : 'doanh thu'} mới này không?`
+                }
+                onConfirm={doSubmit}
+                onCancel={() => setConfirmSave(false)}
+                type={editData ? 'warning' : 'info'}
+            />
+
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                 <div className="flex border-b">
-                    <button 
-                        onClick={() => setType('EXPENSE')}
+                    <button
+                        type="button"
+                        onClick={() => { setType('EXPENSE'); setErrors({}); }}
                         className={`flex-1 py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         CHI PHÍ (PHIẾU CHI)
                     </button>
-                    <button 
-                        onClick={() => setType('INCOME')}
+                    <button
+                        type="button"
+                        onClick={() => { setType('INCOME'); setErrors({}); }}
                         className={`flex-1 py-4 font-bold text-center transition ${type === 'INCOME' ? 'bg-green-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         DOANH THU (THU TIỀN)
                     </button>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-8 space-y-6">
+                <form onSubmit={handleSubmit} className="p-8 space-y-6" noValidate>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-2">
-                            <label className="block text-sm font-bold text-slate-700">Công trình</label>
-                            <select 
+                        {/* Công trình */}
+                        <div>
+                            <label className={labelCls}>
+                                Công trình <span className="text-red-500">*</span>
+                            </label>
+                            <select
                                 value={formData.project_name}
-                                onChange={(e) => setFormData({...formData, project_name: e.target.value})}
-                                className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100 border-slate-300"
-                                required
+                                onChange={(e) => handleChange('project_name', e.target.value)}
+                                className={inputCls('project_name')}
                             >
                                 {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
                             </select>
+                            {errorMsg('project_name')}
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="block text-sm font-bold text-slate-700">Ngày hạch toán</label>
-                            <input 
+                        {/* Ngày hạch toán */}
+                        <div>
+                            <label className={labelCls}>
+                                Ngày hạch toán <span className="text-red-500">*</span>
+                            </label>
+                            <input
                                 type="date"
                                 value={formData.accounting_date}
-                                onChange={(e) => setFormData({...formData, accounting_date: e.target.value})}
-                                className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100 border-slate-300"
-                                required
+                                onChange={(e) => handleChange('accounting_date', e.target.value)}
+                                className={inputCls('accounting_date')}
                             />
+                            {errorMsg('accounting_date')}
                         </div>
 
                         {type === 'EXPENSE' ? (
                             <>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-slate-700">Mã CP</label>
-                                    <input 
+                                {/* Mã CP */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Mã CP <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
                                         type="text"
                                         value={formData.code}
-                                        onChange={(e) => setFormData({...formData, code: e.target.value.replace(',', '.')})}
+                                        onChange={(e) => handleChange('code', e.target.value.replace(',', '.'))}
                                         placeholder="Ví dụ: 621, 622..."
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100 border-slate-300"
+                                        className={inputCls('code')}
                                     />
+                                    {errorMsg('code')}
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-slate-700">Số tiền chi (Nợ)</label>
-                                    <input 
-                                        type="number"
-                                        value={formData.debit === 0 ? '' : formData.debit}
-                                        onChange={(e) => setFormData({...formData, debit: e.target.value === '' ? 0 : parseFloat(e.target.value)})}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-red-100 border-slate-300 font-bold text-red-600"
+                                {/* Số tiền chi */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Số tiền chi (Nợ) <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.debit ? formatCurrency(formData.debit) : ''}
+                                        onChange={(e) => handleChange('debit', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền..."
+                                        className={`${inputCls('debit')} font-bold text-red-600`}
                                     />
+                                    {errorMsg('debit')}
                                 </div>
                             </>
                         ) : (
                             <>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-slate-700">Đợt thu (Giai đoạn)</label>
-                                    <input 
+                                {/* Đợt thu */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Đợt thu (Giai đoạn) <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
                                         type="text"
                                         value={formData.phase}
-                                        onChange={(e) => setFormData({...formData, phase: e.target.value})}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-100 border-slate-300"
+                                        onChange={(e) => handleChange('phase', e.target.value)}
+                                        className={inputCls('phase')}
                                     />
+                                    {errorMsg('phase')}
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="block text-sm font-bold text-slate-700">Số tiền thu</label>
-                                    <input 
-                                        type="number"
-                                        value={formData.amount === 0 ? '' : formData.amount}
-                                        onChange={(e) => setFormData({...formData, amount: e.target.value === '' ? 0 : parseFloat(e.target.value)})}
-                                        className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-green-100 border-slate-300 font-bold text-green-600"
+                                {/* Số tiền thu */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Số tiền thu <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.amount ? formatCurrency(formData.amount) : ''}
+                                        onChange={(e) => handleChange('amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền..."
+                                        className={`${inputCls('amount')} font-bold text-green-600`}
                                     />
+                                    {errorMsg('amount')}
                                 </div>
                             </>
                         )}
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-bold text-slate-700">Người thụ hưởng</label>
-                        <input 
+                    {/* Người thụ hưởng */}
+                    <div>
+                        <label className={labelCls}>Người thụ hưởng</label>
+                        <input
                             type="text"
                             value={formData.recipient}
-                            onChange={(e) => setFormData({...formData, recipient: e.target.value})}
+                            onChange={(e) => handleChange('recipient', e.target.value)}
                             placeholder="Nhập tên người nhận/nhà cung cấp..."
-                            className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100 border-slate-300"
+                            className={inputCls('recipient')}
                         />
                     </div>
 
-                    <div className="space-y-2">
-                        <label className="block text-sm font-bold text-slate-700">Nội dung / Diễn giải</label>
-                        <textarea 
+                    {/* Nội dung / Diễn giải */}
+                    <div>
+                        <label className={labelCls}>
+                            Nội dung / Diễn giải
+                            {type === 'EXPENSE' && <span className="text-red-500"> *</span>}
+                        </label>
+                        <textarea
                             value={formData.note}
-                            onChange={(e) => setFormData({...formData, note: e.target.value})}
+                            onChange={(e) => handleChange('note', e.target.value)}
                             rows="3"
-                            className="w-full p-3 border rounded-xl outline-none focus:ring-2 focus:ring-blue-100 border-slate-300"
+                            className={inputCls('note')}
                             placeholder="Nhập chi tiết nội dung..."
-                        ></textarea>
+                        />
+                        {errorMsg('note')}
                     </div>
+
+                    {/* Hiển thị số lỗi nếu có */}
+                    {Object.keys(errors).length > 0 && (
+                        <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
+                            <AlertCircle size={16} className="flex-shrink-0" />
+                            Vui lòng điền đầy đủ các trường bắt buộc (<span className="text-red-500">*</span>) trước khi lưu.
+                        </div>
+                    )}
 
                     <div className="flex gap-4">
                         {onCancel ? (
-                            <button 
+                            <button
                                 type="button"
                                 onClick={onCancel}
-                                className="px-6 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700 border border-slate-200 transition flex items-center justify-center gap-2"
+                                className="px-6 py-4 rounded-xl font-bold text-red-500 hover:bg-red-50 hover:text-red-700 border border-red-200 transition flex items-center justify-center gap-2"
                             >
                                 HỦY BỎ
                             </button>
                         ) : (
-                            <button 
+                            <button
                                 type="button"
                                 onClick={() => {
                                     if (window.confirm('Bạn có muốn xóa trắng toàn bộ dữ liệu đang nhập để nhập lại từ đầu?')) {
@@ -205,19 +317,28 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                             phase: 'Đợt 1',
                                             amount: 0
                                         });
+                                        setErrors({});
                                     }
                                 }}
-                                className="px-6 py-4 rounded-xl font-bold text-slate-500 hover:bg-slate-100 hover:text-slate-700 border border-slate-200 transition flex items-center justify-center gap-2"
+                                className="px-6 py-4 rounded-xl font-bold text-red-500 hover:bg-red-50 hover:text-red-700 border border-red-200 transition flex items-center justify-center gap-2"
                             >
                                 <Trash2 size={20} /> XÓA NHẬP LIỆU
                             </button>
                         )}
-                        <button 
+                        <button
                             type="submit"
                             disabled={isLoading}
-                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition transform active:scale-95 ${type === 'EXPENSE' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'}`}
+                            className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition transform active:scale-95 ${
+                                type === 'EXPENSE' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
+                            } disabled:opacity-60 disabled:cursor-not-allowed`}
                         >
-                            {isLoading ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div> : <><Save size={20} /> LƯU DỮ LIỆU VÀO DATABASE</>}
+                            {isLoading
+                                ? <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white" />
+                                : <>
+                                    <Save size={20} />
+                                    {editData ? 'CẬP NHẬT DỮ LIỆU' : 'LƯU DỮ LIỆU VÀO DATABASE'}
+                                  </>
+                            }
                         </button>
                     </div>
                 </form>

@@ -770,7 +770,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
 
             {/* HEADER AREA */}
             {view === 'list' && (
-                <header className="mb-8 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+                <header className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                     <div>
                         <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
                             <div className="bg-blue-600 p-2.5 rounded-2xl text-white shadow-lg shadow-blue-600/25">
@@ -801,7 +801,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             {view === 'list' && (
                 <div className="space-y-6">
                     {/* FILTER BAR */}
-                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4">
+                    <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4">
                         <div className="flex-1 relative">
                             <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                             <input 
@@ -812,7 +812,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
                             />
                         </div>
-                        <div className="w-full md:w-64">
+                        <div className="w-full lg:w-64">
                             <select 
                                 value={selectedProjectFilter}
                                 onChange={(e) => setSelectedProjectFilter(e.target.value)}
@@ -834,7 +834,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             <p className="text-slate-400 text-sm mt-1">Bấm &quot;Lập đơn đặt hàng mới&quot; để tạo đơn hàng đầu tiên.</p>
                         </div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                             {filteredOrders.map((order) => {
                                 const itemCount = Array.isArray(order.items) 
                                     ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
@@ -1243,24 +1243,24 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
 
                             {/* GRID SUMMARY INFO */}
                             <div className="mb-6 space-y-1.5 border-l-4 border-yellow-400 pl-4 py-1">
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[130px]">DỰ ÁN :</span>
-                                    <span className="font-bold text-blue-700">{formData.project_name.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">DỰ ÁN :</span>
+                                    <span className="font-bold text-blue-700 break-words">{formData.project_name.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[130px]">ĐỊA CHỈ :</span>
-                                    <span>{formData.address.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">ĐỊA CHỈ :</span>
+                                    <span className="break-words">{formData.address.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 whitespace-nowrap min-w-[130px]">HẠNG MỤC :</span>
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400">{formData.category.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
+                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 break-words">{formData.category.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2 text-slate-700">
-                                    <span className="font-bold whitespace-nowrap min-w-[130px]">{formData.company.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 text-slate-700">
+                                    <span className="font-bold text-slate-700 break-words">{formData.company.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[130px]">NGƯỜI NHẬN HÀNG :</span>
-                                    <span className="font-bold text-slate-900">{formData.recipient.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NGƯỜI NHẬN HÀNG :</span>
+                                    <span className="font-bold text-slate-900 break-words">{formData.recipient.toUpperCase()}</span>
                                 </div>
                             </div>
 
@@ -1454,7 +1454,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                     </header>
 
                     {/* DỰ ÁN PREVIEW SIMULATOR */}
-                    <div className="bg-white border-2 border-slate-200 shadow-2xl rounded-3xl overflow-hidden p-8 md:p-16 font-['Times_New_Roman',_serif] text-[16px] text-black print:border-none print:shadow-none print:p-0 w-full max-w-[800px] mx-auto min-h-[1050px] flex flex-col justify-between">
+                    <div className="print-area bg-white border-2 border-slate-200 shadow-2xl rounded-3xl overflow-hidden p-8 md:p-16 font-['Times_New_Roman',_serif] text-[16px] text-black print:border-none print:shadow-none print:p-0 w-full max-w-[800px] mx-auto min-h-[1050px] flex flex-col justify-between">
                         
                         <div>
                             {/* SHEET TITLE */}
@@ -1466,79 +1466,80 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
 
                             {/* GRID SUMMARY INFO */}
                             <div className="mb-8 space-y-2 text-[15px] pl-2">
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[150px]">DỰ ÁN :</span>
-                                    <span className="font-bold text-blue-800 text-lg">{selectedOrder.project_name.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">DỰ ÁN :</span>
+                                    <span className="font-bold text-black text-lg break-words">{selectedOrder.project_name.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[150px]">ĐỊA CHỈ :</span>
-                                    <span>{selectedOrder.address.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">ĐỊA CHỈ :</span>
+                                    <span className="break-words">{selectedOrder.address.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 whitespace-nowrap min-w-[150px]">HẠNG MỤC :</span>
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400">{selectedOrder.category.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
+                                    <span className="font-bold break-words">{selectedOrder.category.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2 text-slate-700">
-                                    <span className="font-bold whitespace-nowrap min-w-[150px]"></span>
-                                    <span className="font-semibold text-slate-800">{selectedOrder.company.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 text-slate-700">
+                                    <span className="font-semibold text-slate-800 break-words">{selectedOrder.company.toUpperCase()}</span>
                                 </div>
-                                <div className="flex gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[150px]">NGƯỜI NHẬN HÀNG :</span>
-                                    <span className="font-bold text-slate-900">{selectedOrder.recipient.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NGƯỜI NHẬN HÀNG :</span>
+                                    <span className="font-bold text-black break-words">{selectedOrder.recipient.toUpperCase()}</span>
                                 </div>
                             </div>
 
                             {/* EXCEL GRID TABLE */}
-                            <table className="w-full border-collapse border border-black">
-                                <thead>
-                                    <tr className="bg-slate-100">
-                                        <th className="border border-black p-2.5 text-center w-16 font-extrabold text-[15px]">STT</th>
-                                        <th className="border border-black p-2.5 text-left font-extrabold text-[15px]">Chủng loại vật tư</th>
-                                        <th className="border border-black p-2.5 text-center w-28 font-extrabold text-[15px]">DVT</th>
-                                        <th className="border border-black p-2.5 text-center w-28 font-extrabold text-[15px]">Số lượng</th>
-                                        <th className="border border-black p-2.5 text-center w-36 font-extrabold text-[15px]">Đơn giá</th>
-                                        <th className="border border-black p-2.5 text-right w-36 font-extrabold text-[15px]">Thành tiền</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {(Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).map((cat, catIdx) => (
-                                        <React.Fragment key={catIdx}>
-                                            {/* CATEGORY HEADER ROW */}
-                                            <tr className="bg-slate-50">
-                                                <td colSpan="6" className="border border-black p-2 text-center font-bold text-[15px] uppercase">
-                                                    {cat.name}
-                                                </td>
-                                            </tr>
-
-                                            {/* CATEGORY ITEMS */}
-                                            {cat.items.map((item, itemIdx) => (
-                                                <tr key={itemIdx}>
-                                                    <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
-                                                    <td className="border border-black p-2 pl-4">{item.name}</td>
-                                                    <td className="border border-black p-2 text-center">{item.unit}</td>
-                                                    <td className="border border-black p-2 text-center">
-                                                        {item.quantity || '-'}
-                                                    </td>
-                                                    <td className="border border-black p-2 text-right pr-4 font-bold text-slate-900">
-                                                        {item.price ? formatCurrency(item.price) : '-'}
-                                                    </td>
-                                                    <td className="border border-black p-2 text-right pr-4 font-bold text-blue-800">
-                                                        {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
+                            <div className="overflow-x-auto print:overflow-visible">
+                                <table className="w-full border-collapse border border-black min-w-[600px] print:min-w-0">
+                                    <thead>
+                                        <tr className="text-black">
+                                            <th className="border border-black p-2.5 text-center w-16 font-bold text-[15px]">STT</th>
+                                            <th className="border border-black p-2.5 text-left font-bold text-[15px]">Chủng loại vật tư</th>
+                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">DVT</th>
+                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">Số lượng</th>
+                                            <th className="border border-black p-2.5 text-center w-36 font-bold text-[15px]">Đơn giá</th>
+                                            <th className="border border-black p-2.5 text-right w-36 font-bold text-[15px]">Thành tiền</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {(Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).map((cat, catIdx) => (
+                                            <React.Fragment key={catIdx}>
+                                                {/* CATEGORY HEADER ROW */}
+                                                <tr>
+                                                    <td colSpan="6" className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black">
+                                                        {cat.name}
                                                     </td>
                                                 </tr>
-                                            ))}
-                                        </React.Fragment>
-                                    ))}
-                                    <tr>
-                                        <td colSpan="5" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
-                                            Tổng cộng:
-                                        </td>
-                                        <td className="border border-black p-3 text-right font-black text-red-600 text-[17px] bg-slate-100">
-                                            {formatCurrency((Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
+
+                                                {/* CATEGORY ITEMS */}
+                                                {cat.items.map((item, itemIdx) => (
+                                                    <tr key={itemIdx}>
+                                                        <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
+                                                        <td className="border border-black p-2 pl-4">{item.name}</td>
+                                                        <td className="border border-black p-2 text-center">{item.unit}</td>
+                                                        <td className="border border-black p-2 text-center">
+                                                            {item.quantity || '-'}
+                                                        </td>
+                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-black">
+                                                            {item.price ? formatCurrency(item.price) : '-'}
+                                                        </td>
+                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-black">
+                                                            {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </React.Fragment>
+                                        ))}
+                                        <tr>
+                                            <td colSpan="5" className="border border-black p-3 text-right font-bold uppercase text-black">
+                                                Tổng cộng:
+                                            </td>
+                                            <td className="border border-black p-3 text-right font-bold text-black text-[17px]">
+                                                {formatCurrency((Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
 
                         {/* SIGNATURE BLOCK */}
@@ -1549,16 +1550,15 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 </p>
                                 <p className="font-extrabold text-sm text-slate-800">NGƯỜI LẬP</p>
                                 
-                                {/* SIGNATURE BOX */}
                                 <div className="h-20 flex items-center justify-center">
                                     {selectedOrder.show_signature && (
-                                        <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none">
+                                        <div className="print-signature font-serif italic text-2xl text-black select-none font-bold">
                                             {getSignatureName(getCommanderName(selectedOrder.recipient))}
                                         </div>
                                     )}
                                 </div>
                                 
-                                <p className="font-extrabold text-slate-900 border-t border-slate-100 pt-2 text-sm uppercase">
+                                <p className="font-bold text-black border-t border-black pt-2 text-sm uppercase">
                                     {getCommanderName(selectedOrder.recipient)}
                                 </p>
                             </div>
@@ -1644,14 +1644,14 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                     div:has(> table) {
                         overflow: visible !important;
                     }
-                    div.font-\\[\\'Times_New_Roman\\'\\,_serif\\] {
+                    .print-area {
                         visibility: visible !important;
                         position: absolute;
                         left: 0;
                         top: 0;
                         width: 100%;
                     }
-                    div.font-\\[\\'Times_New_Roman\\'\\,_serif\\] * {
+                    .print-area * {
                         visibility: visible !important;
                     }
                 }

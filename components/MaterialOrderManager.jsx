@@ -416,15 +416,13 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                         visibility: hidden;
                     }
                     .print-area, .print-area * {
-                        visibility: visible;
+                        visibility: visible !important;
                     }
                     .print-area {
                         position: absolute;
                         left: 0;
                         top: 0;
                         width: 100%;
-                        background: white !important;
-                        color: black !important;
                     }
                     .no-print {
                         display: none !important;
@@ -464,7 +462,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                     </header>
 
                     {/* SEARCH & FILTERS */}
-                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4">
+                    <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4">
                         <div className="flex-1 relative">
                             <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                             <input 
@@ -476,7 +474,8 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             />
                         </div>
                         
-                        <div className="w-full md:w-56">
+                        <div className="flex flex-col sm:flex-row gap-4 w-full lg:w-auto">
+                            <div className="w-full lg:w-56">
                             <select 
                                 value={selectedProjectFilter}
                                 onChange={(e) => setSelectedProjectFilter(e.target.value)}
@@ -489,7 +488,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             </select>
                         </div>
 
-                        <div className="w-full md:w-56">
+                        <div className="w-full lg:w-56">
                             <select 
                                 value={selectedStatusFilter}
                                 onChange={(e) => setSelectedStatusFilter(e.target.value)}
@@ -502,6 +501,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                 <option value="Accounted">Đã hoàn tất</option>
                                 <option value="Rejected">Bị từ chối</option>
                             </select>
+                        </div>
                         </div>
                     </div>
 
@@ -531,8 +531,8 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             
                             {selectedProjectFilter && getStatistics().length > 0 ? (
                                 <div className="p-6">
-                                    <div className="border border-slate-200 rounded-2xl overflow-hidden">
-                                        <table className="w-full text-left border-collapse text-sm">
+                                    <div className="border border-slate-200 rounded-2xl overflow-x-auto">
+                                        <table className="w-full text-left border-collapse text-sm min-w-[600px]">
                                             <thead>
                                                 <tr className="bg-slate-100 border-b-2 border-slate-200 font-bold text-slate-700 uppercase text-xs tracking-wider">
                                                     <th className="px-6 py-4 text-center w-16">STT</th>
@@ -566,8 +566,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             ) : selectedProjectFilter ? (
                                 <div className="p-16 text-center text-slate-400">
                                     <PieChart className="mx-auto mb-4 text-slate-300" size={48} />
-                                    <p className="font-bold text-slate-500 text-lg">Chưa có dữ liệu thống kê</p>
-                                    <p className="text-slate-400 text-sm mt-1">Không có đơn hàng nào được đặt cho dự án này.</p>
+                                    <p className="font-bold text-slate-500 text-lg">Chưa có dữ liệu thống kê.</p>
                                 </div>
                             ) : null}
                         </div>
@@ -585,10 +584,10 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                     <p className="text-slate-400 text-sm mt-1">Hãy thử đổi bộ lọc hoặc thêm đơn hàng mới.</p>
                                 </div>
                             ) : (
-                                <div className="overflow-x-auto">
-                                    <table className="w-full text-left border-collapse">
+                                <div className="overflow-x-auto custom-scrollbar">
+                                    <table className="w-full text-left border-collapse" style={{ minWidth: '1100px' }}>
                                         <thead>
-                                            <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-black uppercase text-slate-400 tracking-wider">
+                                            <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-black uppercase text-slate-400 tracking-wider whitespace-nowrap">
                                                 <th className="px-6 py-4">Ngày đặt</th>
                                                 <th className="px-6 py-4">Công trình</th>
                                                 <th className="px-6 py-4">Đợt đặt hàng</th>
@@ -609,7 +608,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                 const itemCount = Array.isArray(order.items) 
                                                     ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
                                                     : 0;
-    
+     
                                                 return (
                                                     <tr key={order.id} className="hover:bg-slate-50/50 transition">
                                                         <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400">
@@ -618,8 +617,8 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                         <td className="px-6 py-4 font-bold text-slate-800">
                                                             {order.project_name}
                                                         </td>
-                                                        <td className="px-6 py-4">
-                                                            <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold font-mono">
+                                                        <td className="px-6 py-4 whitespace-nowrap">
+                                                            <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold font-mono whitespace-nowrap inline-block">
                                                                 {order.order_phase}
                                                             </span>
                                                         </td>
@@ -640,7 +639,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                         </td>
                                                         <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold">
                                                             {status === 'Accounted' || (req && req.total_amount > 0) ? (
-                                                                <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
+                                                                 <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
                                                             ) : (
                                                                 <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>
                                                             )}
@@ -729,7 +728,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                     )}
 
                     {/* A4 PRINT LAYOUT CONTAINER */}
-                    <div className="print-area bg-white p-8 md:p-12 rounded-3xl border border-slate-200 shadow-sm space-y-8 max-w-4xl mx-auto">
+                    <div className="print-area bg-white p-4 sm:p-8 lg:p-12 rounded-3xl border border-slate-200 shadow-sm space-y-8 max-w-4xl mx-auto overflow-x-auto custom-scrollbar">
                         
                         {/* Company & Document Header */}
                         <div className="flex flex-col items-center text-center space-y-2 border-b-2 border-double border-slate-900 pb-4">
@@ -739,47 +738,57 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                         </div>
 
                         {/* General Info Sheet */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-3 text-sm text-slate-700">
-                            <div className="flex items-center gap-2">
-                                <Briefcase size={16} className="text-slate-400 no-print" />
-                                <span className="font-bold min-w-[120px]">Công trình:</span>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-3 text-sm text-slate-700">
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <Briefcase size={16} className="text-slate-400 no-print" />
+                                    <span className="font-bold min-w-[120px]">Công trình:</span>
+                                </div>
                                 <span className="text-slate-950 font-black">{selectedOrder.project_name}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Calendar size={16} className="text-slate-400 no-print" />
-                                <span className="font-bold min-w-[120px]">Ngày đặt:</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <Calendar size={16} className="text-slate-400 no-print" />
+                                    <span className="font-bold min-w-[120px]">Ngày đặt:</span>
+                                </div>
                                 <span className="text-slate-950 font-mono font-bold">{formatDateVN(selectedOrder.order_date)}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <MapPin size={16} className="text-slate-400 no-print" />
-                                <span className="font-bold min-w-[120px]">Địa chỉ:</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <MapPin size={16} className="text-slate-400 no-print" />
+                                    <span className="font-bold min-w-[120px]">Địa chỉ:</span>
+                                </div>
                                 <span className="text-slate-950">{selectedOrder.address}</span>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Tag size={16} className="text-slate-400 no-print" />
-                                <span className="font-bold min-w-[120px]">Đợt đặt hàng:</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <Tag size={16} className="text-slate-400 no-print" />
+                                    <span className="font-bold min-w-[120px]">Đợt đặt hàng:</span>
+                                </div>
                                 <span className="text-slate-950 font-black font-mono">{selectedOrder.order_phase}</span>
                             </div>
-                            <div className="flex items-center gap-2 md:col-span-2">
-                                <User size={16} className="text-slate-400 no-print" />
-                                <span className="font-bold min-w-[120px]">Người nhận hàng:</span>
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 lg:col-span-2">
+                                <div className="flex items-center gap-2 shrink-0">
+                                    <User size={16} className="text-slate-400 no-print" />
+                                    <span className="font-bold min-w-[120px]">Người nhận hàng:</span>
+                                </div>
                                 <span className="text-slate-950 font-extrabold">{selectedOrder.recipient}</span>
                             </div>
                         </div>
 
                         {/* Main Materials Items Table */}
-                        <div className="overflow-x-auto border-2 border-slate-900 rounded-lg">
-                            <table className="w-full border-collapse text-left text-sm text-slate-900">
+                        <div className="overflow-x-auto print:overflow-visible">
+                            <table className="w-full border-collapse border border-black text-left text-sm text-black min-w-[700px] print:min-w-0">
                                 <thead>
-                                    <tr className="bg-amber-400 font-black text-slate-950 border-b-2 border-slate-900">
-                                        <th className="px-4 py-3 border-r border-slate-900 text-center w-12">STT</th>
-                                        <th className="px-4 py-3 border-r border-slate-900 w-2/5">Chủng loại vật tư sơn nước</th>
-                                        <th className="px-4 py-3 border-r border-slate-900 text-center w-16">DVT</th>
-                                        <th className="px-4 py-3 border-r border-slate-900 text-center w-24">Số lượng đặt</th>
+                                    <tr className="font-bold border-b border-black">
+                                        <th className="px-4 py-3 border-r border-black text-center w-12">STT</th>
+                                        <th className="px-4 py-3 border-r border-black w-2/5">Chủng loại vật tư sơn nước</th>
+                                        <th className="px-4 py-3 border-r border-black text-center w-16">DVT</th>
+                                        <th className="px-4 py-3 border-r border-black text-center w-24">Số lượng đặt</th>
                                         {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
                                             <>
-                                                <th className="px-4 py-3 border-r border-slate-900 text-right w-32">Đơn giá hạch toán</th>
-                                                <th className="px-4 py-3 border-r border-slate-900 text-right w-32">Thành tiền</th>
+                                                <th className="px-4 py-3 border-r border-black text-right w-32">Đơn giá hạch toán</th>
+                                                <th className="px-4 py-3 border-r border-black text-right w-32">Thành tiền</th>
                                             </>
                                         )}
                                         <th className="px-4 py-3">Ghi chú</th>
@@ -806,8 +815,8 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                             return (
                                                 <React.Fragment key={cat.id || cat.name || catIdx}>
                                                     {/* Category Header Row */}
-                                                    <tr className="bg-slate-100 font-extrabold text-slate-950">
-                                                        <td colSpan={matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) ? "7" : "5"} className="px-4 py-2 border-r border-slate-900 text-indigo-700">
+                                                    <tr className="font-bold border-b border-black">
+                                                        <td colSpan={matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) ? "7" : "5"} className="px-4 py-2 border-r border-black">
                                                             {cat.name}
                                                         </td>
                                                     </tr>
@@ -828,22 +837,22 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                         const note = matchedAllocated?.note || it.note || '';
 
                                                         return (
-                                                            <tr key={it.stt || itemIdx} className="hover:bg-slate-50">
-                                                                <td className="px-4 py-2.5 border-r border-slate-900 text-center text-xs font-bold text-slate-500">{globalStt++}</td>
-                                                                <td className="px-4 py-2.5 border-r border-slate-900 font-extrabold text-slate-950">{it.name}</td>
-                                                                <td className="px-4 py-2.5 border-r border-slate-900 text-center font-bold">{it.unit}</td>
-                                                                <td className="px-4 py-2.5 border-r border-slate-900 text-center font-mono font-bold text-lg">{qty}</td>
+                                                            <tr key={it.stt || itemIdx} className="border-b border-black">
+                                                                <td className="px-4 py-2.5 border-r border-black text-center font-bold">{globalStt++}</td>
+                                                                <td className="px-4 py-2.5 border-r border-black font-bold">{it.name}</td>
+                                                                <td className="px-4 py-2.5 border-r border-black text-center">{it.unit}</td>
+                                                                <td className="px-4 py-2.5 border-r border-black text-center font-bold">{qty}</td>
                                                                 {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
                                                                     <>
-                                                                        <td className="px-4 py-2.5 border-r border-slate-900 text-right font-mono font-bold text-slate-600">
+                                                                        <td className="px-4 py-2.5 border-r border-black text-right">
                                                                             {formatCurrency(unitPrice)}
                                                                         </td>
-                                                                        <td className="px-4 py-2.5 border-r border-slate-900 text-right font-mono font-black text-green-700">
+                                                                        <td className="px-4 py-2.5 border-r border-black text-right font-bold">
                                                                             {formatCurrency(allocatedAmount)}
                                                                         </td>
                                                                     </>
                                                                 )}
-                                                                <td className="px-4 py-2.5 text-xs text-slate-500 italic">{note}</td>
+                                                                <td className="px-4 py-2.5 text-xs italic">{note}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -854,9 +863,9 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
 
                                     {/* Grand Total Row (Only if Accounted) */}
                                     {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
-                                        <tr className="bg-amber-400/10 font-black text-slate-950 border-t-2 border-slate-900 text-base">
-                                            <td colSpan="5" className="px-4 py-3 border-r border-slate-900 text-right uppercase">Tổng cộng hạch toán thực tế:</td>
-                                            <td className="px-4 py-3 border-r border-slate-900 text-right font-mono font-black text-green-700 text-lg">
+                                        <tr className="font-bold border-t-2 border-black text-base">
+                                            <td colSpan="5" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng hạch toán thực tế:</td>
+                                            <td className="px-4 py-3 border-r border-black text-right font-bold text-lg">
                                                 {formatCurrency(matchedRequest.total_amount)}
                                             </td>
                                             <td className="px-4 py-3"></td>
@@ -871,19 +880,19 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             <div className="pt-8 grid grid-cols-2 text-center text-sm font-bold text-slate-950 gap-8">
                                 <div className="space-y-16">
                                     <div>
-                                        <p className="uppercase font-black">Đại diện khách hàng</p>
-                                        <p className="text-xs font-normal text-slate-500 italic mt-0.5">ký và ghi rõ họ tên</p>
+                                        <p className="uppercase font-bold">Đại diện khách hàng</p>
+                                        <p className="text-xs font-normal italic mt-0.5">ký và ghi rõ họ tên</p>
                                     </div>
                                     <div className="h-12"></div>
                                 </div>
                                 <div className="space-y-6">
                                     <div>
-                                        <p className="uppercase font-black">Người lập đơn</p>
-                                        <p className="text-xs font-normal text-slate-500 italic mt-0.5">ký và ghi rõ họ tên</p>
+                                        <p className="uppercase font-bold">Người lập đơn</p>
+                                        <p className="text-xs font-normal italic mt-0.5">ký và ghi rõ họ tên</p>
                                     </div>
                                     <div className="flex flex-col items-center">
-                                        <p className="text-2xl font-bold font-serif text-blue-800 italic transform -rotate-6">{getSignatureName(getCommanderName(selectedOrder.recipient))}</p>
-                                        <p className="mt-2 text-sm font-black underline tracking-tight uppercase">{getCommanderName(selectedOrder.recipient)}</p>
+                                        <p className="print-signature text-2xl font-bold font-serif italic text-black">{getSignatureName(getCommanderName(selectedOrder.recipient))}</p>
+                                        <p className="mt-2 text-sm font-bold underline tracking-tight uppercase">{getCommanderName(selectedOrder.recipient)}</p>
                                     </div>
                                 </div>
                             </div>

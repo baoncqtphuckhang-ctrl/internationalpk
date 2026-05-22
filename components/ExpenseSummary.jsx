@@ -37,25 +37,25 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
 
     return (
         <div className="animate-in fade-in duration-500">
-            <header className="mb-6 flex flex-col md:flex-row justify-between items-start md:items-end gap-4">
+            <header className="mb-6 flex flex-col lg:flex-row justify-between items-start lg:items-end gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <PieChart className="text-blue-600" /> Tổng Hợp Chi Phí
                     </h2>
                     <p className="text-slate-500 text-sm mt-1">Phân tích chi tiết các khoản chi theo từng mã chi phí cho các công trình. (Nhấp đúp vào dòng để xem chi tiết)</p>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={() => handleCopyTable('expense-table')} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-2">
+                <div className="flex gap-2 w-full lg:w-auto">
+                    <button onClick={() => handleCopyTable('expense-table')} className="flex-1 lg:flex-none justify-center bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-2">
                         <Copy size={16} /> Copy Bảng
                     </button>
-                    <button onClick={() => exportTableToExcel('expense-table', 'TongHopChiPhi')} className="bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition flex items-center gap-2">
+                    <button onClick={() => exportTableToExcel('expense-table', 'TongHopChiPhi')} className="flex-1 lg:flex-none justify-center bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition flex items-center gap-2">
                         <Download size={16} /> Xuất Excel
                     </button>
                 </div>
             </header>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="p-4 border-b bg-slate-50 flex items-center gap-3">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: 'calc(100vh - 220px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+                <div className="p-4 border-b bg-slate-50 flex items-center gap-3 flex-shrink-0">
                     <Search size={18} className="text-slate-400" />
                     <input 
                         type="text" 
@@ -65,18 +65,18 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                         className="bg-transparent outline-none font-bold text-slate-700 w-full"
                     />
                 </div>
-                <div className="overflow-x-auto custom-scrollbar">
-                    <table id="expense-table" className="w-full text-left text-sm border-collapse min-w-[1500px]">
+                <div className="overflow-auto custom-scrollbar flex-1" style={{ overflowX: 'auto', overflowY: 'auto' }}>
+                    <table id="expense-table" className="w-full text-left text-sm border-collapse min-w-[2000px]">
                         <thead>
                             <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wider">
                                 <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 bg-slate-100 z-20 min-w-[200px]">
                                     Công trình
                                 </th>
-                                <th className="p-3 border-b border-r border-slate-200 font-black text-red-600 text-right bg-red-50">
+                                <th className="p-3 border-b border-r border-slate-200 font-black text-red-600 text-right bg-red-50 min-w-[145px]">
                                     TỔNG CHI PHÍ
                                 </th>
                                 {EXPENSE_CATEGORIES.map(cat => (
-                                    <th key={cat.code} className="p-3 border-b border-r border-slate-200 font-bold text-right" title={cat.name}>
+                                    <th key={cat.code} className="p-3 border-b border-r border-slate-200 font-bold text-right min-w-[120px]" title={cat.name}>
                                         {cat.code}
                                         <div className="text-[9px] text-slate-400 font-normal normal-case mt-0.5">{cat.name}</div>
                                     </th>
@@ -84,14 +84,14 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredData.map(row => (
+                            {filteredData.map((row, idx) => (
                                 <tr 
                                     key={row.project} 
-                                    className="border-b hover:bg-blue-50/50 transition cursor-pointer"
+                                    className={`border-b transition cursor-pointer group bg-white odd:bg-slate-50/50 hover:bg-blue-50/50`}
                                     onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(row.project)}
                                     title="Nhấp đúp để xem chi tiết công trình"
                                 >
-                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-white z-10 text-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)] group-hover:bg-blue-50/50">
+                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
                                         {row.project}
                                     </td>
                                     <td className="p-3 border-r border-slate-100 font-black text-red-600 text-right bg-red-50/30">

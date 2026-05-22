@@ -8,8 +8,7 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-inter);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -22,26 +21,30 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 10px; /* Thanh scroll ngang rõ hơn, dễ kéo */
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #e2e8f0;
   border-radius: 10px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #94a3b8;
   border-radius: 10px;
+  border: 2px solid #e2e8f0;
 }
 
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #3b82f6; /* Xanh khi hover để dễ nhận biết */
+}
+
+.custom-scrollbar::-webkit-scrollbar-corner {
+  background: #e2e8f0;
 }
 
 .sticky-header th {
@@ -50,3 +53,119 @@ body {
   z-index: 20;
   background-color: #f1f5f9;
 }
+
+/* A4 Print Layout and Styling */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 15mm 20mm 15mm 20mm;
+  }
+
+  /* Reset body and hide all screen-only elements */
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 13pt !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  /* Show only the designated print area and its descendants */
+  .print-area, .print-area * {
+    visibility: visible !important;
+  }
+
+  .print-area {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: none !important;
+    box-shadow: none !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 13pt !important;
+  }
+
+  /* Grayscale Table Adjustments */
+  .print-area table {
+    border-collapse: collapse !important;
+    width: 100% !important;
+    border: 1.5px solid #000000 !important;
+  }
+
+  .print-area th, .print-area td {
+    border: 1px solid #000000 !important;
+    padding: 6px 8px !important;
+    vertical-align: middle !important;
+    color: #000000 !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 13pt !important;
+    background-color: transparent !important;
+  }
+
+  .print-area th {
+    background-color: #e6e6e6 !important;
+    font-weight: bold !important;
+  }
+
+  /* Form Element Adjustments */
+  .print-area input, .print-area select, .print-area textarea {
+    border: none !important;
+    border-bottom: 1px dotted #000000 !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 13pt !important;
+    padding: 0 !important;
+    border-radius: 0 !important;
+  }
+
+  /* Force font families and sizes on headings and text */
+  .print-area h1, .print-area h2, .print-area h3, .print-area h4, .print-area h5, .print-area h6,
+  .print-area p, .print-area span, .print-area div, .print-area td, .print-area th, .print-area label {
+    font-family: 'Times New Roman', Times, serif !important;
+    color: #000000 !important;
+  }
+
+  .print-area h1 {
+    font-size: 17pt !important;
+    font-weight: bold !important;
+  }
+
+  .print-area h2 {
+    font-size: 16pt !important;
+    font-weight: bold !important;
+  }
+
+  .print-area h3 {
+    font-size: 14pt !important;
+    font-weight: bold !important;
+  }
+
+  .print-area p, .print-area span, .print-area div:not(.title), .print-area td, .print-area th {
+    font-size: 13pt !important;
+  }
+
+  /* Signature visual formatting */
+  .print-signature {
+    font-family: 'Brush Script MT', cursive, sans-serif !important;
+    font-size: 24pt !important;
+    color: #000000 !important;
+  }
+
+  /* Hide interactive buttons, scrollbars, icons, action cards, sidebars, headers */
+  .no-print, .print\:hidden, button, .print-area button, svg:not(.keep-svg), .print-area svg:not(.keep-svg) {
+    display: none !important;
+    visibility: hidden !important;
+  }
+}
+

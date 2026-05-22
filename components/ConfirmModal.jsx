@@ -1,21 +1,54 @@
-import React from 'react';
+'use client';
 
-export default function ConfirmModal({ isOpen, message, onConfirm, onCancel }) {
+import React from 'react';
+import { AlertTriangle, Trash2, Info } from 'lucide-react';
+
+export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận' }) {
     if (!isOpen) return null;
 
+    const isDanger = type === 'danger';
+    const isWarning = type === 'warning';
+
+    const iconBg = isDanger ? 'bg-red-100' : isWarning ? 'bg-amber-100' : 'bg-blue-100';
+    const iconColor = isDanger ? 'text-red-600' : isWarning ? 'text-amber-500' : 'text-blue-600';
+    const confirmBg = isDanger
+        ? 'bg-red-600 hover:bg-red-700 shadow-red-600/30'
+        : isWarning
+        ? 'bg-amber-500 hover:bg-amber-600 shadow-amber-500/30'
+        : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/30';
+
+    const Icon = isDanger ? Trash2 : isWarning ? AlertTriangle : Info;
+
     return (
-        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
-            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
-                <div className="p-8 text-center">
-                    <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                        <svg className="w-8 h-8 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+        <div
+            className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200"
+            onClick={(e) => { if (e.target === e.currentTarget) onCancel(); }}
+        >
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                {/* Header stripe */}
+                <div className={`h-1.5 w-full ${isDanger ? 'bg-red-500' : isWarning ? 'bg-amber-400' : 'bg-blue-500'}`} />
+
+                <div className="p-7 text-center">
+                    <div className={`w-14 h-14 ${iconBg} rounded-full flex items-center justify-center mx-auto mb-4 ring-4 ${isDanger ? 'ring-red-50' : isWarning ? 'ring-amber-50' : 'ring-blue-50'}`}>
+                        <Icon className={iconColor} size={26} strokeWidth={2.5} />
                     </div>
-                    <h3 className="text-xl font-black text-slate-800 mb-2">Xác nhận</h3>
-                    <p className="text-slate-600">{message}</p>
+                    <h3 className="text-lg font-black text-slate-800 mb-2">{title}</h3>
+                    <p className="text-slate-500 text-sm leading-relaxed">{message}</p>
                 </div>
-                <div className="p-4 bg-slate-50 flex gap-3 border-t border-slate-100">
-                    <button onClick={onCancel} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-100 transition">Hủy</button>
-                    <button onClick={onConfirm} className="flex-1 py-3 rounded-xl font-bold text-white bg-red-600 hover:bg-red-700 shadow-lg shadow-red-600/20 transition">Đồng ý</button>
+
+                <div className="px-6 pb-6 flex gap-3">
+                    <button
+                        onClick={onCancel}
+                        className="flex-1 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition text-sm"
+                    >
+                        Hủy bỏ
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className={`flex-1 py-2.5 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm`}
+                    >
+                        {isDanger ? 'Xóa ngay' : 'Đồng ý'}
+                    </button>
                 </div>
             </div>
         </div>

@@ -55,7 +55,7 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                         <label className="text-xs font-bold text-slate-700 uppercase">Tên hiển thị</label>
                         <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition" placeholder="Ví dụ: Nguyễn Văn A" />
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1">
                             <label className="text-xs font-bold text-slate-700 uppercase">Chức vụ</label>
                             <select value={formData.role} onChange={(e) => setFormData({...formData, role: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition">

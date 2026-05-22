@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2 } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
 export default function ExpectedInvoices({ projects, projectDetails }) {
@@ -7,6 +7,7 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -112,6 +113,16 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
         }
     };
 
+    const filteredInvoices = invoices.filter(inv => {
+        const term = searchTerm.toLowerCase();
+        return (
+            (inv.projectName || '').toLowerCase().includes(term) ||
+            (inv.phase || '').toLowerCase().includes(term) ||
+            (inv.note || '').toLowerCase().includes(term) ||
+            (projectDetails?.[inv.projectName]?.contractNo || '').toLowerCase().includes(term)
+        );
+    });
+
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
             <header className="mb-8 flex justify-between items-center">
@@ -133,6 +144,19 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
                     Thêm mới
                 </button>
             </header>
+
+            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
+                <div className="flex-1 relative">
+                    <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                    <input 
+                        type="text"
+                        placeholder="Tìm kiếm công trình, đợt, số hợp đồng, ghi chú..."
+                        value={searchTerm}
+                        onChange={(e) => setSearchTerm(e.target.value)}
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-emerald-500 focus:bg-white transition"
+                    />
+                </div>
+            </div>
 
             {isFormOpen && (
                 <div className="bg-white rounded-2xl shadow-xl border border-slate-200 mb-8 overflow-hidden animate-in slide-in-from-top-4">
@@ -226,7 +250,7 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse">
+                    <table className="w-full text-left border-collapse min-w-[1100px]">
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200">
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
@@ -241,12 +265,12 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {invoices.length === 0 ? (
+                            {filteredInvoices.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="p-8 text-center text-slate-500">Chưa có dữ liệu. Hãy thêm mới!</td>
+                                    <td colSpan="9" className="p-8 text-center text-slate-500">Chưa có dữ liệu hoặc không tìm thấy hóa đơn phù hợp.</td>
                                 </tr>
                             ) : (
-                                invoices.map((inv, idx) => (
+                                filteredInvoices.map((inv, idx) => (
                                     <tr key={inv.id} className="hover:bg-slate-50 transition group">
                                         <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
                                         <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
@@ -269,12 +293,12 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
                                     </tr>
                                 ))
                             )}
-                            {invoices.length > 0 && (
+                            {filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
                                     <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
-                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(invoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(invoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(invoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
+                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                    <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
+                                    <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
                                     <td colSpan="3" className="p-4"></td>
                                 </tr>
                             )}

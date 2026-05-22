@@ -3,6 +3,7 @@
 
 import React, { useState, useMemo, useEffect } from 'react';
 import Sidebar from '@/components/Sidebar';
+import HomeDashboard from '@/components/HomeDashboard';
 import Dashboard from '@/components/Dashboard';
 import HistoryTable from '@/components/HistoryTable';
 import InputForm from '@/components/InputForm';
@@ -16,9 +17,10 @@ import MaterialOrderManager from '@/components/MaterialOrderManager';
 import ExpectedInvoices from '@/components/ExpectedInvoices';
 import ConfirmModal from '@/components/ConfirmModal';
 import UserModal from '@/components/UserModal';
+import ChangePasswordModal from '@/components/ChangePasswordModal';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
-import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3 } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const ROLES = {
@@ -41,6 +43,7 @@ const MOCK_USERS = [
 export default function Home() {
     const [usersList, setUsersList] = useState(MOCK_USERS);
     const [isUsersLoaded, setIsUsersLoaded] = useState(false);
+    const [userSearchTerm, setUserSearchTerm] = useState('');
 
     useEffect(() => {
         const savedUsers = localStorage.getItem('usersList');
@@ -56,13 +59,12 @@ export default function Home() {
         }
     }, [usersList, isUsersLoaded]);
     const [currentUser, setCurrentUser] = useState(null);
-    const [activeTab, setActiveTab] = useState('dashboard');
+    const [activeTab, setActiveTab] = useState('home');
     const [projects, setProjects] = useState([]);
     const [projectDetails, setProjectDetails] = useState({});
     const [transactions, setTransactions] = useState([]);
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
-    const [dashboardProjectFilter, setDashboardProjectFilter] = useState('');
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
     
@@ -70,10 +72,16 @@ export default function Home() {
     const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [userModal, setUserModal] = useState({ isOpen: false, user: null });
+    const [passwordModal, setPasswordModal] = useState({ isOpen: false, user: null });
     
     const showToast = (msg, type = 'success') => {
         setToast({ show: true, msg, type });
         setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 3000);
+    };
+
+    const handleLogin = (user) => {
+        setCurrentUser(user);
+        setActiveTab('home');
     };
 
     const fetchData = async () => {
@@ -714,10 +722,20 @@ export default function Home() {
         }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, profit: 0 });
     }, [dashboardData]);
 
-    if (!currentUser) return <LoginForm onLogin={setCurrentUser} usersList={usersList} />;
+    const filteredUsers = usersList.filter(u => {
+        const term = userSearchTerm.toLowerCase();
+        return (
+            (u.name || '').toLowerCase().includes(term) ||
+            (u.username || '').toLowerCase().includes(term) ||
+            (u.phone || '').toLowerCase().includes(term) ||
+            (u.role || '').toLowerCase().includes(term)
+        );
+    });
+
+    if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} />;
 
     return (
-        <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative">
+        <div className="h-screen w-full overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative">
             {toast.show && (
                 <div className={`fixed top-4 right-4 z-[9999] px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-bold text-white ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
                     {toast.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -745,14 +763,31 @@ export default function Home() {
                 onDeleteProject={handleDeleteProject}
             />
 
-            <main className="flex-1 p-4 md:p-8 overflow-y-auto w-full max-w-full">
+            <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden">
                 {isLoading && (
                     <div className="fixed inset-0 bg-white/30 z-[200] flex items-center justify-center backdrop-blur-sm">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
                     </div>
                 )}
 
-                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} totals={totals} dashboardProjectFilter={dashboardProjectFilter} setDashboardProjectFilter={setDashboardProjectFilter} handleTogglePhasePaid={handleTogglePhasePaid} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} />}
+                {activeTab === 'home' && (
+                    <HomeDashboard
+                        currentUser={currentUser}
+                        projects={allowedProjects}
+                        dashboardData={dashboardData}
+                        transactions={allowedTransactions}
+                        incomes={allowedIncomes}
+                        dnttList={allowedDnttList}
+                        STATUSES={STATUSES}
+                        setActiveTab={setActiveTab}
+                        onProjectSelect={(projectName) => {
+                            setSelectedProject(projectName);
+                            setActiveTab('project-detail');
+                        }}
+                    />
+                )}
+
+                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} />}
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
@@ -837,7 +872,7 @@ export default function Home() {
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
                                     <h3 className="bg-emerald-600 text-white p-4 font-bold uppercase text-sm flex items-center gap-2">Chi tiết Thu</h3>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left">
+                                        <table className="w-full text-left min-w-[600px]">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b">
                                                     <th className="p-3 font-bold text-slate-700">Ngày</th>
@@ -911,75 +946,91 @@ export default function Home() {
                                 <Plus size={18} /> Thêm nhân viên
                             </button>
                         </header>
+                        
+                        <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
+                            <div className="flex-1 relative">
+                                <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
+                                <input 
+                                    type="text"
+                                    placeholder="Tìm kiếm nhân viên (tên, tài khoản, số điện thoại, chức vụ)..."
+                                    value={userSearchTerm}
+                                    onChange={(e) => setUserSearchTerm(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition"
+                                />
+                            </div>
+                        </div>
+
                         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-slate-50 border-b">
-                                    <tr>
-                                        <th className="p-4 font-bold text-slate-700">Tên nhân viên</th>
-                                        <th className="p-4 font-bold text-slate-700">Tài khoản</th>
-                                        <th className="p-4 font-bold text-slate-700">Số ĐT</th>
-                                        <th className="p-4 font-bold text-slate-700">Chức vụ (Role)</th>
-                                        <th className="p-4 font-bold text-slate-700">Trạng thái</th>
-                                        <th className="p-4 font-bold text-slate-700 text-right">Thao tác</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {usersList.map(u => (
-                                        <tr key={u.id} className="border-b hover:bg-slate-50">
-                                            <td className="p-4 font-bold text-slate-900">{u.name}</td>
-                                            <td className="p-4 font-mono text-blue-600">@{u.username}</td>
-                                            <td className="p-4 font-mono text-slate-500">{u.phone || '---'}</td>
-                                            <td className="p-4"><span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold uppercase">{u.role}</span></td>
-                                            <td className="p-4">
-                                                <div className="flex flex-col gap-2">
-                                                    <span className="flex items-center gap-1 text-green-600 font-bold"><CheckCircle2 size={14}/> Đang hoạt động</span>
-                                                    {u.role === 'CHT' && (
-                                                        <label className="flex items-center cursor-pointer group">
-                                                            <div className="relative">
-                                                                <input type="checkbox" className="sr-only" checked={u.canViewFinance !== false} onChange={() => {
-                                                                    setUsersList(usersList.map(x => x.id === u.id ? { ...x, canViewFinance: u.canViewFinance === false } : x));
-                                                                    showToast('Đã cập nhật quyền xem Thu - Chi!');
-                                                                }} />
-                                                                <div className={`block w-8 h-5 rounded-full transition ${u.canViewFinance !== false ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
-                                                                <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${u.canViewFinance !== false ? 'transform translate-x-3' : ''}`}></div>
-                                                            </div>
-                                                            <span className="ml-2 text-[10px] font-bold uppercase text-slate-500 group-hover:text-blue-600 transition">Xem Thu-Chi</span>
-                                                        </label>
-                                                    )}
-                                                </div>
-                                            </td>
-                                            <td className="p-4 text-right flex justify-end gap-1">
-                                                <button onClick={() => setUserModal({ isOpen: true, user: u })} className="text-amber-500 hover:text-amber-600 p-2 hover:bg-amber-50 rounded transition" title="Sửa thông tin">
-                                                    <Edit3 size={16} />
-                                                </button>
-                                                <button onClick={() => {
-                                                    const newPass = prompt(`Nhập mật khẩu mới cho tài khoản ${u.username}:`);
-                                                    if (newPass) {
-                                                        setUsersList(usersList.map(x => x.id === u.id ? { ...x, password: newPass } : x));
-                                                        showToast('Đã cập nhật mật khẩu!');
-                                                    }
-                                                }} className="text-indigo-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded transition" title="Đổi mật khẩu">
-                                                    <Key size={16} />
-                                                </button>
-                                                <button onClick={() => {
-                                                    if(u.username === 'admin') return alert('Không thể xóa Admin gốc!');
-                                                    setConfirmModal({
-                                                        isOpen: true,
-                                                        message: `Bạn có chắc chắn muốn xóa tài khoản ${u.username}?`,
-                                                        onConfirm: () => {
-                                                            setUsersList(usersList.filter(x => x.id !== u.id));
-                                                            showToast('Đã xóa tài khoản!');
-                                                            setConfirmModal({ isOpen: false, message: '', onConfirm: null });
-                                                        }
-                                                    });
-                                                }} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition" title="Xóa tài khoản">
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </td>
+                            <div className="overflow-x-auto">
+                                <table className="w-full text-left min-w-[800px]">
+                                    <thead className="bg-slate-50 border-b">
+                                        <tr>
+                                            <th className="p-4 font-bold text-slate-700">Tên nhân viên</th>
+                                            <th className="p-4 font-bold text-slate-700">Tài khoản</th>
+                                            <th className="p-4 font-bold text-slate-700">Số ĐT</th>
+                                            <th className="p-4 font-bold text-slate-700">Chức vụ (Role)</th>
+                                            <th className="p-4 font-bold text-slate-700">Trạng thái</th>
+                                            <th className="p-4 font-bold text-slate-700 text-right">Thao tác</th>
                                         </tr>
-                                    ))}
-                                </tbody>
-                            </table>
+                                    </thead>
+                                    <tbody>
+                                    {filteredUsers.length === 0 ? (
+                                        <tr>
+                                            <td colSpan="6" className="p-8 text-center text-slate-500">Không tìm thấy nhân viên phù hợp.</td>
+                                        </tr>
+                                    ) : (
+                                        filteredUsers.map(u => (
+                                            <tr key={u.id} className="border-b hover:bg-slate-50">
+                                                <td className="p-4 font-bold text-slate-900">{u.name}</td>
+                                                <td className="p-4 font-mono text-blue-600">@{u.username}</td>
+                                                <td className="p-4 font-mono text-slate-500">{u.phone || '---'}</td>
+                                                <td className="p-4"><span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold uppercase">{u.role}</span></td>
+                                                <td className="p-4">
+                                                    <div className="flex flex-col gap-2">
+                                                        <span className="flex items-center gap-1 text-green-600 font-bold"><CheckCircle2 size={14}/> Đang hoạt động</span>
+                                                        {u.role === 'CHT' && (
+                                                            <label className="flex items-center cursor-pointer group">
+                                                                <div className="relative">
+                                                                    <input type="checkbox" className="sr-only" checked={u.canViewFinance !== false} onChange={() => {
+                                                                        setUsersList(usersList.map(x => x.id === u.id ? { ...x, canViewFinance: u.canViewFinance === false } : x));
+                                                                        showToast('Đã cập nhật quyền xem Thu - Chi!');
+                                                                    }} />
+                                                                    <div className={`block w-8 h-5 rounded-full transition ${u.canViewFinance !== false ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
+                                                                    <div className={`dot absolute left-1 top-1 bg-white w-3 h-3 rounded-full transition ${u.canViewFinance !== false ? 'transform translate-x-3' : ''}`}></div>
+                                                                </div>
+                                                                <span className="ml-2 text-[10px] font-bold uppercase text-slate-500 group-hover:text-blue-600 transition">Xem Thu-Chi</span>
+                                                            </label>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-right flex justify-end gap-1">
+                                                    <button onClick={() => setUserModal({ isOpen: true, user: u })} className="text-amber-500 hover:text-amber-600 p-2 hover:bg-amber-50 rounded transition" title="Sửa thông tin">
+                                                        <Edit3 size={16} />
+                                                    </button>
+                                                    <button onClick={() => setPasswordModal({ isOpen: true, user: u })} className="text-indigo-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded transition" title="Đổi mật khẩu">
+                                                        <Key size={16} />
+                                                    </button>
+                                                    <button onClick={() => {
+                                                        if(u.username === 'admin') return alert('Không thể xóa Admin gốc!');
+                                                        setConfirmModal({
+                                                            isOpen: true,
+                                                            message: `Bạn có chắc chắn muốn xóa tài khoản ${u.username}?`,
+                                                            onConfirm: () => {
+                                                                setUsersList(usersList.filter(x => x.id !== u.id));
+                                                                showToast('Đã xóa tài khoản!');
+                                                                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                                                            }
+                                                        });
+                                                    }} className="text-red-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition" title="Xóa tài khoản">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        ))
+                                    )}
+                                    </tbody>
+                                </table>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -1015,6 +1066,16 @@ export default function Home() {
                     }
                     setUserModal({ isOpen: false, user: null });
                 }}
+            />
+            <ChangePasswordModal 
+                isOpen={passwordModal.isOpen} 
+                user={passwordModal.user} 
+                onClose={() => setPasswordModal({ isOpen: false, user: null })} 
+                onSave={(newPass) => {
+                    setUsersList(usersList.map(u => u.id === passwordModal.user.id ? { ...u, password: newPass } : u));
+                    showToast('Đã cập nhật mật khẩu thành công!');
+                    setPasswordModal({ isOpen: false, user: null });
+                }} 
             />
         </div>
     );

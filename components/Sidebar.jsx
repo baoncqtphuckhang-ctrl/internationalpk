@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { 
-    LayoutDashboard, PieChart, PlusCircle, History, 
+    Home, LayoutDashboard, PieChart, PlusCircle, History, 
     FileSignature, ShieldCheck, Users, LogOut, 
     ChevronRight, Building2, Menu, X, Trash2,
     ClipboardList, Package, Download, FileSpreadsheet
@@ -34,7 +34,8 @@ export default function Sidebar({
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
 
     const menuItems = [
-        { id: 'dashboard', label: 'Tổng Hợp Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
+        { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
+        { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
         { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isThuKy },
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy },
@@ -54,15 +55,20 @@ export default function Sidebar({
         <>
             {/* Mobile Header - Chỉ hiện trên điện thoại */}
             <div className="md:hidden flex items-center justify-between p-4 bg-slate-900 text-white sticky top-0 z-[100]">
-                <div className="flex items-center gap-2">
+                <button onClick={() => toggleTab('home')} className="flex items-center gap-2 text-left">
                     <div className="bg-blue-600 p-1.5 rounded-lg">
                         <LayoutDashboard size={20} />
                     </div>
                     <span className="font-black tracking-tighter text-lg uppercase">CB Pro</span>
-                </div>
-                <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
-                    {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
                 </button>
+                <div className="flex items-center gap-1">
+                    <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-lg transition" title="Đăng xuất">
+                        <LogOut size={22} />
+                    </button>
+                    <button onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)} className="p-2 hover:bg-slate-800 rounded-lg">
+                        {isMobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
+                    </button>
+                </div>
             </div>
 
             {/* Sidebar Overlay for Mobile */}
@@ -81,15 +87,15 @@ export default function Sidebar({
                 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full md:translate-x-0'}
             `}>
                 <div className="p-6 hidden md:block">
-                    <div className="flex items-center gap-3 mb-8">
+                    <button onClick={() => toggleTab('home')} className="flex items-center gap-3 mb-8 text-left group">
                         <div className="bg-blue-600 p-2.5 rounded-xl shadow-lg shadow-blue-900/20">
                             <LayoutDashboard size={28} className="text-white" />
                         </div>
                         <div>
-                            <h1 className="font-black text-xl text-white tracking-tighter uppercase leading-none">CB Pro</h1>
+                            <h1 className="font-black text-xl text-white tracking-tighter uppercase leading-none group-hover:text-blue-100 transition">CB Pro</h1>
                             <p className="text-[10px] text-slate-500 font-bold uppercase mt-1 tracking-widest">Management System</p>
                         </div>
-                    </div>
+                    </button>
                 </div>
 
                 <div className="px-4 mb-6">
