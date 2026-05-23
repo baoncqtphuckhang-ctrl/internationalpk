@@ -4,10 +4,11 @@
 import React, { useState, useEffect } from 'react';
 import { Save, Trash2, AlertCircle } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
-import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
+import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function InputForm({ projects, onSubmit, isLoading, editData, incomes = [], onCancel }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
+    const [isCustomCode, setIsCustomCode] = useState(false);
     const [formData, setFormData] = useState({
         project_name: projects[0]?.name || '',
         accounting_date: new Date().toISOString().split('T')[0],
@@ -18,7 +19,11 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         note: '',
         recipient: '',
         phase: 'Đợt 1',
-        amount: 0
+        amount: 0,
+        vat_rate: 8,
+        vat_amount: 0,
+        post_tax_amount: 0,
+        amount6418: 0
     });
 
     const [errors, setErrors] = useState({});
@@ -38,8 +43,13 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 note: editData.note || '',
                 recipient: editData.recipient || '',
                 phase: editData.phase || 'Đợt 1',
-                amount: editData.amount || 0
+                amount: editData.amount || 0,
+                vat_rate: editData.vat_rate || 8,
+                vat_amount: editData.vat_amount || 0,
+                post_tax_amount: editData.post_tax_amount || 0,
+                amount6418: editData.amount6418 || 0
             });
+            setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
             setErrors({});
         }
     }, [editData, projects]);
@@ -75,11 +85,18 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
 
         if (type === 'EXPENSE') {
             if (!formData.code?.trim()) newErrors.code = 'Vui lòng nhập mã chi phí';
-            if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Số tiền chi phải lớn hơn 0';
+            const hasDebit = formData.debit > 0;
+            const hasAmount6418 = formData.amount6418 > 0;
+            if (!hasDebit && !hasAmount6418) {
+                newErrors.debit = 'Vui lòng nhập Số tiền chi hoặc Số tiền thu';
+                newErrors.amount6418 = 'Vui lòng nhập Số tiền chi hoặc Số tiền thu';
+            }
             if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
+            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
         } else {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.amount || formData.amount <= 0) newErrors.amount = 'Số tiền thu phải lớn hơn 0';
+            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
         }
 
         setErrors(newErrors);
@@ -109,8 +126,13 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 debit: 0,
                 credit: 0,
                 note: '',
-                amount: 0
+                amount: 0,
+                vat_rate: 8,
+                vat_amount: 0,
+                post_tax_amount: 0,
+                amount6418: 0
             }));
+            setIsCustomCode(false);
         }
     };
 
@@ -198,19 +220,41 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                     <label className={labelCls}>
                                         Mã CP <span className="text-red-500">*</span>
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={formData.code}
-                                        onChange={(e) => handleChange('code', e.target.value.replace(',', '.'))}
-                                        placeholder="Ví dụ: 621, 622..."
+                                    <select
+                                        value={isCustomCode ? 'Khác' : formData.code}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Khác') {
+                                                setIsCustomCode(true);
+                                                handleChange('code', '');
+                                            } else {
+                                                setIsCustomCode(false);
+                                                handleChange('code', val);
+                                            }
+                                        }}
                                         className={inputCls('code')}
-                                    />
+                                    >
+                                        <option value="">-- Chọn Mã CP --</option>
+                                        {EXPENSE_CATEGORIES.map(c => (
+                                            <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                                        ))}
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {isCustomCode && (
+                                        <input
+                                            type="text"
+                                            value={formData.code}
+                                            onChange={(e) => handleChange('code', e.target.value.replace(',', '.'))}
+                                            placeholder="Nhập mã CP khác..."
+                                            className={`${inputCls('code')} mt-2`}
+                                        />
+                                    )}
                                     {errorMsg('code')}
                                 </div>
                                 {/* Số tiền chi */}
                                 <div>
                                     <label className={labelCls}>
-                                        Số tiền chi (Nợ) <span className="text-red-500">*</span>
+                                        Số tiền chi (Nợ)
                                     </label>
                                     <input
                                         type="text"
@@ -220,6 +264,20 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                         className={`${inputCls('debit')} font-bold text-red-600`}
                                     />
                                     {errorMsg('debit')}
+                                </div>
+                                {/* Số tiền thu */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Số tiền thu
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.amount6418 ? formatCurrency(formData.amount6418) : ''}
+                                        onChange={(e) => handleChange('amount6418', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền thu..."
+                                        className={`${inputCls('amount6418')} font-bold text-amber-600`}
+                                    />
+                                    {errorMsg('amount6418')}
                                 </div>
                             </>
                         ) : (
@@ -237,34 +295,101 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                     />
                                     {errorMsg('phase')}
                                 </div>
-                                {/* Số tiền thu */}
+                                {/* Giá trị trước thuế */}
                                 <div>
                                     <label className={labelCls}>
-                                        Số tiền thu <span className="text-red-500">*</span>
+                                        Giá trị thanh toán trước thuế <span className="text-red-500">*</span>
                                     </label>
                                     <input
                                         type="text"
                                         value={formData.amount ? formatCurrency(formData.amount) : ''}
-                                        onChange={(e) => handleChange('amount', parseVietnameseNumber(e.target.value))}
+                                        onChange={(e) => {
+                                            const val = parseVietnameseNumber(e.target.value);
+                                            const vat = Math.round(val * formData.vat_rate / 100);
+                                            setFormData(prev => ({ 
+                                                ...prev, 
+                                                amount: val, 
+                                                vat_amount: vat, 
+                                                post_tax_amount: val + vat 
+                                            }));
+                                            if (errors.amount) {
+                                                setErrors(prev => { const er = {...prev}; delete er.amount; return er; });
+                                            }
+                                        }}
                                         placeholder="Nhập số tiền..."
                                         className={`${inputCls('amount')} font-bold text-green-600`}
                                     />
                                     {errorMsg('amount')}
                                 </div>
+                                {/* Giá trị VAT */}
+                                <div>
+                                    <div className="flex justify-between items-end mb-1">
+                                        <label className="block text-sm font-bold text-slate-700">Giá trị VAT</label>
+                                        <div className="flex items-center gap-3 text-sm text-slate-600">
+                                            <label className="flex items-center gap-1 cursor-pointer">
+                                                <input type="radio" name="vat_rate" value="8" checked={formData.vat_rate === 8} 
+                                                    onChange={() => {
+                                                        const vat = Math.round(formData.amount * 8 / 100);
+                                                        setFormData(prev => ({...prev, vat_rate: 8, vat_amount: vat, post_tax_amount: prev.amount + vat}));
+                                                    }} 
+                                                /> 8%
+                                            </label>
+                                            <label className="flex items-center gap-1 cursor-pointer">
+                                                <input type="radio" name="vat_rate" value="10" checked={formData.vat_rate === 10} 
+                                                    onChange={() => {
+                                                        const vat = Math.round(formData.amount * 10 / 100);
+                                                        setFormData(prev => ({...prev, vat_rate: 10, vat_amount: vat, post_tax_amount: prev.amount + vat}));
+                                                    }} 
+                                                /> 10%
+                                            </label>
+                                            <label className="flex items-center gap-1 cursor-pointer">
+                                                <input type="radio" name="vat_rate" value="0" checked={formData.vat_rate === 0} 
+                                                    onChange={() => {
+                                                        setFormData(prev => ({...prev, vat_rate: 0, vat_amount: 0, post_tax_amount: prev.amount}));
+                                                    }} 
+                                                /> Khác
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <input
+                                        type="text"
+                                        value={formData.vat_amount ? formatCurrency(formData.vat_amount) : ''}
+                                        onChange={(e) => {
+                                            const val = parseVietnameseNumber(e.target.value);
+                                            setFormData(prev => ({ ...prev, vat_amount: val, post_tax_amount: prev.amount + val }));
+                                        }}
+                                        placeholder="Nhập VAT..."
+                                        className={`${inputCls('vat_amount')} font-bold text-slate-600`}
+                                    />
+                                </div>
+                                {/* Giá trị thanh toán sau thuế */}
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>Giá trị thanh toán sau thuế</label>
+                                    <input
+                                        type="text"
+                                        value={formData.post_tax_amount ? formatCurrency(formData.post_tax_amount) : ''}
+                                        onChange={(e) => handleChange('post_tax_amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền sau thuế..."
+                                        className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
+                                    />
+                                </div>
                             </>
                         )}
                     </div>
 
-                    {/* Người thụ hưởng */}
+                    {/* Đối tượng thụ hưởng */}
                     <div>
-                        <label className={labelCls}>Người thụ hưởng</label>
+                        <label className={labelCls}>
+                            Đối tượng thụ hưởng/đối tượng khấu trừ <span className="text-red-500">*</span>
+                        </label>
                         <input
                             type="text"
                             value={formData.recipient}
                             onChange={(e) => handleChange('recipient', e.target.value)}
-                            placeholder="Nhập tên người nhận/nhà cung cấp..."
+                            placeholder="Nhập tên đối tượng..."
                             className={inputCls('recipient')}
                         />
+                        {errorMsg('recipient')}
                     </div>
 
                     {/* Nội dung / Diễn giải */}
@@ -315,7 +440,11 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                             note: '',
                                             recipient: '',
                                             phase: 'Đợt 1',
-                                            amount: 0
+                                            amount: 0,
+                                            vat_rate: 8,
+                                            vat_amount: 0,
+                                            post_tax_amount: 0,
+                                            amount6418: 0
                                         });
                                         setErrors({});
                                     }

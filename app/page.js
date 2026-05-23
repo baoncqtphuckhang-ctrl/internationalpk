@@ -78,7 +78,22 @@ export default function Home() {
             localStorage.setItem('usersList', JSON.stringify(usersList));
         }
     }, [usersList, isUsersLoaded]);
+
     const [currentUser, setCurrentUser] = useState(null);
+
+    // Heartbeat logic to track online status
+    useEffect(() => {
+        if (!currentUser) return;
+        const updateOnlineStatus = async () => {
+            try {
+                await supabase.from('users').update({ last_online: new Date().toISOString() }).eq('id', currentUser.id);
+            } catch (err) {}
+        };
+        updateOnlineStatus(); // trigger immediately
+        const interval = setInterval(updateOnlineStatus, 60000); // every 1 min
+        return () => clearInterval(interval);
+    }, [currentUser]);
+
     const [activeTab, setActiveTab] = useState('home');
     const [projects, setProjects] = useState([]);
     const [projectDetails, setProjectDetails] = useState({});
@@ -210,6 +225,17 @@ export default function Home() {
                 } else {
                     const { error } = await supabase.from('transactions').insert([payload]);
                     if (error) throw error;
+                    
+                    if (data.amount6418 && data.amount6418 > 0) {
+                        const payload6418 = {
+                            ...payload,
+                            code: '6418',
+                            debit: 0,
+                            credit: data.amount6418,
+                            note: data.note ? data.note + ' (Bảo hiểm TN)' : 'Bảo hiểm TN'
+                        };
+                        await supabase.from('transactions').insert([payload6418]);
+                    }
                 }
             } else {
                 const payload = {
@@ -217,6 +243,8 @@ export default function Home() {
                     date: data.accounting_date,
                     phase: data.phase,
                     amount: data.amount,
+                    vat_amount: data.vat_amount || 0,
+                    post_tax_amount: data.post_tax_amount || data.amount,
                     is_paid: true,
                     created_by: currentUser.username
                 };
@@ -897,7 +925,9 @@ export default function Home() {
                                                 <tr className="bg-slate-50 border-b">
                                                     <th className="p-3 font-bold text-slate-700">Ngày</th>
                                                     <th className="p-3 font-bold text-slate-700">Đợt</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">Số tiền</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-center">Trạng thái</th>
                                                     {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Thao tác</th>}
                                                 </tr>
@@ -905,14 +935,16 @@ export default function Home() {
                                             <tbody>
                                                 {allowedIncomes.filter(i => i.project_name === selectedProject).length === 0 ? (
                                                     <tr>
-                                                        <td colSpan={canManageSystem || role === 'ADMIN' ? 5 : 4} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                        <td colSpan={canManageSystem || role === 'ADMIN' ? 7 : 6} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                     </tr>
                                                 ) : (
                                                     allowedIncomes.filter(i => i.project_name === selectedProject).map(i => (
                                                         <tr key={i.id} className="border-b hover:bg-slate-50">
                                                             <td className="p-3">{formatDateVN(i.date)}</td>
                                                             <td className="p-3 font-bold text-slate-700">{i.phase}</td>
-                                                            <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.amount)}</td>
+                                                            <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
+                                                            <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
+                                                            <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
                                                             <td className="p-3 text-center">
                                                                 <span className={`px-2 py-1 rounded text-xs font-bold ${i.is_paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                                                                     {i.is_paid ? 'Đã thu' : 'Chưa thu'}
@@ -1007,7 +1039,16 @@ export default function Home() {
                                                 <td className="p-4"><span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold uppercase">{u.role}</span></td>
                                                 <td className="p-4">
                                                     <div className="flex flex-col gap-2">
-                                                        <span className="flex items-center gap-1 text-green-600 font-bold"><CheckCircle2 size={14}/> Đang hoạt động</span>
+                                                        {u.isLocked ? (
+                                                            <span className="flex items-center gap-1 text-red-500 font-bold"><AlertCircle size={14}/> Bị khóa</span>
+                                                        ) : (
+                                                            <span className="flex items-center gap-1 text-green-600 font-bold"><CheckCircle2 size={14}/> Đang hoạt động</span>
+                                                        )}
+                                                        {u.last_online && (new Date() - new Date(u.last_online) < 1800000) ? (
+                                                            <span className="flex items-center gap-1 text-blue-600 text-xs font-bold"><span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse"></span> Online</span>
+                                                        ) : (
+                                                            <span className="flex items-center gap-1 text-slate-500 text-xs font-medium"><span className="w-2 h-2 rounded-full bg-slate-400"></span> Offline {u.last_online ? `(${new Date(u.last_online).toLocaleString('vi-VN')})` : ''}</span>
+                                                        )}
                                                         {u.role === 'CHT' && (
                                                             <label className="flex items-center cursor-pointer group">
                                                                 <div className="relative">
