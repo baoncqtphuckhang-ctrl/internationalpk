@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
-
+import { supabase } from '@/lib/supabase';
 export default function ExpectedInvoices({ projects, projectDetails }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -17,8 +17,33 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
         note: ''
     });
 
-    // Load data from localStorage
+    // Load data from Supabase or localStorage
     useEffect(() => {
+        fetchInvoices();
+    }, []);
+
+    const fetchInvoices = async () => {
+        try {
+            const { data, error } = await supabase
+                .from('expected_invoices')
+                .select('*')
+                .order('created_at', { ascending: true });
+            
+            if (error) throw error;
+            if (data && data.length > 0) {
+                setInvoices(data);
+            } else {
+                loadFromLocal();
+            }
+        } catch (error) {
+            console.warn('Supabase fetch failed. Falling back to localStorage.', error);
+            loadFromLocal();
+        } finally {
+            setIsLoaded(true);
+        }
+    };
+
+    const loadFromLocal = () => {
         const saved = localStorage.getItem('expected_invoices');
         if (saved) {
             try {
@@ -27,10 +52,9 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
                 console.error('Error parsing expected invoices', e);
             }
         }
-        setIsLoaded(true);
-    }, []);
+    };
 
-    // Save to localStorage when changed
+    // Save to localStorage as a fallback backup
     useEffect(() => {
         if (isLoaded) {
             localStorage.setItem('expected_invoices', JSON.stringify(invoices));
@@ -58,34 +82,71 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
         });
     };
 
-    const handleSave = (e) => {
+    const handleSave = async (e) => {
         e.preventDefault();
         if (!formData.projectName || !formData.postTaxValue) {
             alert('Vui lòng nhập đầy đủ tên công trình và giá trị!');
             return;
         }
 
-        if (editingId) {
-            setInvoices(prev => prev.map(inv => 
-                inv.id === editingId ? { 
-                    ...inv, 
-                    ...formData, 
-                    preTaxValue: parseFloat(formData.preTaxValue) || 0,
-                    vatAmount: parseFloat(formData.vatAmount) || 0,
-                    postTaxValue: parseFloat(formData.postTaxValue) || 0 
-                } : inv
-            ));
-        } else {
-            setInvoices(prev => [...prev, {
-                id: Date.now().toString(),
-                ...formData,
-                preTaxValue: parseFloat(formData.preTaxValue) || 0,
-                vatAmount: parseFloat(formData.vatAmount) || 0,
-                postTaxValue: parseFloat(formData.postTaxValue) || 0
-            }]);
+        const preTax = parseFloat(formData.preTaxValue) || 0;
+        const vat = parseFloat(formData.vatAmount) || 0;
+        const postTax = parseFloat(formData.postTaxValue) || 0;
+
+        try {
+            if (editingId) {
+                const { error } = await supabase
+                    .from('expected_invoices')
+                    .update({
+                        projectName: formData.projectName,
+                        preTaxValue: preTax,
+                        vatAmount: vat,
+                        postTaxValue: postTax,
+                        phase: formData.phase,
+                        note: formData.note
+                    })
+                    .eq('id', editingId);
+
+                if (error) {
+                    console.warn('Supabase update failed, updating locally', error);
+                }
+
+                setInvoices(prev => prev.map(inv => 
+                    inv.id === editingId ? { 
+                        ...inv, 
+                        ...formData, 
+                        preTaxValue: preTax,
+                        vatAmount: vat,
+                        postTaxValue: postTax 
+                    } : inv
+                ));
+            } else {
+                const newRecord = {
+                    projectName: formData.projectName,
+                    preTaxValue: preTax,
+                    vatAmount: vat,
+                    postTaxValue: postTax,
+                    phase: formData.phase,
+                    note: formData.note
+                };
+
+                const { data, error } = await supabase
+                    .from('expected_invoices')
+                    .insert([newRecord])
+                    .select();
+
+                if (error) {
+                    console.warn('Supabase insert failed, inserting locally', error);
+                    setInvoices(prev => [...prev, { id: Date.now().toString(), ...newRecord }]);
+                } else if (data && data.length > 0) {
+                    setInvoices(prev => [...prev, data[0]]);
+                }
+            }
+            resetForm();
+        } catch (error) {
+            console.error('Error in handleSave:', error);
+            alert('Có lỗi xảy ra khi lưu dữ liệu!');
         }
-        
-        resetForm();
     };
 
     const resetForm = () => {
@@ -107,9 +168,21 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
         setIsFormOpen(true);
     };
 
-    const handleDelete = (id) => {
+    const handleDelete = async (id) => {
         if (window.confirm('Bạn có chắc chắn muốn xóa mục này?')) {
-            setInvoices(prev => prev.filter(inv => inv.id !== id));
+            try {
+                const { error } = await supabase
+                    .from('expected_invoices')
+                    .delete()
+                    .eq('id', id);
+                
+                if (error) {
+                    console.warn('Supabase delete failed, deleting locally', error);
+                }
+                setInvoices(prev => prev.filter(inv => inv.id !== id));
+            } catch (error) {
+                console.error('Error in handleDelete:', error);
+            }
         }
     };
 
