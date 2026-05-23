@@ -45,14 +45,34 @@ export default function Home() {
     const [isUsersLoaded, setIsUsersLoaded] = useState(false);
     const [userSearchTerm, setUserSearchTerm] = useState('');
 
-    useEffect(() => {
-        const savedUsers = localStorage.getItem('usersList');
-        if (savedUsers) {
-            try { setUsersList(JSON.parse(savedUsers)); } catch(e) {}
+    const fetchUsers = async () => {
+        try {
+            const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: true });
+            if (error) throw error;
+            if (data && data.length > 0) {
+                const mappedUsers = data.map(u => ({
+                    ...u,
+                    isLocked: u.is_locked,
+                    canViewFinance: u.can_view_finance
+                }));
+                setUsersList(mappedUsers);
+            }
+        } catch (err) {
+            console.error('Error fetching users from Supabase, falling back to localStorage:', err);
+            const savedUsers = localStorage.getItem('usersList');
+            if (savedUsers) {
+                try { setUsersList(JSON.parse(savedUsers)); } catch(e) {}
+            }
+        } finally {
+            setIsUsersLoaded(true);
         }
-        setIsUsersLoaded(true);
+    };
+
+    useEffect(() => {
+        fetchUsers();
     }, []);
 
+    // Save to local storage as fallback/backup whenever usersList changes
     useEffect(() => {
         if (isUsersLoaded) {
             localStorage.setItem('usersList', JSON.stringify(usersList));
@@ -991,8 +1011,12 @@ export default function Home() {
                                                         {u.role === 'CHT' && (
                                                             <label className="flex items-center cursor-pointer group">
                                                                 <div className="relative">
-                                                                    <input type="checkbox" className="sr-only" checked={u.canViewFinance !== false} onChange={() => {
-                                                                        setUsersList(usersList.map(x => x.id === u.id ? { ...x, canViewFinance: u.canViewFinance === false } : x));
+                                                                    <input type="checkbox" className="sr-only" checked={u.canViewFinance !== false} onChange={async () => {
+                                                                        const newValue = u.canViewFinance === false;
+                                                                        try {
+                                                                            await supabase.from('users').update({ can_view_finance: newValue }).eq('id', u.id);
+                                                                        } catch(e) {}
+                                                                        setUsersList(usersList.map(x => x.id === u.id ? { ...x, canViewFinance: newValue } : x));
                                                                         showToast('Đã cập nhật quyền xem Thu - Chi!');
                                                                     }} />
                                                                     <div className={`block w-8 h-5 rounded-full transition ${u.canViewFinance !== false ? 'bg-blue-500' : 'bg-slate-300'}`}></div>
@@ -1015,7 +1039,10 @@ export default function Home() {
                                                         setConfirmModal({
                                                             isOpen: true,
                                                             message: `Bạn có chắc chắn muốn xóa tài khoản ${u.username}?`,
-                                                            onConfirm: () => {
+                                                            onConfirm: async () => {
+                                                                try {
+                                                                    await supabase.from('users').delete().eq('id', u.id);
+                                                                } catch(e) {}
                                                                 setUsersList(usersList.filter(x => x.id !== u.id));
                                                                 showToast('Đã xóa tài khoản!');
                                                                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
@@ -1056,12 +1083,34 @@ export default function Home() {
                 isOpen={userModal.isOpen}
                 user={userModal.user}
                 onClose={() => setUserModal({ isOpen: false, user: null })}
-                onSave={(data) => {
+                onSave={async (data) => {
                     if (userModal.user) {
+                        try {
+                            await supabase.from('users').update({
+                                name: data.name,
+                                username: data.username,
+                                password: data.password,
+                                role: data.role,
+                                phone: data.phone
+                            }).eq('id', userModal.user.id);
+                        } catch(e) {}
                         setUsersList(usersList.map(x => x.id === userModal.user.id ? { ...x, ...data } : x));
                         showToast('Đã cập nhật thông tin nhân viên!');
                     } else {
-                        setUsersList([...usersList, { id: 'u' + Date.now(), ...data, isLocked: false }]);
+                        const newId = 'u' + Date.now();
+                        try {
+                            await supabase.from('users').insert([{
+                                id: newId,
+                                name: data.name,
+                                username: data.username,
+                                password: data.password,
+                                role: data.role,
+                                phone: data.phone,
+                                is_locked: false,
+                                can_view_finance: true
+                            }]);
+                        } catch(e) {}
+                        setUsersList([...usersList, { id: newId, ...data, isLocked: false, canViewFinance: true }]);
                         showToast('Đã thêm nhân viên mới!');
                     }
                     setUserModal({ isOpen: false, user: null });
@@ -1071,7 +1120,10 @@ export default function Home() {
                 isOpen={passwordModal.isOpen} 
                 user={passwordModal.user} 
                 onClose={() => setPasswordModal({ isOpen: false, user: null })} 
-                onSave={(newPass) => {
+                onSave={async (newPass) => {
+                    try {
+                        await supabase.from('users').update({ password: newPass }).eq('id', passwordModal.user.id);
+                    } catch(e) {}
                     setUsersList(usersList.map(u => u.id === passwordModal.user.id ? { ...u, password: newPass } : u));
                     showToast('Đã cập nhật mật khẩu thành công!');
                     setPasswordModal({ isOpen: false, user: null });

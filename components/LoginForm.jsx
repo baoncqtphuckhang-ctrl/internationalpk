@@ -1,13 +1,15 @@
 'use client';
 
 import React, { useState } from 'react';
-import { Building2, ShieldAlert, Lock, User, ArrowRight } from 'lucide-react';
+import { Building2, ShieldAlert, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
 
 export default function LoginForm({ onLogin, usersList }) {
     const [form, setForm] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
     const [promptUser, setPromptUser] = useState(null);
     const [promptPassword, setPromptPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [showPromptPassword, setShowPromptPassword] = useState(false);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -65,13 +67,20 @@ export default function LoginForm({ onLogin, usersList }) {
                         <div className="relative group">
                             <Lock className="absolute left-4 top-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={20} />
                             <input 
-                                type="password" 
+                                type={showPassword ? "text" : "password"} 
                                 value={form.password} 
                                 onChange={(e) => setForm({ ...form, password: e.target.value })} 
-                                className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium text-white placeholder:text-slate-600 tracking-wider" 
+                                className={`w-full pl-12 pr-12 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium text-white placeholder:text-slate-600 ${!showPassword && form.password ? 'tracking-wider' : ''}`} 
                                 placeholder="••••••••"
                                 required 
                             />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword(!showPassword)}
+                                className="absolute right-4 top-4 text-slate-500 hover:text-blue-400 transition-colors"
+                            >
+                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                            </button>
                         </div>
                     </div>
                     <button 
@@ -94,6 +103,7 @@ export default function LoginForm({ onLogin, usersList }) {
                                 onClick={() => {
                                     setPromptUser(u);
                                     setPromptPassword('');
+                                    setShowPromptPassword(false);
                                     setError('');
                                 }} 
                                 className="group flex items-center justify-center gap-2 text-xs font-bold p-3.5 bg-white/5 border border-white/5 rounded-2xl text-slate-300 hover:bg-white/10 hover:border-white/20 transition-all duration-300"
@@ -114,24 +124,33 @@ export default function LoginForm({ onLogin, usersList }) {
                         <h3 className="text-xl font-bold text-white mb-2 text-center">Đăng nhập {promptUser.role}</h3>
                         <p className="text-sm text-slate-400 mb-8 text-center">Tài khoản: <span className="font-bold text-indigo-300">{promptUser.username}</span></p>
                         
-                        <input 
-                            type="password"
-                            autoFocus
-                            value={promptPassword}
-                            onChange={(e) => setPromptPassword(e.target.value)}
-                            onKeyDown={(e) => {
-                                if (e.key === 'Enter') {
-                                    if (promptPassword === promptUser.password) {
-                                        onLogin(promptUser);
-                                    } else {
-                                        setError('Sai mật khẩu!');
-                                        setPromptUser(null);
+                        <div className="relative mb-6">
+                            <input 
+                                type={showPromptPassword ? "text" : "password"}
+                                autoFocus
+                                value={promptPassword}
+                                onChange={(e) => setPromptPassword(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        if (promptPassword === promptUser.password) {
+                                            onLogin(promptUser);
+                                        } else {
+                                            setError('Sai mật khẩu!');
+                                            setPromptUser(null);
+                                        }
                                     }
-                                }
-                            }}
-                            className="w-full p-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 mb-6 font-bold text-lg text-white text-center tracking-[0.3em] placeholder:text-slate-600 placeholder:font-normal placeholder:text-base placeholder:tracking-normal transition-all"
-                            placeholder="Mật khẩu..."
-                        />
+                                }}
+                                className={`w-full p-4 pr-12 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg text-white text-center placeholder:text-slate-600 placeholder:font-normal placeholder:text-base placeholder:tracking-normal transition-all ${!showPromptPassword && promptPassword ? 'tracking-[0.3em]' : ''}`}
+                                placeholder="Mật khẩu..."
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPromptPassword(!showPromptPassword)}
+                                className="absolute right-4 top-4 text-slate-500 hover:text-indigo-400 transition-colors"
+                            >
+                                {showPromptPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                            </button>
+                        </div>
                         
                         <div className="flex gap-3">
                             <button 
