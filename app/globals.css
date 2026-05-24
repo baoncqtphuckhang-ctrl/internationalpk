@@ -140,7 +140,7 @@ body {
     background: transparent !important;
     box-shadow: none !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     padding: 0 !important;
     border-radius: 0 !important;
   }
@@ -153,22 +153,22 @@ body {
   }
 
   .print-area h1 {
-    font-size: 17pt !important;
-    font-weight: bold !important;
-  }
-
-  .print-area h2 {
-    font-size: 16pt !important;
-    font-weight: bold !important;
-  }
-
-  .print-area h3 {
     font-size: 14pt !important;
     font-weight: bold !important;
   }
 
-  .print-area p, .print-area span, .print-area div:not(.title), .print-area td, .print-area th {
+  .print-area h2 {
     font-size: 13pt !important;
+    font-weight: bold !important;
+  }
+
+  .print-area h3 {
+    font-size: 12pt !important;
+    font-weight: bold !important;
+  }
+
+  .print-area p, .print-area span, .print-area div:not(.title), .print-area td, .print-area th {
+    font-size: 11pt !important;
   }
 
   /* Signature visual formatting */
