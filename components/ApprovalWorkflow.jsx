@@ -600,10 +600,10 @@ export default function ApprovalWorkflow({
 
             {/* Modal In Phiếu (DNTT / DNTƯ) */}
             {printItem && (
-                <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto print:absolute print:inset-auto print:overflow-visible">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden my-8 animate-in zoom-in-95 duration-300">
+                <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto print:static print:block print:p-0 print:m-0">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden my-8 animate-in zoom-in-95 duration-300 print:shadow-none print:m-0 print:max-w-none print:w-full print:rounded-none">
                         {/* Control Bar (No Print) */}
-                        <header className="bg-slate-900 text-white p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">
+                        <header className="bg-slate-900 text-white p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print print:hidden">
                             <div className="flex items-center gap-3">
                                 <Printer className="text-blue-500" />
                                 <h3 className="text-lg sm:text-xl font-bold">Xem Trước & In Phiếu</h3>
@@ -625,8 +625,8 @@ export default function ApprovalWorkflow({
                         </header>
 
                         {/* Print Preview Container */}
-                        <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center">
-                            <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto">
+                        <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center print:block print:p-0 print:bg-white print:max-h-none print:overflow-visible">
+                            <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0">
                                 <div>
                                     {/* Company Header */}
                                     <div className="text-center mb-8">
