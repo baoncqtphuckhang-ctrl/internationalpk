@@ -600,7 +600,7 @@ export default function ApprovalWorkflow({
 
             {/* Modal In Phiếu (DNTT / DNTƯ) */}
             {printItem && (
-                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto no-print">
+                <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto print:absolute print:inset-auto print:overflow-visible">
                     <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden my-8 animate-in zoom-in-95 duration-300">
                         {/* Control Bar (No Print) */}
                         <header className="bg-slate-900 text-white p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print">

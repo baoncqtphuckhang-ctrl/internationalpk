@@ -9,24 +9,30 @@ export default function Dashboard({
     allPhases,
     handleTogglePhasePaid,
     handleSaveRemainingCost,
+    handleSaveRecoveredAdvance,
+    handleSaveUtilityValue,
     handleCopyTable,
     exportTableToExcel,
     onProjectDoubleClick
 }) {
     const [filterText, setFilterText] = useState('');
-    const [promptModal, setPromptModal] = useState({ isOpen: false, project: '', value: '' });
+    const [promptModal, setPromptModal] = useState({ isOpen: false, project: '', value: '', type: '', title: '' });
 
-    const handleOpenPrompt = (project, currentValue) => {
-        setPromptModal({ isOpen: true, project, value: currentValue ? currentValue.toString() : '' });
+    const handleOpenPrompt = (project, currentValue, type, title) => {
+        setPromptModal({ isOpen: true, project, value: currentValue ? currentValue.toString() : '', type, title });
     };
 
     const handleClosePrompt = () => {
-        setPromptModal({ isOpen: false, project: '', value: '' });
+        setPromptModal({ isOpen: false, project: '', value: '', type: '', title: '' });
     };
 
     const handleSubmitPrompt = () => {
-        if (handleSaveRemainingCost) {
+        if (promptModal.type === 'REMAINING_COST' && handleSaveRemainingCost) {
             handleSaveRemainingCost(promptModal.project, promptModal.value);
+        } else if (promptModal.type === 'RECOVERED_ADVANCE' && handleSaveRecoveredAdvance) {
+            handleSaveRecoveredAdvance(promptModal.project, promptModal.value);
+        } else if (promptModal.type === 'UTILITY_VALUE' && handleSaveUtilityValue) {
+            handleSaveUtilityValue(promptModal.project, promptModal.value);
         }
         handleClosePrompt();
     };
@@ -46,8 +52,10 @@ export default function Dashboard({
             advanceValue: acc.advanceValue + (row.advanceValue || 0),
             totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
             remainingCost: acc.remainingCost + (row.remainingCost || 0),
+            recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
+            utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, remainingCost: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, remainingCost: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [filteredData]);
 
     return (
@@ -139,6 +147,8 @@ export default function Dashboard({
                                 <th className="p-3 border-b border-r-2 border-slate-300 font-bold text-right text-green-600 bg-green-50 align-top min-w-[120px]" rowSpan="2">Tổng SẢN LƯỢNG</th>
                                 {allPhases.length > 0 && <th className="p-2 border-b border-slate-200 font-bold text-center bg-yellow-50 text-yellow-800" colSpan={allPhases.length}>CHI TIẾT THU CÁC ĐỢT</th>}
                                 <th className="p-3 border-b border-l-2 border-slate-300 border-r border-slate-300 font-bold text-right text-amber-700 bg-amber-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />Tạm ứng</th>
+                                <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-cyan-700 bg-cyan-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />thu hồi tạm ứng</th>
+                                <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-violet-700 bg-violet-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />tiện ích</th>
                                 <th className="p-3 border-b border-slate-300 font-bold text-right text-pink-700 bg-pink-50 align-top min-w-[120px]" rowSpan="2">Chi phí<br />còn lại</th>
                             </tr>
                             {allPhases.length > 0 && (
@@ -189,10 +199,32 @@ export default function Dashboard({
                                     })}
                                     <td className="p-3 text-right border-b border-l-2 border-slate-200 border-r border-slate-200 font-bold text-amber-700 bg-amber-50/30 text-[14px] tabular-nums">{formatCurrency(row.advanceValue || 0)}</td>
                                     <td 
+                                        className="p-3 text-right border-b border-r border-slate-200 bg-cyan-50/50 transition-colors hover:bg-cyan-100 cursor-pointer font-bold text-cyan-700 text-[14px] tabular-nums"
+                                        onClick={() => {
+                                            if (handleSaveRecoveredAdvance) {
+                                                handleOpenPrompt(row.project, row.recoveredAdvance, 'RECOVERED_ADVANCE', 'Giá trị thu hồi tạm ứng');
+                                            }
+                                        }}
+                                        title="Nhấn để nhập"
+                                    >
+                                        {row.recoveredAdvance > 0 ? formatCurrency(row.recoveredAdvance) : <span className="text-cyan-300 text-[11px] font-normal italic">Nhập số...</span>}
+                                    </td>
+                                    <td 
+                                        className="p-3 text-right border-b border-r border-slate-200 bg-violet-50/50 transition-colors hover:bg-violet-100 cursor-pointer font-bold text-violet-700 text-[14px] tabular-nums"
+                                        onClick={() => {
+                                            if (handleSaveUtilityValue) {
+                                                handleOpenPrompt(row.project, row.utilityValue, 'UTILITY_VALUE', 'Giá trị tiện ích');
+                                            }
+                                        }}
+                                        title="Nhấn để nhập"
+                                    >
+                                        {row.utilityValue > 0 ? formatCurrency(row.utilityValue) : <span className="text-violet-300 text-[11px] font-normal italic">Nhập số...</span>}
+                                    </td>
+                                    <td 
                                         className="p-3 text-right border-b border-slate-200 bg-pink-50/50 transition-colors hover:bg-pink-100 cursor-pointer font-bold text-pink-700 text-[14px] tabular-nums"
                                         onClick={() => {
                                             if (handleSaveRemainingCost) {
-                                                handleOpenPrompt(row.project, row.remainingCost);
+                                                handleOpenPrompt(row.project, row.remainingCost, 'REMAINING_COST', 'Chi phí còn lại (dự trù)');
                                             }
                                         }}
                                         title="Nhấn để nhập"
@@ -213,6 +245,8 @@ export default function Dashboard({
                                     <td key={phase} className="p-2 text-right border-r border-slate-300">-</td>
                                 ))}
                                 <td className="p-3 text-right text-amber-800 bg-slate-300 border-l-2 border-slate-400 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.advanceValue || 0)}</td>
+                                <td className="p-3 text-right text-cyan-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.recoveredAdvance || 0)}</td>
+                                <td className="p-3 text-right text-violet-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.utilityValue || 0)}</td>
                                 <td className="p-3 text-right text-pink-800 bg-slate-300 border-slate-400 tabular-nums">
                                     {formatCurrency(computedTotals.remainingCost || 0)}
                                 </td>
@@ -228,7 +262,7 @@ export default function Dashboard({
                     <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm" onClick={handleClosePrompt}></div>
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
                         <div className="bg-slate-50 border-b border-slate-200 px-5 py-4">
-                            <h3 className="font-bold text-slate-800 text-lg">Chi phí còn lại (dự trù)</h3>
+                            <h3 className="font-bold text-slate-800 text-lg">{promptModal.title || 'Nhập số tiền'}</h3>
                             <p className="text-slate-500 text-sm mt-1">Công trình: <span className="font-bold text-blue-600">{promptModal.project}</span></p>
                         </div>
                         <div className="p-5">

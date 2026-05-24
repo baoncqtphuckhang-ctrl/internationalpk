@@ -568,9 +568,9 @@ export default function Home() {
         }
     };
 
-    const handleSaveRemainingCost = async (projectName, valueStr) => {
+    const handleSaveTransactionValue = async (projectName, valueStr, code, note) => {
         const val = parseFloat(valueStr.toString().replace(/\./g, '')) || 0;
-        const existing = transactions.find(t => t.project_name === projectName && t.code === 'EXPECTED_COST');
+        const existing = transactions.find(t => t.project_name === projectName && t.code === code);
         setIsLoading(true);
         try {
             if (existing) {
@@ -579,18 +579,30 @@ export default function Home() {
                 await supabase.from('transactions').insert([{
                     project_name: projectName,
                     accounting_date: new Date().toISOString().split('T')[0],
-                    code: 'EXPECTED_COST',
+                    code: code,
                     debit: val,
-                    note: 'Chi phí còn lại (Dự trù)',
+                    note: note,
                     created_by: currentUser.username
                 }]);
             }
             fetchData();
         } catch (err) {
-            showToast('Lỗi khi lưu chi phí dự trù', 'error');
+            showToast('Lỗi khi lưu dữ liệu', 'error');
         } finally {
             setIsLoading(false);
         }
+    };
+
+    const handleSaveRemainingCost = async (projectName, valueStr) => {
+        await handleSaveTransactionValue(projectName, valueStr, 'EXPECTED_COST', 'Chi phí còn lại (Dự trù)');
+    };
+
+    const handleSaveRecoveredAdvance = async (projectName, valueStr) => {
+        await handleSaveTransactionValue(projectName, valueStr, 'RECOVERED_ADVANCE', 'Giá trị thu hồi tạm ứng');
+    };
+
+    const handleSaveUtilityValue = async (projectName, valueStr) => {
+        await handleSaveTransactionValue(projectName, valueStr, 'UTILITY_VALUE', 'Giá trị tiện ích');
     };
 
     const handleAddDNTT = async (data) => {
@@ -804,8 +816,10 @@ export default function Home() {
     }, [currentUser, projects, projectDetails, role]);
 
     const allowedProjects = useMemo(() => projects.filter(p => assignedProjectNames.includes(p.name)), [projects, assignedProjectNames]);
-    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code !== 'EXPECTED_COST'), [transactions, assignedProjectNames]);
+    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST', 'RECOVERED_ADVANCE', 'UTILITY_VALUE'].includes(t.code)), [transactions, assignedProjectNames]);
     const expectedCosts = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'EXPECTED_COST'), [transactions, assignedProjectNames]);
+    const recoveredAdvances = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'RECOVERED_ADVANCE'), [transactions, assignedProjectNames]);
+    const utilityValues = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'UTILITY_VALUE'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
 
@@ -833,11 +847,16 @@ export default function Home() {
             const details = projectDetails[name] || { contractValueAfterTax: 0 };
             const exp = allowedTransactions.filter(t => t.project_name === name).reduce((sum, t) => sum + (t.debit || 0) - (t.credit || 0), 0);
             const projIncomes = allowedIncomes.filter(i => i.project_name === name);
-            const actInc = Math.round(projIncomes.reduce((sum, i) => sum + getActualReceived(i), 0) / 1.08 * 100) / 100;
+            const totalSanLuong = projIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
+            const actInc = Math.round(totalSanLuong);
             const totalPhaseReceived = projIncomes.reduce((sum, i) => sum + getActualReceived(i), 0);
-            const calculatedDebtToCollect = projIncomes.filter(i => !i.is_paid).reduce((sum, i) => sum + i.amount, 0);
+            const calculatedDebtToCollect = projIncomes.filter(i => !i.is_paid).reduce((sum, i) => sum + getActualReceived(i), 0);
             const remainingCostRow = expectedCosts.find(t => t.project_name === name);
             const remainingCost = remainingCostRow ? remainingCostRow.debit : 0;
+            const recoveredAdvanceRow = recoveredAdvances.find(t => t.project_name === name);
+            const recoveredAdvance = recoveredAdvanceRow ? recoveredAdvanceRow.debit : 0;
+            const utilityValueRow = utilityValues.find(t => t.project_name === name);
+            const utilityValue = utilityValueRow ? utilityValueRow.debit : 0;
             const advanceValue = details.advanceValue || 0;
             const totalReceivedAmount = totalPhaseReceived + advanceValue;
             const totalExp = exp + remainingCost;
@@ -864,10 +883,12 @@ export default function Home() {
                 advanceValue: advanceValue,
                 totalReceivedAmount: totalReceivedAmount,
                 profit: profit,
+                recoveredAdvance: recoveredAdvance,
+                utilityValue: utilityValue,
                 phases: phaseData
             };
         });
-    }, [allowedProjects, projectDetails, allowedTransactions, allowedIncomes, allPhases]);
+    }, [allowedProjects, projectDetails, allowedTransactions, allowedIncomes, allPhases, expectedCosts, recoveredAdvances, utilityValues]);
 
     const totals = useMemo(() => {
         return dashboardData.reduce((acc, row) => ({
@@ -877,8 +898,10 @@ export default function Home() {
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
             advanceValue: acc.advanceValue + (row.advanceValue || 0),
             totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
+            recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
+            utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {
@@ -948,7 +971,7 @@ export default function Home() {
                     />
                 )}
 
-                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
+                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleSaveRecoveredAdvance={handleSaveRecoveredAdvance} handleSaveUtilityValue={handleSaveUtilityValue} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
@@ -1065,61 +1088,93 @@ export default function Home() {
                                                 </tr>
                                             </thead>
                                             <tbody>
-                                                {allowedIncomes.filter(i => i.project_name === selectedProject).length === 0 ? (
-                                                    <tr>
-                                                        <td colSpan={canManageSystem || role === 'ADMIN' ? 7 : 6} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
-                                                    </tr>
-                                                ) : (
-                                                    allowedIncomes.filter(i => i.project_name === selectedProject)
-                                                        .sort((a, b) => {
-                                                            const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
-                                                            const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
-                                                            return numA - numB;
-                                                        })
-                                                        .map(i => (
-                                                        <tr key={i.id} className="border-b hover:bg-slate-50">
-                                                            <td className="p-3">{formatDateVN(i.date)}</td>
-                                                            <td className="p-3 font-bold text-slate-700">{i.phase}</td>
-                                                            <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
-                                                            <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
-                                                            <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
-                                                            <td className="p-3 text-right font-black text-emerald-700">{formatCurrency((() => {
-                                                                if (i.note) {
-                                                                    try {
-                                                                        const parsed = JSON.parse(i.note);
-                                                                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                            return Number(parsed.actual_received_amount) || 0;
-                                                                        }
-                                                                    } catch(e) {}
+                                                {(() => {
+                                                    const projectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject);
+                                                    if (projectIncomes.length === 0) {
+                                                        return (
+                                                            <tr>
+                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 8 : 7} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                            </tr>
+                                                        );
+                                                    }
+
+                                                    const totalTruocThue = projectIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
+                                                    const totalVat = projectIncomes.reduce((sum, i) => sum + (i.vat_amount || 0), 0);
+                                                    const totalSauThue = projectIncomes.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                                                    const totalThucNhan = projectIncomes.reduce((sum, i) => {
+                                                        let actual = i.post_tax_amount || i.amount || 0;
+                                                        if (i.note) {
+                                                            try {
+                                                                const parsed = JSON.parse(i.note);
+                                                                if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                    actual = Number(parsed.actual_received_amount) || 0;
                                                                 }
-                                                                return i.post_tax_amount || i.amount || 0;
-                                                            })())}</td>
-                                                            <td className="p-3 text-center">
-                                                                <span 
-                                                                    onClick={() => handleToggleIncomeStatus(i.id, i.is_paid)}
-                                                                    className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors hover:opacity-80 ${i.is_paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
-                                                                    title="Nhấn để thay đổi trạng thái"
-                                                                >
-                                                                    {i.is_paid ? 'Đã thu' : 'Chưa thu'}
-                                                                </span>
-                                                            </td>
-                                                            {(canManageSystem || role === 'ADMIN') && (
-                                                                <td className="p-3 text-center">
-                                                                    <div className="flex items-center justify-center gap-2">
-                                                                        <button onClick={() => handleEditTransaction(i)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded transition" title="Sửa">
-                                                                            <Edit3 size={16} />
-                                                                        </button>
-                                                                        <button onClick={() => {
-                                                                            if (window.confirm('Bạn có chắc chắn muốn xóa đợt thu này?')) handleDeleteIncome(i.id);
-                                                                        }} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition" title="Xóa">
-                                                                            <Trash2 size={16} />
-                                                                        </button>
-                                                                    </div>
-                                                                </td>
-                                                            )}
-                                                        </tr>
-                                                    ))
-                                                )}
+                                                            } catch(e) {}
+                                                        }
+                                                        return sum + actual;
+                                                    }, 0);
+
+                                                    return (
+                                                        <>
+                                                            {projectIncomes.sort((a, b) => {
+                                                                const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
+                                                                const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
+                                                                return numA - numB;
+                                                            }).map(i => (
+                                                                <tr key={i.id} className="border-b hover:bg-slate-50">
+                                                                    <td className="p-3">{formatDateVN(i.date)}</td>
+                                                                    <td className="p-3 font-bold text-slate-700">{i.phase}</td>
+                                                                    <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
+                                                                    <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
+                                                                    <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
+                                                                    <td className="p-3 text-right font-black text-emerald-700">{formatCurrency((() => {
+                                                                        if (i.note) {
+                                                                            try {
+                                                                                const parsed = JSON.parse(i.note);
+                                                                                if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                                    return Number(parsed.actual_received_amount) || 0;
+                                                                                }
+                                                                            } catch(e) {}
+                                                                        }
+                                                                        return i.post_tax_amount || i.amount || 0;
+                                                                    })())}</td>
+                                                                    <td className="p-3 text-center">
+                                                                        <span 
+                                                                            onClick={() => handleToggleIncomeStatus(i.id, i.is_paid)}
+                                                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors hover:opacity-80 ${i.is_paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+                                                                            title="Nhấn để thay đổi trạng thái"
+                                                                        >
+                                                                            {i.is_paid ? 'Đã thu' : 'Chưa thu'}
+                                                                        </span>
+                                                                    </td>
+                                                                    {(canManageSystem || role === 'ADMIN') && (
+                                                                        <td className="p-3 text-center">
+                                                                            <div className="flex items-center justify-center gap-2">
+                                                                                <button onClick={() => handleEditTransaction(i)} className="text-blue-500 hover:bg-blue-50 p-1.5 rounded transition" title="Sửa">
+                                                                                    <Edit3 size={16} />
+                                                                                </button>
+                                                                                <button onClick={() => {
+                                                                                    if (window.confirm('Bạn có chắc chắn muốn xóa đợt thu này?')) handleDeleteIncome(i.id);
+                                                                                }} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition" title="Xóa">
+                                                                                    <Trash2 size={16} />
+                                                                                </button>
+                                                                            </div>
+                                                                        </td>
+                                                                    )}
+                                                                </tr>
+                                                            ))}
+                                                            <tr className="bg-slate-200 font-bold border-t-2 border-slate-300">
+                                                                <td className="p-3 text-slate-800" colSpan={2}>TỔNG CỘNG</td>
+                                                                <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>
+                                                                <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>
+                                                                <td className="p-3 text-right text-emerald-700">{formatCurrency(totalSauThue)}</td>
+                                                                <td className="p-3 text-right text-emerald-800">{formatCurrency(totalThucNhan)}</td>
+                                                                <td className="p-3"></td>
+                                                                {(canManageSystem || role === 'ADMIN') && <td className="p-3"></td>}
+                                                            </tr>
+                                                        </>
+                                                    );
+                                                })()}
                                             </tbody>
                                         </table>
                                     </div>
