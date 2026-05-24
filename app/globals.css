@@ -76,6 +76,10 @@ body {
     visibility: hidden;
   }
 
+  aside, .no-print {
+    display: none !important;
+  }
+
   /* Show only the designated print area and its descendants */
   .print-area, .print-area * {
     visibility: visible !important;
