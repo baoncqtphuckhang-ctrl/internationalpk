@@ -66,7 +66,7 @@ body {
     background: #ffffff !important;
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     display: block !important;
@@ -90,7 +90,7 @@ body {
     background: #ffffff !important;
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
   }
 
   /* Override fixed heights and overflows that prevent pagination */
@@ -119,11 +119,11 @@ body {
 
   .print-area th, .print-area td {
     border: 1px solid #000000 !important;
-    padding: 6px 8px !important;
+    padding: 4px 6px !important;
     vertical-align: middle !important;
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     background-color: transparent !important;
   }
 
