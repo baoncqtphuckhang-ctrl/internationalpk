@@ -629,7 +629,7 @@ export default function ApprovalWorkflow({
                             <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0">
                                 <div>
                                     {/* Company Header */}
-                                    <div className="text-center mb-8 print:mb-4">
+                                    <div className="text-center mb-8 print:mb-2">
                                         <h1 className="font-bold text-[17px] uppercase tracking-wide">
                                             CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG
                                         </h1>
@@ -637,7 +637,7 @@ export default function ApprovalWorkflow({
                                     </div>
 
                                     {/* Title & Date */}
-                                    <div className="text-center mb-6 print:mb-3">
+                                    <div className="text-center mb-6 print:mb-2">
                                         <h2 className="text-2xl font-bold mb-2 uppercase">
                                             {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : 'ĐỀ NGHỊ THANH TOÁN'}
                                         </h2>
@@ -650,7 +650,7 @@ export default function ApprovalWorkflow({
                                     </div>
 
                                     {/* Metadata */}
-                                    <div className="space-y-2 mb-6 print:mb-3">
+                                    <div className="space-y-2 mb-6 print:mb-2">
                                         <div className="flex border-b border-dotted border-gray-400 pb-1">
                                             <span className="font-bold min-w-[120px]">Đối tượng:</span>
                                             <span>{printItem.parsed.recipient || printItem.recipient}</span>
@@ -662,7 +662,7 @@ export default function ApprovalWorkflow({
                                     </div>
 
                                     {/* Content Table */}
-                                    <div className="mb-2 font-bold uppercase">
+                                    <div className="mb-2 print:mb-1 font-bold uppercase">
                                         A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : 'THANH TOÁN'}
                                     </div>
                                     <div className="overflow-x-auto print:overflow-visible">
@@ -698,14 +698,14 @@ export default function ApprovalWorkflow({
                                     </div>
 
                                     {/* Written Amount */}
-                                    <div className="mb-6 print:mb-3 mt-4 print:mt-2">
+                                    <div className="mb-6 print:mb-2 mt-4 print:mt-1">
                                         <span className="font-bold italic">Bằng chữ: </span>
                                         <span className="italic font-medium">{docSoTiengViet(printItem.total_amount)}</span>
                                     </div>
 
                                     {/* Payment Method */}
-                                    <div className="mb-2 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
-                                    <div className="flex gap-8 mb-4 ml-4">
+                                    <div className="mb-2 print:mb-1 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
+                                    <div className="flex gap-8 mb-4 print:mb-2 ml-4">
                                         <div className="flex items-center gap-2">
                                             <div className="w-4 h-4 border border-black flex justify-center items-center">
                                                 {printItem.parsed.paymentMethod === 'tien_mat' ? '✓' : ''}
@@ -723,7 +723,7 @@ export default function ApprovalWorkflow({
                                     {/* Bank Details Table */}
                                     {printItem.parsed.paymentMethod === 'chuyen_khoan' && (
                                         <div className="overflow-x-auto print:overflow-visible">
-                                            <table className="w-full border-collapse border border-black mb-8 print:mb-4 min-w-[650px] print:min-w-0">
+                                            <table className="w-full border-collapse border border-black mb-8 print:mb-2 min-w-[650px] print:min-w-0">
                                                 <thead>
                                                     <tr className="bg-gray-50 font-bold text-center">
                                                         <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
@@ -747,7 +747,7 @@ export default function ApprovalWorkflow({
 
                                 {/* Signatures Block */}
                                 <div>
-                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-4">
+                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
                                         <div>NGƯỜI ĐỀ NGHỊ</div>
                                         <div>QS</div>
                                         <div>KẾ TOÁN</div>
