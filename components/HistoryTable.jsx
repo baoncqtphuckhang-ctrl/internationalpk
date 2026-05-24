@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect } from 'react';
-import { Search, Upload, Copy, Download, Edit, Trash2, Filter } from 'lucide-react';
+import { Search, Upload, Copy, Download, Edit, Trash2, Filter, Printer } from 'lucide-react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
 import ConfirmModal from '@/components/ConfirmModal';
 
@@ -109,7 +109,8 @@ export default function HistoryTable({
     setIsPasting,
     handleCopyTable,
     exportTableToExcel,
-    expenseCategories
+    expenseCategories,
+    systemConfig
 }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa' });
 
@@ -231,9 +232,22 @@ export default function HistoryTable({
                         Dự án: <span className="font-bold text-blue-600">{selectedProject || 'Tất cả'}</span>
                     </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                    <button onClick={() => setIsPasting(true)} className="bg-blue-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-blue-700 flex items-center gap-2 shadow-lg transition">
+                <div className="flex flex-wrap gap-2 print:hidden">
+                    <button onClick={() => {
+                        if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                        setIsPasting(true);
+                    }} className={`text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
                         <Upload size={16} /> Nhập từ Excel
+                    </button>
+                    <button onClick={() => {
+                        const el = document.getElementById('history-table');
+                        if(el) {
+                            el.classList.add('print-area');
+                            window.print();
+                            el.classList.remove('print-area');
+                        }
+                    }} className="bg-slate-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-lg transition">
+                        <Printer size={16} /> In
                     </button>
                     <button onClick={() => handleCopyTable('history-table')} className="bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-lg transition">
                         <Copy size={16} /> Copy cho Excel
@@ -243,12 +257,15 @@ export default function HistoryTable({
                     </button>
                     {canDelete && isAdmin && handleDeleteAll && selectedProject && (
                         <button
-                            onClick={() => openConfirm(
-                                `Bạn sắp xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}". Hành động này không thể hoàn tác!`,
-                                handleDeleteAll,
-                                'Xóa toàn bộ dữ liệu'
-                            )}
-                            className="bg-red-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 shadow-lg transition"
+                            onClick={() => {
+                                if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                openConfirm(
+                                    `Bạn sắp xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}". Hành động này không thể hoàn tác!`,
+                                    handleDeleteAll,
+                                    'Xóa toàn bộ dữ liệu'
+                                );
+                            }}
+                            className={`text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'bg-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}
                         >
                             <Trash2 size={16} /> Xóa tất cả
                         </button>
@@ -326,19 +343,25 @@ export default function HistoryTable({
                                     <td className="p-3 text-center align-middle">
                                         <div className="flex justify-center gap-2">
                                             <button
-                                                onClick={() => handleEdit(t)}
+                                                onClick={() => {
+                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                                    handleEdit(t);
+                                                }}
                                                 title="Sửa dòng này"
-                                                className="text-amber-500 hover:bg-amber-50 p-1.5 rounded-lg transition"
+                                                className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-amber-500 hover:bg-amber-50'}`}
                                             >
                                                 <Edit size={14} />
                                             </button>
                                             <button
-                                                onClick={() => openConfirm(
-                                                    `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
-                                                    () => handleDelete(t.id)
-                                                )}
+                                                onClick={() => {
+                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                                    openConfirm(
+                                                        `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
+                                                        () => handleDelete(t.id)
+                                                    );
+                                                }}
                                                 title="Xóa dòng này"
-                                                className="text-red-500 hover:bg-red-50 p-1.5 rounded-lg transition"
+                                                className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
                                             >
                                                 <Trash2 size={14} />
                                             </button>

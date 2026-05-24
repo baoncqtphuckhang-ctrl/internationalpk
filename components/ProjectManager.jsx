@@ -187,7 +187,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                             </div>
                         </div>
                         <div className="space-y-2 md:col-span-2">
-                            <label className="block text-sm font-black text-slate-900">Công nợ cần thu (Đã lên HS thanh toán nhưng tiền chưa về)</label>
+                            <label className="block text-sm font-black text-slate-900">Giá trị PLHĐ (Trước thuế)</label>
                             <div className="relative flex items-center">
                                 <input 
                                     type="text"
@@ -275,6 +275,10 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                                     <div className="flex justify-between border-b border-slate-50 pb-2">
                                         <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị HĐ:</span>
                                         <span className="font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</span>
+                                    </div>
+                                    <div className="flex justify-between border-b border-slate-50 pb-2">
+                                        <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
+                                        <span className="font-bold text-orange-600">{formatCurrency(details.debtToCollect)} VNĐ</span>
                                     </div>
                                     <div className="flex justify-between">
                                         <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>

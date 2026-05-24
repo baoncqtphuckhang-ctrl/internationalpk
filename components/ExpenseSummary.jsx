@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { PieChart, Download, Copy, Search } from 'lucide-react';
+import { PieChart, Download, Copy, Search, Printer } from 'lucide-react';
 import { formatCurrency, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function ExpenseSummary({ projects, projectDetails = {}, transactions, handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
@@ -47,6 +47,29 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                 <div className="flex gap-2 w-full lg:w-auto">
                     <button onClick={() => handleCopyTable('expense-table')} className="flex-1 lg:flex-none justify-center bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-2">
                         <Copy size={16} /> Copy Bảng
+                    </button>
+                    <button onClick={() => {
+                        const t = document.getElementById('expense-table');
+                        if(t){
+                            const printCSS = `
+                                *{box-sizing:border-box;margin:0;padding:0}
+                                body{font-family:Arial,sans-serif;font-size:9px;padding:8px;color:#000!important;background:#fff!important}
+                                h2{text-align:center;font-size:13px;margin-bottom:8px;font-weight:bold;color:#000!important}
+                                table{border-collapse:collapse;width:100%;font-size:8px}
+                                th,td{border:1px solid #aaa!important;padding:3px 4px!important;text-align:right!important;color:#000!important;background:#fff!important}
+                                thead th:first-child,tbody td:first-child,tfoot td:first-child{text-align:left!important;font-weight:bold}
+                                thead th{background:#e8e8e8!important;font-weight:bold;text-align:center!important}
+                                tbody tr:nth-child(even) td{background:#f5f5f5!important}
+                                tfoot td{background:#ddd!important;font-weight:bold;color:#000!important}
+                                @media print{body{padding:4px}@page{size:landscape}}
+                            `;
+                            const w = window.open('','_blank','width=1400,height=800');
+                            w.document.write(`<html><head><title>Tổng Hợp Chi Phí</title><style>${printCSS}</style></head><body><h2>Tổng Hợp Chi Phí</h2>${t.outerHTML}</body></html>`);
+                            w.document.close();
+                            setTimeout(()=>{w.print();},800);
+                        }
+                    }} className="flex-1 lg:flex-none justify-center bg-purple-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-purple-700 transition flex items-center gap-2">
+                        <Printer size={16} /> In Bảng
                     </button>
                     <button onClick={() => exportTableToExcel('expense-table', 'TongHopChiPhi')} className="flex-1 lg:flex-none justify-center bg-green-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-green-700 transition flex items-center gap-2">
                         <Download size={16} /> Xuất Excel

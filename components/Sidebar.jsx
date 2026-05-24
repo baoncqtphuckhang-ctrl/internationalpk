@@ -5,7 +5,7 @@ import {
     Home, LayoutDashboard, PieChart, PlusCircle, History, 
     FileSignature, ShieldCheck, Users, LogOut, 
     ChevronRight, Building2, Menu, X, Trash2,
-    ClipboardList, Package, Download, FileSpreadsheet
+    ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock
 } from 'lucide-react';
 
 export default function Sidebar({ 
@@ -26,7 +26,9 @@ export default function Sidebar({
     dnttList,
     STATUSES,
     onDeleteProject,
-    handleExportBackup
+    handleExportBackup,
+    systemConfig,
+    onOpenSystemConfig
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
@@ -38,15 +40,20 @@ export default function Sidebar({
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
         { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isThuKy },
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
-        { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy },
-        { id: 'material-orders', label: 'Đặt Vật Tư', icon: ClipboardList, show: !isThuKy },
-        { id: 'manage-material-orders', label: 'Quản Lý Đơn Vật Tư', icon: Package, show: !isThuKy },
-        { id: 'dntt', label: 'Lập DNTT / DNTƯ', icon: FileSignature, show: canCreateDNTT && !isThuKy },
-        { id: 'approvals', label: 'QL Phê Duyệt', icon: ShieldCheck, show: canViewApprovals },
+        { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
+        { id: 'material-orders', label: 'Đặt Vật Tư', icon: ClipboardList, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
+        { id: 'manage-material-orders', label: 'Quản Lý Đơn Vật Tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
+        { id: 'dntt', label: 'Lập DNTT / DNTƯ', icon: FileSignature, show: canCreateDNTT && !isThuKy, locked: systemConfig?.create_dntt && currentUser?.role !== 'ADMIN' },
+        { id: 'approvals', label: 'QL Phê Duyệt', icon: ShieldCheck, show: canViewApprovals, locked: systemConfig?.approve_dntt && currentUser?.role !== 'ADMIN' },
         { id: 'expected-invoices', label: 'Giá Trị HĐ Dự Kiến', icon: FileSpreadsheet, show: true },
     ];
 
     const toggleTab = (id) => {
+        const item = menuItems.find(m => m.id === id);
+        if (item && item.locked) {
+            alert('Tính năng đang tạm khóa bởi Admin');
+            return;
+        }
         setActiveTab(id);
         setIsMobileMenuOpen(false);
     };
@@ -120,14 +127,17 @@ export default function Sidebar({
                         <button
                             key={item.id}
                             onClick={() => toggleTab(item.id)}
-                            className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition-all duration-200 group ${
+                            className={`w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group ${
                                 activeTab === item.id 
                                 ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/20 scale-[1.02]' 
-                                : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
+                                : item.locked ? 'opacity-50 cursor-not-allowed bg-slate-800/30 text-slate-500' : 'hover:bg-slate-800 text-slate-400 hover:text-slate-200'
                             }`}
                         >
-                            <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} />
-                            <span className="text-sm">{item.label}</span>
+                            <div className="flex items-center gap-3">
+                                <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} />
+                                <span className="text-sm">{item.label}</span>
+                            </div>
+                            {item.locked && <Lock size={14} className="text-red-400 opacity-70" />}
                         </button>
                     ))}
 
@@ -142,6 +152,9 @@ export default function Sidebar({
                                     <Users size={20} /> <span className="text-sm">QL Nhân viên</span>
                                 </button>
                             )}
+                            <button onClick={onOpenSystemConfig} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition text-slate-500 hover:bg-slate-800 hover:text-slate-300`}>
+                                <Settings size={20} /> <span className="text-sm">Khóa Chức Năng</span>
+                            </button>
                             {handleExportBackup && (
                                 <button onClick={handleExportBackup} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition text-green-500 hover:bg-slate-800 hover:text-green-400`}>
                                     <Download size={20} /> <span className="text-sm">Backup Dữ Liệu</span>

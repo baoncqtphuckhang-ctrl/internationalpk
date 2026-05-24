@@ -18,9 +18,10 @@ import ExpectedInvoices from '@/components/ExpectedInvoices';
 import ConfirmModal from '@/components/ConfirmModal';
 import UserModal from '@/components/UserModal';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
+import SystemConfigModal from '@/components/SystemConfigModal';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
-import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const ROLES = {
@@ -44,13 +45,26 @@ export default function Home() {
     const [usersList, setUsersList] = useState(MOCK_USERS);
     const [isUsersLoaded, setIsUsersLoaded] = useState(false);
     const [userSearchTerm, setUserSearchTerm] = useState('');
+    const [systemConfig, setSystemConfig] = useState({
+        input_data: false,
+        edit_transaction: false,
+        create_dntt: false,
+        approve_dntt: false
+    });
+    const [isSystemConfigModalOpen, setIsSystemConfigModalOpen] = useState(false);
 
     const fetchUsers = async () => {
         try {
             const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: true });
             if (error) throw error;
             if (data && data.length > 0) {
-                const mappedUsers = data.map(u => ({
+                const configUser = data.find(u => u.username === '__system_config__');
+                if (configUser && configUser.phone) {
+                    try {
+                        setSystemConfig(JSON.parse(configUser.phone));
+                    } catch(e) {}
+                }
+                const mappedUsers = data.filter(u => u.username !== '__system_config__').map(u => ({
                     ...u,
                     isLocked: u.is_locked,
                     canViewFinance: u.can_view_finance
@@ -182,6 +196,31 @@ export default function Home() {
         }
     };
 
+    const handleSaveSystemConfig = async (newConfig) => {
+        try {
+            setSystemConfig(newConfig);
+            const { data: existingUser } = await supabase.from('users').select('id').eq('username', '__system_config__').single();
+            
+            if (existingUser) {
+                await supabase.from('users').update({ phone: JSON.stringify(newConfig) }).eq('id', existingUser.id);
+            } else {
+                await supabase.from('users').insert([{
+                    username: '__system_config__',
+                    password: '123',
+                    name: 'System Config',
+                    role: 'SYSTEM',
+                    phone: JSON.stringify(newConfig),
+                    is_locked: true,
+                    can_view_finance: false
+                }]);
+            }
+            showToast('Lưu cấu hình hệ thống thành công!', 'success');
+        } catch (err) {
+            console.error('Error saving system config:', err);
+            showToast('Lỗi khi lưu cấu hình', 'error');
+        }
+    };
+
     useEffect(() => {
         if (currentUser) fetchData();
     }, [currentUser]);
@@ -246,6 +285,7 @@ export default function Home() {
                     vat_amount: data.vat_amount || 0,
                     post_tax_amount: data.post_tax_amount || data.amount,
                     is_paid: true,
+                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0 }),
                     created_by: currentUser.username
                 };
                 if (editId) {
@@ -489,6 +529,20 @@ export default function Home() {
         }
     };
 
+    const handleToggleIncomeStatus = async (id, currentStatus) => {
+        setIsLoading(true);
+        try {
+            const { error } = await supabase.from('incomes').update({ is_paid: !currentStatus }).eq('id', id);
+            if (error) throw error;
+            showToast(`Đã cập nhật trạng thái thành: ${!currentStatus ? 'Đã thu' : 'Chưa thu'}!`);
+            fetchData();
+        } catch (error) {
+            showToast('Lỗi khi cập nhật trạng thái thu!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleDeleteAllTransactions = async () => {
         if (!selectedProject) {
             showToast('Vui lòng chọn một công trình cụ thể!', 'error');
@@ -509,6 +563,31 @@ export default function Home() {
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleSaveRemainingCost = async (projectName, valueStr) => {
+        const val = parseFloat(valueStr.toString().replace(/\./g, '')) || 0;
+        const existing = transactions.find(t => t.project_name === projectName && t.code === 'EXPECTED_COST');
+        setIsLoading(true);
+        try {
+            if (existing) {
+                await supabase.from('transactions').update({ debit: val }).eq('id', existing.id);
+            } else {
+                await supabase.from('transactions').insert([{
+                    project_name: projectName,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    code: 'EXPECTED_COST',
+                    debit: val,
+                    note: 'Chi phí còn lại (Dự trù)',
+                    created_by: currentUser.username
+                }]);
+            }
+            fetchData();
+        } catch (err) {
+            showToast('Lỗi khi lưu chi phí dự trù', 'error');
         } finally {
             setIsLoading(false);
         }
@@ -725,26 +804,53 @@ export default function Home() {
     }, [currentUser, projects, projectDetails, role]);
 
     const allowedProjects = useMemo(() => projects.filter(p => assignedProjectNames.includes(p.name)), [projects, assignedProjectNames]);
-    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name)), [transactions, assignedProjectNames]);
+    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code !== 'EXPECTED_COST'), [transactions, assignedProjectNames]);
+    const expectedCosts = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'EXPECTED_COST'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
 
-    const allPhases = useMemo(() => Array.from(new Set(allowedIncomes.map(i => i.phase))).sort(), [allowedIncomes]);
+    const allPhases = useMemo(() => Array.from(new Set(allowedIncomes.map(i => i.phase))).sort((a, b) => {
+        const numA = parseInt(a.match(/\d+/) || [0], 10);
+        const numB = parseInt(b.match(/\d+/) || [0], 10);
+        return numA - numB;
+    }), [allowedIncomes]);
+
     const dashboardData = useMemo(() => {
+        const getActualReceived = (i) => {
+            if (i.note) {
+                try {
+                    const parsed = JSON.parse(i.note);
+                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                        return Number(parsed.actual_received_amount) || 0;
+                    }
+                } catch(e) {}
+            }
+            return i.post_tax_amount || i.amount || 0;
+        };
+
         return allowedProjects.map(p => {
             const name = p.name;
             const details = projectDetails[name] || { contractValueAfterTax: 0 };
             const exp = allowedTransactions.filter(t => t.project_name === name).reduce((sum, t) => sum + (t.debit || 0) - (t.credit || 0), 0);
             const projIncomes = allowedIncomes.filter(i => i.project_name === name);
-            const actInc = projIncomes.filter(i => i.is_paid).reduce((sum, i) => sum + i.amount, 0);
+            const actInc = Math.round(projIncomes.reduce((sum, i) => sum + getActualReceived(i), 0) / 1.08 * 100) / 100;
+            const totalPhaseReceived = projIncomes.reduce((sum, i) => sum + getActualReceived(i), 0);
             const calculatedDebtToCollect = projIncomes.filter(i => !i.is_paid).reduce((sum, i) => sum + i.amount, 0);
+            const remainingCostRow = expectedCosts.find(t => t.project_name === name);
+            const remainingCost = remainingCostRow ? remainingCostRow.debit : 0;
+            const advanceValue = details.advanceValue || 0;
+            const totalReceivedAmount = totalPhaseReceived + advanceValue;
+            const totalExp = exp + remainingCost;
+            const profit = totalReceivedAmount - totalExp;
             
             const phaseData = {};
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
                 phaseData[phase] = {
                     total: phaseIncs.reduce((sum, i) => sum + i.amount, 0),
-                    paid: phaseIncs.filter(i => i.is_paid).reduce((sum, i) => sum + i.amount, 0)
+                    paid: phaseIncs.filter(i => i.is_paid).reduce((sum, i) => sum + i.amount, 0),
+                    actual_received: phaseIncs.reduce((sum, i) => sum + getActualReceived(i), 0),
+                    expected_amount: phaseIncs.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0)
                 };
             });
 
@@ -752,9 +858,12 @@ export default function Home() {
                 project: name,
                 contractValueAfterTax: details.contractValueAfterTax,
                 debtToCollect: calculatedDebtToCollect,
-                totalExpense: exp,
+                totalExpense: totalExp,
                 totalActualIncome: actInc,
-                profit: actInc - exp,
+                remainingCost: remainingCost,
+                advanceValue: advanceValue,
+                totalReceivedAmount: totalReceivedAmount,
+                profit: profit,
                 phases: phaseData
             };
         });
@@ -766,8 +875,10 @@ export default function Home() {
             debtToCollect: acc.debtToCollect + (row.debtToCollect || 0),
             totalExpense: acc.totalExpense + row.totalExpense,
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
+            advanceValue: acc.advanceValue + (row.advanceValue || 0),
+            totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {
@@ -809,6 +920,8 @@ export default function Home() {
                 dnttList={allowedDnttList}
                 STATUSES={STATUSES}
                 onDeleteProject={handleDeleteProject}
+                systemConfig={systemConfig}
+                onOpenSystemConfig={() => setIsSystemConfigModalOpen(true)}
             />
 
             <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden">
@@ -835,13 +948,13 @@ export default function Home() {
                     />
                 )}
 
-                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} />}
+                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} />}
                 
-                {activeTab === 'input' && <InputForm projects={allowedProjects} onSubmit={handleAddData} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} />}
+                {activeTab === 'input' && <InputForm projects={allowedProjects} onSubmit={handleAddData} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals') && (
                     <ApprovalWorkflow 
@@ -856,6 +969,7 @@ export default function Home() {
                         isLoading={isLoading}
                         STATUSES={STATUSES}
                         ROLES={ROLES}
+                        systemConfig={systemConfig}
                     />
                 )}
 
@@ -918,9 +1032,26 @@ export default function Home() {
                                     </div>
                                 </div>
                                 <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden mb-8">
-                                    <h3 className="bg-emerald-600 text-white p-4 font-bold uppercase text-sm flex items-center gap-2">Chi tiết Thu</h3>
+                                    <h3 className="bg-emerald-600 text-white p-4 font-bold uppercase text-sm flex items-center justify-between">
+                                        <div className="flex items-center gap-2">Chi tiết Thu</div>
+                                        <div className="flex items-center gap-2 print:hidden">
+                                            <button onClick={() => {
+                                                const el = document.getElementById('income-table');
+                                                if(el) {
+                                                    el.classList.add('print-area');
+                                                    window.print();
+                                                    el.classList.remove('print-area');
+                                                }
+                                            }} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
+                                                <Printer size={14} /> In
+                                            </button>
+                                            <button onClick={() => exportTableToExcel('income-table', `Chi_tiet_thu_${selectedProject}`)} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
+                                                <Download size={14} /> Xuất Excel
+                                            </button>
+                                        </div>
+                                    </h3>
                                     <div className="overflow-x-auto">
-                                        <table className="w-full text-left min-w-[600px]">
+                                        <table id="income-table" className="w-full text-left min-w-[600px]">
                                             <thead>
                                                 <tr className="bg-slate-50 border-b">
                                                     <th className="p-3 font-bold text-slate-700">Ngày</th>
@@ -928,6 +1059,7 @@ export default function Home() {
                                                     <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right text-emerald-600">Thực nhận</th>
                                                     <th className="p-3 font-bold text-slate-700 text-center">Trạng thái</th>
                                                     {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Thao tác</th>}
                                                 </tr>
@@ -938,15 +1070,36 @@ export default function Home() {
                                                         <td colSpan={canManageSystem || role === 'ADMIN' ? 7 : 6} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                     </tr>
                                                 ) : (
-                                                    allowedIncomes.filter(i => i.project_name === selectedProject).map(i => (
+                                                    allowedIncomes.filter(i => i.project_name === selectedProject)
+                                                        .sort((a, b) => {
+                                                            const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
+                                                            const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
+                                                            return numA - numB;
+                                                        })
+                                                        .map(i => (
                                                         <tr key={i.id} className="border-b hover:bg-slate-50">
                                                             <td className="p-3">{formatDateVN(i.date)}</td>
                                                             <td className="p-3 font-bold text-slate-700">{i.phase}</td>
                                                             <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
                                                             <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
                                                             <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
+                                                            <td className="p-3 text-right font-black text-emerald-700">{formatCurrency((() => {
+                                                                if (i.note) {
+                                                                    try {
+                                                                        const parsed = JSON.parse(i.note);
+                                                                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                            return Number(parsed.actual_received_amount) || 0;
+                                                                        }
+                                                                    } catch(e) {}
+                                                                }
+                                                                return i.post_tax_amount || i.amount || 0;
+                                                            })())}</td>
                                                             <td className="p-3 text-center">
-                                                                <span className={`px-2 py-1 rounded text-xs font-bold ${i.is_paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                                                                <span 
+                                                                    onClick={() => handleToggleIncomeStatus(i.id, i.is_paid)}
+                                                                    className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors hover:opacity-80 ${i.is_paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+                                                                    title="Nhấn để thay đổi trạng thái"
+                                                                >
                                                                     {i.is_paid ? 'Đã thu' : 'Chưa thu'}
                                                                 </span>
                                                             </td>
@@ -1169,6 +1322,12 @@ export default function Home() {
                     showToast('Đã cập nhật mật khẩu thành công!');
                     setPasswordModal({ isOpen: false, user: null });
                 }} 
+            />
+            <SystemConfigModal 
+                isOpen={isSystemConfigModalOpen} 
+                onClose={() => setIsSystemConfigModalOpen(false)} 
+                currentConfig={systemConfig} 
+                onSave={handleSaveSystemConfig} 
             />
         </div>
     );

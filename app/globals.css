@@ -81,9 +81,6 @@ body {
   }
 
   .print-area {
-    position: absolute;
-    left: 0;
-    top: 0;
     width: 100%;
     margin: 0 !important;
     padding: 0 !important;
@@ -93,6 +90,23 @@ body {
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
     font-size: 13pt !important;
+  }
+
+  /* Override fixed heights and overflows that prevent pagination */
+  html, body, main, div, table, tbody, thead, tr, td, th {
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
+    page-break-inside: auto;
+  }
+  
+  tr {
+    page-break-inside: avoid;
+    page-break-after: auto;
+  }
+  
+  thead {
+    display: table-header-group;
   }
 
   /* Grayscale Table Adjustments */

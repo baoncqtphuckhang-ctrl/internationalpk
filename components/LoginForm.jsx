@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useState } from 'react';
-import { Building2, ShieldAlert, Lock, User, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Building2, ShieldCheck, Lock, Star, User, ArrowRight, Eye, EyeOff, Sun, Shield } from 'lucide-react';
 
 export default function LoginForm({ onLogin, usersList }) {
     const [form, setForm] = useState({ username: '', password: '' });
@@ -10,6 +10,11 @@ export default function LoginForm({ onLogin, usersList }) {
     const [promptPassword, setPromptPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [showPromptPassword, setShowPromptPassword] = useState(false);
+    const [isMounted, setIsMounted] = useState(false);
+
+    useEffect(() => {
+        setIsMounted(true);
+    }, []);
 
     const handleSubmit = (e) => {
         e.preventDefault();
@@ -25,106 +30,187 @@ export default function LoginForm({ onLogin, usersList }) {
         }
     };
 
+    if (!isMounted) return <div className="min-h-screen bg-[#050505]"></div>;
+
     return (
-        <div className="min-h-screen bg-[#020617] flex items-center justify-center p-4 relative overflow-hidden font-sans">
-            {/* Ambient Background Glows */}
-            <div className="absolute top-0 left-0 w-full h-full overflow-hidden pointer-events-none">
-                <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[60%] rounded-full bg-blue-600/20 blur-[120px]" />
-                <div className="absolute top-[60%] -right-[10%] w-[50%] h-[60%] rounded-full bg-indigo-600/20 blur-[120px]" />
+        <div className="min-h-screen flex relative overflow-hidden font-sans text-[#FFFFFF] bg-[#050505]">
+            
+            {/* FULLSCREEN BACKGROUND */}
+            <div className="absolute inset-0 z-0 pointer-events-none">
+                <div 
+                    className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-90 mix-blend-lighten"
+                    style={{ backgroundImage: 'url(/bg-hcm.jpg)' }}
+                />
+                {/* Gradient overlay: keep left side clear, fade to dark on right side for the login form */}
+                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#050505]/40 to-[#050505] lg:to-[#050505]" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent opacity-50" />
             </div>
 
-            <div className="relative bg-white/5 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] shadow-[0_8px_32px_rgba(0,0,0,0.4)] p-8 md:p-10 max-w-md w-full animate-in fade-in slide-in-from-bottom-8 duration-700">
-                <div className="text-center mb-10">
-                    <div className="bg-gradient-to-br from-blue-500 to-indigo-600 w-20 h-20 rounded-3xl flex items-center justify-center mx-auto mb-6 shadow-[0_0_30px_rgba(59,130,246,0.5)] transform hover:rotate-6 transition-transform duration-500">
-                        <Building2 size={40} className="text-white" strokeWidth={1.5} />
-                    </div>
-                    <h1 className="text-4xl font-black text-white tracking-tight">CB Pro</h1>
-                    <p className="text-blue-200/70 mt-2 text-sm font-medium tracking-wide">Hệ Thống Quản Lý Nội Bộ</p>
-                </div>
-                
-                <form onSubmit={handleSubmit} className="space-y-5">
-                    {error && (
-                        <div className="p-4 bg-red-500/10 text-red-400 text-sm font-medium rounded-2xl border border-red-500/20 flex items-center justify-center animate-in shake">
-                            {error}
-                        </div>
-                    )}
-                    <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Tài khoản nhân viên</label>
-                        <div className="relative group">
-                            <User className="absolute left-4 top-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={20} />
-                            <input 
-                                type="text" 
-                                value={form.username} 
-                                onChange={(e) => setForm({ ...form, username: e.target.value })} 
-                                className="w-full pl-12 pr-4 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium text-white placeholder:text-slate-600" 
-                                placeholder="Nhập username..."
-                                required 
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-[11px] font-bold text-slate-400 mb-2 uppercase tracking-widest pl-1">Mật khẩu truy cập</label>
-                        <div className="relative group">
-                            <Lock className="absolute left-4 top-4 text-slate-500 group-focus-within:text-blue-400 transition-colors" size={20} />
-                            <input 
-                                type={showPassword ? "text" : "password"} 
-                                value={form.password} 
-                                onChange={(e) => setForm({ ...form, password: e.target.value })} 
-                                className={`w-full pl-12 pr-12 py-4 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 transition-all font-medium text-white placeholder:text-slate-600 ${!showPassword && form.password ? 'tracking-wider' : ''}`} 
-                                placeholder="••••••••"
-                                required 
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPassword(!showPassword)}
-                                className="absolute right-4 top-4 text-slate-500 hover:text-blue-400 transition-colors"
-                            >
-                                {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                            </button>
-                        </div>
-                    </div>
-                    <button 
-                        type="submit" 
-                        className="w-full group mt-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white font-bold py-4 rounded-2xl shadow-[0_0_20px_rgba(37,99,235,0.3)] hover:shadow-[0_0_30px_rgba(37,99,235,0.5)] transition-all duration-300 transform active:scale-[0.98] flex items-center justify-center gap-2"
-                    >
-                        Đăng Nhập
-                        <ArrowRight size={18} className="group-hover:translate-x-1 transition-transform" />
-                    </button>
-                </form>
-
-                <div className="mt-10 pt-8 border-t border-white/10 relative">
-                    <p className="absolute -top-3 left-1/2 -translate-x-1/2 bg-[#060c23] px-4 text-[10px] font-bold text-slate-500 uppercase tracking-widest rounded-full border border-white/5">
-                        Đăng nhập nhanh
-                    </p>
-                    <div className="grid grid-cols-2 gap-3">
-                        {usersList.slice(0, 4).map(u => (
-                            <button 
-                                key={u.id} 
-                                onClick={() => {
-                                    setPromptUser(u);
-                                    setPromptPassword('');
-                                    setShowPromptPassword(false);
-                                    setError('');
-                                }} 
-                                className="group flex items-center justify-center gap-2 text-xs font-bold p-3.5 bg-white/5 border border-white/5 rounded-2xl text-slate-300 hover:bg-white/10 hover:border-white/20 transition-all duration-300"
-                            >
-                                <ShieldAlert size={16} className="text-indigo-400 group-hover:scale-110 transition-transform" /> {u.role}
-                            </button>
-                        ))}
-                    </div>
-                </div>
+            {/* TOP RIGHT TOGGLE */}
+            <div className="absolute top-8 right-8 z-20">
+                <button className="flex items-center gap-2.5 px-5 py-2.5 rounded-full border border-[rgba(212,175,55,0.25)] bg-[#0A0A0A]/80 backdrop-blur-md text-[#B8B8B8] hover:text-[#D4AF37] hover:border-[#D4AF37]/50 transition-all duration-300 text-[13px] font-medium shadow-[0_0_15px_rgba(212,175,55,0.05)]">
+                    <Sun size={15} className="text-[#D4AF37]" /> Chế độ sáng
+                </button>
             </div>
 
-            {promptUser && (
-                <div className="fixed inset-0 bg-[#020617]/80 backdrop-blur-xl z-[1000] flex items-center justify-center p-4">
-                    <div className="bg-slate-900 border border-white/10 rounded-[2.5rem] shadow-2xl p-8 w-full max-w-sm animate-in zoom-in-95 duration-300">
-                        <div className="w-16 h-16 bg-indigo-500/20 rounded-full flex items-center justify-center mb-6 mx-auto">
-                            <ShieldAlert size={32} className="text-indigo-400" />
+            <div className="flex-1 flex w-full max-w-[1600px] mx-auto relative z-10">
+                {/* LEFT SIDE - BRANDING */}
+                <div className="hidden lg:flex flex-col justify-center w-[55%] p-16 relative">
+                    <div className="flex flex-col max-w-[500px]">
+                        <div className="w-[80px] h-[80px] rounded-2xl border border-[rgba(212,175,55,0.4)] bg-[#050505]/40 backdrop-blur-md flex items-center justify-center shadow-[0_0_30px_rgba(212,175,55,0.2)] mb-6">
+                            <Building2 size={36} strokeWidth={1.5} className="text-[#D4AF37]" />
                         </div>
-                        <h3 className="text-xl font-bold text-white mb-2 text-center">Đăng nhập {promptUser.role}</h3>
-                        <p className="text-sm text-slate-400 mb-8 text-center">Tài khoản: <span className="font-bold text-indigo-300">{promptUser.username}</span></p>
                         
-                        <div className="relative mb-6">
+                        <h1 className="text-[72px] font-bold tracking-tight leading-none mb-3 drop-shadow-2xl">
+                            <span className="text-[#FFFFFF]">CB</span> <span className="text-transparent bg-clip-text bg-gradient-to-b from-[#F5D27A] to-[#C6922D]">Pro</span>
+                        </h1>
+                        
+                        <p className="text-[#B8B8B8] text-[14px] font-medium tracking-[0.4em] uppercase mb-10 drop-shadow-md">
+                            Hệ Thống Quản Lý Nội Bộ
+                        </p>
+
+                        <div className="w-[120px] h-[1px] bg-gradient-to-r from-[#D4AF37]/80 to-transparent mb-10"></div>
+
+                        <div className="flex items-center gap-6">
+                            <div className="flex items-center gap-3 border border-[rgba(212,175,55,0.2)] bg-[#050505]/30 backdrop-blur-md px-5 py-2.5 rounded-full">
+                                <ShieldCheck size={18} className="text-[#D4AF37]" />
+                                <span className="text-[#FFFFFF] text-[13px] font-medium">Hiệu quả</span>
+                            </div>
+                            <div className="flex items-center gap-3 border border-[rgba(212,175,55,0.2)] bg-[#050505]/30 backdrop-blur-md px-5 py-2.5 rounded-full">
+                                <Lock size={18} className="text-[#D4AF37]" />
+                                <span className="text-[#FFFFFF] text-[13px] font-medium">Bảo mật</span>
+                            </div>
+                            <div className="flex items-center gap-3 border border-[rgba(212,175,55,0.2)] bg-[#050505]/30 backdrop-blur-md px-5 py-2.5 rounded-full">
+                                <Star size={18} className="text-[#D4AF37]" />
+                                <span className="text-[#FFFFFF] text-[13px] font-medium">Tối ưu</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                {/* RIGHT SIDE - LOGIN FORM */}
+                <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 w-full lg:w-[45%]">
+                    
+                    <div className="w-full max-w-[460px] bg-[#0A0A0A]/90 backdrop-blur-[24px] rounded-[32px] border border-[rgba(212,175,55,0.25)] p-10 shadow-[0_20px_60px_rgba(0,0,0,0.8)] relative animate-in zoom-in-[0.98] duration-700">
+                        
+                        {/* Glowing Top Edge */}
+                        <div className="absolute top-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/60 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.8)]"></div>
+
+                        <div className="flex flex-col items-center mb-10 mt-2">
+                            <div className="w-[72px] h-[72px] rounded-full border border-[rgba(212,175,55,0.3)] flex items-center justify-center bg-[#101010] mb-5 shadow-[0_0_20px_rgba(212,175,55,0.15)] relative">
+                                <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-10 blur-md"></div>
+                                <Building2 size={30} strokeWidth={1.5} className="text-[#D4AF37] relative z-10" />
+                            </div>
+                            <h2 className="text-[26px] font-bold text-[#FFFFFF] mb-1 tracking-tight">Chào mừng trở lại</h2>
+                            <p className="text-[14px] text-[#B8B8B8] font-normal">Đăng nhập để tiếp tục làm việc</p>
+                        </div>
+
+                        <form onSubmit={handleSubmit} className="space-y-5">
+                            {error && (
+                                <div className="p-3 bg-red-950/40 text-red-400 text-[13px] font-medium rounded-xl border border-red-500/30 text-center backdrop-blur-sm">
+                                    {error}
+                                </div>
+                            )}
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-semibold text-[#B8B8B8] uppercase tracking-[0.15em] pl-1">Tài khoản</label>
+                                <div className="relative group">
+                                    <User className="absolute left-5 top-1/2 -translate-y-1/2 text-[#D4AF37] opacity-80" size={18} />
+                                    <input 
+                                        type="text" 
+                                        value={form.username} 
+                                        onChange={(e) => setForm({ ...form, username: e.target.value })} 
+                                        className="w-full pl-14 pr-5 py-3.5 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl outline-none focus:border-[#D4AF37] focus:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all font-medium text-[#FFFFFF] placeholder:text-[#B8B8B8]/40 text-[15px]" 
+                                        placeholder="Nhập username..."
+                                        required 
+                                    />
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-[10px] font-semibold text-[#B8B8B8] uppercase tracking-[0.15em] pl-1">Mật khẩu</label>
+                                <div className="relative group">
+                                    <Lock className="absolute left-5 top-1/2 -translate-y-1/2 text-[#D4AF37] opacity-80" size={18} />
+                                    <input 
+                                        type={showPassword ? "text" : "password"} 
+                                        value={form.password} 
+                                        onChange={(e) => setForm({ ...form, password: e.target.value })} 
+                                        className={`w-full pl-14 pr-12 py-3.5 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl outline-none focus:border-[#D4AF37] focus:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all font-medium text-[#FFFFFF] placeholder:text-[#B8B8B8]/40 text-[15px] ${!showPassword && form.password ? 'tracking-widest' : ''}`} 
+                                        placeholder="Nhập mật khẩu..."
+                                        required 
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowPassword(!showPassword)}
+                                        className="absolute right-5 top-1/2 -translate-y-1/2 text-[#B8B8B8] hover:text-[#FFFFFF] transition-colors"
+                                    >
+                                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <button 
+                                type="submit" 
+                                className="w-full mt-2 bg-gradient-to-r from-[#C6922D] via-[#F5D27A] to-[#D4AF37] hover:brightness-110 text-[#050505] font-bold py-4 rounded-2xl shadow-[0_4px_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2 text-[15px]"
+                            >
+                                Đăng nhập <ArrowRight size={18} strokeWidth={2.5} className="text-[#050505]" />
+                            </button>
+                        </form>
+
+                        <div className="mt-10 mb-8 relative flex items-center justify-center">
+                            <div className="absolute inset-0 flex items-center">
+                                <div className="w-full border-t border-[rgba(212,175,55,0.15)]"></div>
+                            </div>
+                            <div className="relative bg-[#0A0A0A] px-4 text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em]">
+                                Hoặc đăng nhập nhanh
+                            </div>
+                        </div>
+
+                        <div className="flex flex-wrap gap-4 justify-center">
+                            {usersList.slice(0, 3).map((u, i) => (
+                                <button 
+                                    key={u.id} 
+                                    onClick={() => {
+                                        setPromptUser(u);
+                                        setPromptPassword('');
+                                        setShowPromptPassword(false);
+                                        setError('');
+                                    }} 
+                                    className={`flex items-center justify-center gap-2.5 px-6 py-3.5 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl text-[#B8B8B8] hover:text-[#FFFFFF] hover:bg-[#101010] hover:border-[#D4AF37]/60 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all duration-300 group ${i === 2 ? 'w-full max-w-[200px]' : 'flex-1'}`}
+                                >
+                                    <div className="text-[#D4AF37] group-hover:scale-110 transition-transform duration-300">
+                                        {i === 1 ? <Building2 size={16} /> : <Shield size={16} />}
+                                    </div>
+                                    <span className="text-[13px] font-semibold">{u.role}</span>
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* ISO Footer */}
+                    <div className="mt-8 flex flex-col items-center gap-1.5 opacity-60">
+                        <div className="flex items-center gap-1.5 text-[#B8B8B8] text-[10px] font-medium uppercase tracking-wider">
+                            <ShieldCheck size={12} className="text-[#D4AF37]" />
+                            <span>ISO 27001:2022 Certified Security</span>
+                        </div>
+                        <p className="text-[#B8B8B8]/60 text-[10px]">
+                            &copy; 2026 CB Pro Enterprise. All rights reserved.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            {/* QUICK LOGIN MODAL */}
+            {promptUser && (
+                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#050505]/80 backdrop-blur-[20px] animate-in fade-in duration-300 text-[#FFFFFF]">
+                    <div className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.25)] rounded-[32px] p-10 w-full max-w-[400px] shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative animate-in zoom-in-[0.95] duration-300">
+                        <div className="absolute top-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/60 to-transparent"></div>
+                        
+                        <div className="w-[80px] h-[80px] border border-[rgba(212,175,55,0.3)] rounded-full flex items-center justify-center mb-8 mx-auto bg-[#101010] shadow-[0_0_20px_rgba(212,175,55,0.15)] relative">
+                            <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-10 blur-md"></div>
+                            <User size={36} strokeWidth={1.5} className="text-[#D4AF37] relative z-10" />
+                        </div>
+                        <h3 className="text-[22px] font-bold text-[#FFFFFF] mb-2 text-center tracking-tight">Đăng nhập {promptUser.role}</h3>
+                        <p className="text-[13px] text-[#B8B8B8] mb-8 text-center font-medium">Tài khoản: <span className="text-[#D4AF37] tracking-wider">{promptUser.username}</span></p>
+                        
+                        <div className="relative mb-8">
                             <input 
                                 type={showPromptPassword ? "text" : "password"}
                                 autoFocus
@@ -140,24 +226,24 @@ export default function LoginForm({ onLogin, usersList }) {
                                         }
                                     }
                                 }}
-                                className={`w-full p-4 pr-12 bg-white/5 border border-white/10 rounded-2xl outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/20 font-bold text-lg text-white text-center placeholder:text-slate-600 placeholder:font-normal placeholder:text-base placeholder:tracking-normal transition-all ${!showPromptPassword && promptPassword ? 'tracking-[0.3em]' : ''}`}
-                                placeholder="Mật khẩu..."
+                                className="w-full p-4 pr-12 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl outline-none focus:border-[#D4AF37] focus:shadow-[0_0_15px_rgba(212,175,55,0.15)] text-[#FFFFFF] text-center text-[16px] font-medium transition-all placeholder:text-[#B8B8B8]/30 placeholder:font-normal"
+                                placeholder="Nhập mật khẩu..."
                             />
                             <button
                                 type="button"
                                 onClick={() => setShowPromptPassword(!showPromptPassword)}
-                                className="absolute right-4 top-4 text-slate-500 hover:text-indigo-400 transition-colors"
+                                className="absolute right-5 top-1/2 -translate-y-1/2 text-[#B8B8B8] hover:text-[#FFFFFF] transition-colors"
                             >
-                                {showPromptPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                {showPromptPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                             </button>
                         </div>
                         
-                        <div className="flex gap-3">
+                        <div className="flex gap-4">
                             <button 
                                 onClick={() => setPromptUser(null)}
-                                className="flex-1 py-3.5 rounded-2xl font-bold text-slate-400 hover:text-white hover:bg-white/10 transition-colors"
+                                className="flex-1 py-4 rounded-2xl font-semibold text-[#B8B8B8] bg-[#050505] border border-[rgba(212,175,55,0.25)] hover:bg-[#101010] hover:text-[#FFFFFF] hover:border-[#D4AF37]/50 transition-all text-[14px]"
                             >
-                                Hủy
+                                Hủy bỏ
                             </button>
                             <button 
                                 onClick={() => {
@@ -168,7 +254,7 @@ export default function LoginForm({ onLogin, usersList }) {
                                         setPromptUser(null);
                                     }
                                 }}
-                                className="flex-1 py-3.5 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-600/25 hover:shadow-indigo-600/40 transition-all"
+                                className="flex-1 py-4 bg-gradient-to-r from-[#C6922D] via-[#F5D27A] to-[#D4AF37] text-[#050505] rounded-2xl font-bold hover:brightness-110 shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all text-[14px]"
                             >
                                 Xác nhận
                             </button>

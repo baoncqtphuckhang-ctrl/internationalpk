@@ -23,7 +23,8 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         vat_rate: 8,
         vat_amount: 0,
         post_tax_amount: 0,
-        amount6418: 0
+        amount6418: 0,
+        actual_received_amount: 0
     });
 
     const [errors, setErrors] = useState({});
@@ -35,19 +36,38 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
             setType(editData.type || 'EXPENSE');
             setFormData({
                 project_name: editData.project_name || projects[0]?.name || '',
-                accounting_date: editData.accounting_date || new Date().toISOString().split('T')[0],
+                accounting_date: editData.accounting_date || editData.date || new Date().toISOString().split('T')[0],
                 invoice_no: editData.invoice_no || '',
                 code: editData.code || '',
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
-                note: editData.note || '',
                 recipient: editData.recipient || '',
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0,
                 vat_rate: editData.vat_rate || 8,
                 vat_amount: editData.vat_amount || 0,
                 post_tax_amount: editData.post_tax_amount || 0,
-                amount6418: editData.amount6418 || 0
+                amount6418: editData.amount6418 || 0,
+                note: (() => {
+                    if (editData.type === 'INCOME' && editData.note) {
+                        try {
+                            const p = JSON.parse(editData.note);
+                            return p.text || '';
+                        } catch(e) { return editData.note; }
+                    }
+                    return editData.note || '';
+                })(),
+                actual_received_amount: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                return parsed.actual_received_amount;
+                            }
+                        } catch(e) {}
+                    }
+                    return 0;
+                })()
             });
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
             setErrors({});
@@ -96,7 +116,7 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         } else {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.amount || formData.amount <= 0) newErrors.amount = 'Số tiền thu phải lớn hơn 0';
-            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
+            if (!formData.actual_received_amount || formData.actual_received_amount <= 0) newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận';
         }
 
         setErrors(newErrors);
@@ -130,7 +150,8 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 vat_rate: 8,
                 vat_amount: 0,
                 post_tax_amount: 0,
-                amount6418: 0
+                amount6418: 0,
+                actual_received_amount: 0
             }));
             setIsCustomCode(false);
         }
@@ -373,24 +394,38 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                         className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
                                     />
                                 </div>
+                                {/* Giá trị thực nhận/nhập */}
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>Giá trị thực nhận/nhập <span className="text-red-500">*</span></label>
+                                    <input
+                                        type="text"
+                                        value={formData.actual_received_amount ? formatCurrency(formData.actual_received_amount) : ''}
+                                        onChange={(e) => handleChange('actual_received_amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập giá trị thực nhận..."
+                                        className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
+                                    />
+                                    {errorMsg('actual_received_amount')}
+                                </div>
                             </>
                         )}
                     </div>
 
                     {/* Đối tượng thụ hưởng */}
-                    <div>
-                        <label className={labelCls}>
-                            Đối tượng thụ hưởng/đối tượng khấu trừ <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                            type="text"
-                            value={formData.recipient}
-                            onChange={(e) => handleChange('recipient', e.target.value)}
-                            placeholder="Nhập tên đối tượng..."
-                            className={inputCls('recipient')}
-                        />
-                        {errorMsg('recipient')}
-                    </div>
+                    {type === 'EXPENSE' && (
+                        <div>
+                            <label className={labelCls}>
+                                Đối tượng thụ hưởng/đối tượng khấu trừ <span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="text"
+                                value={formData.recipient}
+                                onChange={(e) => handleChange('recipient', e.target.value)}
+                                placeholder="Nhập tên đối tượng..."
+                                className={inputCls('recipient')}
+                            />
+                            {errorMsg('recipient')}
+                        </div>
+                    )}
 
                     {/* Nội dung / Diễn giải */}
                     <div>
@@ -444,7 +479,8 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                             vat_rate: 8,
                                             vat_amount: 0,
                                             post_tax_amount: 0,
-                                            amount6418: 0
+                                            amount6418: 0,
+                                            actual_received_amount: 0
                                         });
                                         setErrors({});
                                     }
