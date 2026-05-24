@@ -249,7 +249,7 @@ export default function ApprovalWorkflow({
 
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
-            <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                         <FileSignature className="text-blue-600" /> {activeTab === 'dntt' ? 'Lập Phiếu Đề Nghị' : 'Quản Lý Phê Duyệt'}
@@ -275,7 +275,7 @@ export default function ApprovalWorkflow({
             </header>
 
             {view === 'create' ? (
-                <div className="bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[15px] text-black border border-slate-200 w-full max-w-3xl mx-auto overflow-x-auto custom-scrollbar">
+                <div className="bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[15px] text-black border border-slate-200 w-full max-w-3xl mx-auto overflow-x-auto custom-scrollbar print:hidden">
                     <div className="text-center mb-8 px-2"><h1 className="font-bold text-sm sm:text-[17px] uppercase tracking-wide leading-relaxed">CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG</h1><p className="text-xs sm:text-sm mt-1">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p></div>
                     
                     <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-6 bg-white p-3 rounded-xl border border-slate-200 w-full shadow-sm mx-auto items-start sm:items-center justify-center">
@@ -356,7 +356,7 @@ export default function ApprovalWorkflow({
                     </div>
                 </div>
             ) : (
-                <div className="space-y-6">
+                <div className="space-y-6 print:hidden">
                     <div className="flex flex-wrap md:flex-nowrap border-b border-slate-200 bg-slate-100 p-1 rounded-2xl w-full md:w-fit">
                         <button 
                             onClick={() => setFilter('active')}
