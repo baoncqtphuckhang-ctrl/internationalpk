@@ -918,7 +918,7 @@ export default function Home() {
     if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} />;
 
     return (
-        <div className="h-screen w-full overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative">
+        <div className="h-screen w-full overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
             {toast.show && (
                 <div className={`fixed top-4 right-4 z-[9999] px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-bold text-white ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
                     {toast.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -948,7 +948,7 @@ export default function Home() {
                 onOpenSystemConfig={() => setIsSystemConfigModalOpen(true)}
             />
 
-            <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden">
+            <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible">
                 {isLoading && (
                     <div className="fixed inset-0 bg-white/30 z-[200] flex items-center justify-center backdrop-blur-sm">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>

@@ -747,7 +747,7 @@ export default function ApprovalWorkflow({
 
                                 {/* Signatures Block */}
                                 <div>
-                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-16">
+                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8">
                                         <div>NGƯỜI ĐỀ NGHỊ</div>
                                         <div>QS</div>
                                         <div>KẾ TOÁN</div>
