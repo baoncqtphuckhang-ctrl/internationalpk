@@ -34,6 +34,17 @@ export default function Sidebar({
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
+    
+    // Compute pending approvals badge
+    const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS';
+    const canApproveKT = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'KẾ TOÁN' || currentUser?.role === 'KẾ TOÁN TRƯỞNG';
+
+    const pendingApprovalsCount = dnttList?.filter(item => {
+        if (item.status === STATUSES?.WAITING_QS && canApproveQS) return true;
+        if (item.status === STATUSES?.WAITING_ACC && canApproveKT) return true;
+        if (item.status === STATUSES?.APPROVED && canApproveKT) return true; // Waiting for payment
+        return false;
+    }).length || 0;
 
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
@@ -44,7 +55,7 @@ export default function Sidebar({
         { id: 'material-orders', label: 'Đặt Vật Tư', icon: ClipboardList, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'manage-material-orders', label: 'Quản Lý Đơn Vật Tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt', label: 'Lập DNTT / DNTƯ', icon: FileSignature, show: canCreateDNTT && !isThuKy, locked: systemConfig?.create_dntt && currentUser?.role !== 'ADMIN' },
-        { id: 'approvals', label: 'QL Phê Duyệt', icon: ShieldCheck, show: canViewApprovals, locked: systemConfig?.approve_dntt && currentUser?.role !== 'ADMIN' },
+        { id: 'approvals', label: 'QL Phê Duyệt', icon: ShieldCheck, show: canViewApprovals, locked: systemConfig?.approve_dntt && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
         { id: 'expected-invoices', label: 'Giá Trị HĐ Dự Kiến', icon: FileSpreadsheet, show: true },
     ];
 
@@ -137,7 +148,14 @@ export default function Sidebar({
                                 <item.icon size={20} className={activeTab === item.id ? 'text-white' : 'text-slate-500 group-hover:text-blue-400'} />
                                 <span className="text-sm">{item.label}</span>
                             </div>
-                            {item.locked && <Lock size={14} className="text-red-400 opacity-70" />}
+                            <div className="flex items-center gap-2">
+                                {item.badge && (
+                                    <span className="bg-red-500 text-white text-[10px] font-black px-2 py-0.5 rounded-full shadow-sm animate-pulse">
+                                        {item.badge}
+                                    </span>
+                                )}
+                                {item.locked && <Lock size={14} className="text-red-400 opacity-70" />}
+                            </div>
                         </button>
                     ))}
 

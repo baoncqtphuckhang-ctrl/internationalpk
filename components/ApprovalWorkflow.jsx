@@ -626,7 +626,7 @@ export default function ApprovalWorkflow({
 
                         {/* Print Preview Container */}
                         <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center">
-                            <div className="print-area bg-white p-4 sm:p-12 shadow-md border border-slate-200 w-full max-w-[800px] min-h-[1050px] font-['Times_New_Roman',_serif] text-[15px] text-black flex flex-col justify-between">
+                            <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto">
                                 <div>
                                     {/* Company Header */}
                                     <div className="text-center mb-8">
@@ -747,7 +747,7 @@ export default function ApprovalWorkflow({
 
                                 {/* Signatures Block */}
                                 <div>
-                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8">
+                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-16">
                                         <div>NGƯỜI ĐỀ NGHỊ</div>
                                         <div>QS</div>
                                         <div>KẾ TOÁN</div>
