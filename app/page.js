@@ -879,8 +879,8 @@ export default function Home() {
                 debtToCollect: calculatedDebtToCollect,
                 totalExpense: totalExp,
                 totalActualIncome: actInc,
-                remainingCost: remainingCost,
                 advanceValue: advanceValue,
+                totalPhaseReceived: totalPhaseReceived,
                 totalReceivedAmount: totalReceivedAmount,
                 profit: profit,
                 recoveredAdvance: recoveredAdvance,
@@ -897,11 +897,12 @@ export default function Home() {
             totalExpense: acc.totalExpense + row.totalExpense,
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
             advanceValue: acc.advanceValue + (row.advanceValue || 0),
+            totalPhaseReceived: acc.totalPhaseReceived + (row.totalPhaseReceived || 0),
             totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
             recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
             utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {

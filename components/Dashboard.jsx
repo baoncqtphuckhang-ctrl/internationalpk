@@ -142,6 +142,7 @@ export default function Dashboard({
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px]" rowSpan="2">Giá trị HĐ<br />(Trước thuế)</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-black text-right text-orange-600 bg-orange-50 align-top min-w-[120px]" rowSpan="2">Công Nợ<br />Cần Thu</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-red-600 bg-red-50 align-top min-w-[120px]" rowSpan="2">Tổng Chi Phí</th>
+                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-emerald-700 bg-emerald-50 align-top min-w-[120px]" rowSpan="2">Thực nhận<br/>các đợt</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-teal-700 bg-teal-50 align-top min-w-[120px]" rowSpan="2">Tổng G.Trị<br/>Thực nhận</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-indigo-700 bg-indigo-50 align-top min-w-[120px]" rowSpan="2">Lợi nhuận</th>
                                 <th className="p-3 border-b border-r-2 border-slate-300 font-bold text-right text-green-600 bg-green-50 align-top min-w-[120px]" rowSpan="2">Tổng SẢN LƯỢNG</th>
@@ -168,6 +169,7 @@ export default function Dashboard({
                                     <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums">{formatCurrency(row.contractValueAfterTax)}</td>
                                     <td className="p-3 text-right font-black border-b border-r border-slate-100 text-[14px] text-orange-600 bg-orange-50/30 tabular-nums">{formatCurrency(row.debtToCollect)}</td>
                                     <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-red-600 bg-red-50/30 tabular-nums">{formatCurrency(row.totalExpense)}</td>
+                                    <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-emerald-700 bg-emerald-50/30 tabular-nums">{formatCurrency(row.totalPhaseReceived || 0)}</td>
                                     <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-teal-700 bg-teal-50/30 tabular-nums">{formatCurrency(row.totalReceivedAmount)}</td>
                                     <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-indigo-700 bg-indigo-50/30 tabular-nums">{formatCurrency(row.profit)}</td>
                                     <td className="p-3 text-right font-bold border-b border-r-2 border-slate-200 text-[14px] text-green-600 bg-green-50/30 tabular-nums">{formatCurrency(row.totalActualIncome)}</td>
@@ -238,6 +240,7 @@ export default function Dashboard({
                                 <td className="p-3 text-right tabular-nums">{formatCurrency(computedTotals.contractValueAfterTax)}</td>
                                 <td className="p-3 text-right text-orange-600 tabular-nums">{formatCurrency(computedTotals.debtToCollect)}</td>
                                 <td className="p-3 text-right text-red-700 tabular-nums">{formatCurrency(computedTotals.totalExpense)}</td>
+                                <td className="p-3 text-right text-emerald-800 tabular-nums">{formatCurrency(computedTotals.totalPhaseReceived || 0)}</td>
                                 <td className="p-3 text-right text-teal-800 tabular-nums">{formatCurrency(computedTotals.totalReceivedAmount)}</td>
                                 <td className="p-3 text-right text-indigo-800 tabular-nums">{formatCurrency(computedTotals.profit)}</td>
                                 <td className="p-3 text-right text-green-700 tabular-nums">{formatCurrency(computedTotals.totalActualIncome)}</td>
