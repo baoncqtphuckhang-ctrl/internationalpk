@@ -133,7 +133,10 @@ export default function ApprovalWorkflow({
             content: it.content,
             amount: parseFloat(it.amount),
             code: '621', // Mặc định vật tư
-            note: it.note || ''
+            note: it.note || '',
+            invoiceDate: new Date().toISOString().split('T')[0],
+            invoiceNumber: '',
+            correspondingAccount: paymentMethod === 'tien_mat' ? '1111' : '1121'
         })));
         setDistributeOption('auto');
     };
@@ -168,7 +171,9 @@ export default function ApprovalWorkflow({
                         debit: parseFloat(d.amount) || 0,
                         note: `[${distributeItem.doc_type}] ${d.content}`,
                         recipient: distributeItem.recipient,
-                        corresponding_account: distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'
+                        corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
+                        invoice_date: d.invoiceDate,
+                        invoice_number: d.invoiceNumber
                     })));
                     setDistributeItem(null);
                     setFilter('accounted');
@@ -183,7 +188,9 @@ export default function ApprovalWorkflow({
             debit: parseFloat(d.amount) || 0,
             note: `[${distributeItem.doc_type}] ${d.content}`,
             recipient: distributeItem.recipient,
-            corresponding_account: distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'
+            corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
+            invoice_date: d.invoiceDate,
+            invoice_number: d.invoiceNumber
         }));
 
         onAccountDNTT(distributeItem.id, payload);
@@ -532,42 +539,87 @@ export default function ApprovalWorkflow({
                             )}
                             <div className="space-y-4">
                                 {distributionData.map((d, idx) => (
-                                    <div key={idx} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col md:flex-row gap-4 sm:gap-6 items-stretch md:items-center">
-                                        <div className="flex-1">
-                                            <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase mb-1">Nội dung đề nghị {idx + 1}</p>
-                                            <p className="font-bold text-slate-800 leading-tight text-sm sm:text-base">{d.content}</p>
-                                            {d.note && <p className="text-xs text-slate-500 mt-1 italic">Ghi chú: {d.note}</p>}
+                                    <div key={idx} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm border border-slate-200 flex flex-col gap-4">
+                                        <div className="flex flex-col md:flex-row gap-4 sm:gap-6 items-stretch md:items-center">
+                                            <div className="flex-1">
+                                                <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase mb-1">Nội dung đề nghị {idx + 1}</p>
+                                                <p className="font-bold text-slate-800 leading-tight text-sm sm:text-base">{d.content}</p>
+                                                {d.note && <p className="text-xs text-slate-500 mt-1 italic">Ghi chú: {d.note}</p>}
+                                            </div>
+                                            <div className="w-full md:w-64">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Chọn mã chi phí phân phối</p>
+                                                <select 
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-black text-blue-700 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                    value={d.code}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].code = e.target.value;
+                                                        setDistributionData(newData);
+                                                    }}
+                                                >
+                                                    {EXPENSE_CATEGORIES.map(cat => (
+                                                        <option key={cat.code} value={cat.code}>{cat.code} - {cat.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="w-full md:w-40">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 mr-1 text-right">Thành tiền</p>
+                                                <input 
+                                                    type="text"
+                                                    value={d.amount ? formatCurrency(d.amount) : ''}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].amount = parseVietnameseNumber(e.target.value);
+                                                        setDistributionData(newData);
+                                                    }}
+                                                    disabled={distributeItem.doc_type === 'Đơn Vật Tư' && distributeOption === 'auto'}
+                                                    className={`w-full text-right bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 text-base font-bold text-slate-900 focus:border-blue-500 focus:bg-white outline-none transition ${distributeItem.doc_type === 'Đơn Vật Tư' && distributeOption === 'auto' ? 'opacity-60 bg-slate-200 cursor-not-allowed border-slate-300' : ''}`}
+                                                    placeholder="0"
+                                                />
+                                            </div>
                                         </div>
-                                        <div className="w-full md:w-64">
-                                            <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Chọn mã chi phí phân phối</p>
-                                            <select 
-                                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-black text-blue-700 outline-none focus:border-blue-500 focus:bg-white transition"
-                                                value={d.code}
-                                                onChange={(e) => {
-                                                    const newData = [...distributionData];
-                                                    newData[idx].code = e.target.value;
-                                                    setDistributionData(newData);
-                                                }}
-                                            >
-                                                {EXPENSE_CATEGORIES.map(cat => (
-                                                    <option key={cat.code} value={cat.code}>{cat.code} - {cat.name}</option>
-                                                ))}
-                                            </select>
-                                        </div>
-                                        <div className="w-full md:w-40">
-                                            <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 mr-1 text-right">Thành tiền</p>
-                                            <input 
-                                                type="text"
-                                                value={d.amount ? formatCurrency(d.amount) : ''}
-                                                onChange={(e) => {
-                                                    const newData = [...distributionData];
-                                                    newData[idx].amount = parseVietnameseNumber(e.target.value);
-                                                    setDistributionData(newData);
-                                                }}
-                                                disabled={distributeItem.doc_type === 'Đơn Vật Tư' && distributeOption === 'auto'}
-                                                className={`w-full text-right bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 text-base font-bold text-slate-900 focus:border-blue-500 focus:bg-white outline-none transition ${distributeItem.doc_type === 'Đơn Vật Tư' && distributeOption === 'auto' ? 'opacity-60 bg-slate-200 cursor-not-allowed border-slate-300' : ''}`}
-                                                placeholder="0"
-                                            />
+                                        <div className="flex flex-col md:flex-row gap-4 sm:gap-6 pt-4 border-t border-slate-100">
+                                            <div className="flex-1">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Ngày hóa đơn</p>
+                                                <input 
+                                                    type="date"
+                                                    value={d.invoiceDate}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].invoiceDate = e.target.value;
+                                                        setDistributionData(newData);
+                                                    }}
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Số hóa đơn</p>
+                                                <input 
+                                                    type="text"
+                                                    value={d.invoiceNumber}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].invoiceNumber = e.target.value;
+                                                        setDistributionData(newData);
+                                                    }}
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                    placeholder="Nhập số hóa đơn..."
+                                                />
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Tài khoản đối ứng</p>
+                                                <input 
+                                                    type="text"
+                                                    value={d.correspondingAccount}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].correspondingAccount = e.target.value;
+                                                        setDistributionData(newData);
+                                                    }}
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                    placeholder="Nhập tài khoản đối ứng..."
+                                                />
+                                            </div>
                                         </div>
                                     </div>
                                 ))}
