@@ -38,11 +38,12 @@ export default function Sidebar({
     // Compute pending approvals badge
     const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS';
     const canApproveKT = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'KẾ TOÁN' || currentUser?.role === 'KẾ TOÁN TRƯỞNG';
+    const canPay = canApproveKT || isThuKy;
 
     const pendingApprovalsCount = dnttList?.filter(item => {
         if (item.status === STATUSES?.WAITING_QS && canApproveQS) return true;
         if (item.status === STATUSES?.WAITING_ACC && canApproveKT) return true;
-        if (item.status === STATUSES?.APPROVED && canApproveKT) return true; // Waiting for payment
+        if (item.status === STATUSES?.APPROVED && canPay) return true; // Waiting for payment
         return false;
     }).length || 0;
 
@@ -62,7 +63,7 @@ export default function Sidebar({
     const toggleTab = (id) => {
         const item = menuItems.find(m => m.id === id);
         if (item && item.locked) {
-            alert('Tính năng đang tạm khóa bởi Admin');
+            alert('Thử lại sau');
             return;
         }
         setActiveTab(id);

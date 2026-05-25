@@ -234,7 +234,7 @@ export default function HistoryTable({
                 </div>
                 <div className="flex flex-wrap gap-2 print:hidden">
                     <button onClick={() => {
-                        if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                        if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
                         setIsPasting(true);
                     }} className={`text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'bg-slate-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'}`}>
                         <Upload size={16} /> Nhập từ Excel
@@ -258,7 +258,7 @@ export default function HistoryTable({
                     {canDelete && isAdmin && handleDeleteAll && selectedProject && (
                         <button
                             onClick={() => {
-                                if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
                                 openConfirm(
                                     `Bạn sắp xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}". Hành động này không thể hoàn tác!`,
                                     handleDeleteAll,
@@ -344,7 +344,7 @@ export default function HistoryTable({
                                         <div className="flex justify-center gap-2">
                                             <button
                                                 onClick={() => {
-                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
                                                     handleEdit(t);
                                                 }}
                                                 title="Sửa dòng này"
@@ -354,7 +354,7 @@ export default function HistoryTable({
                                             </button>
                                             <button
                                                 onClick={() => {
-                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Tính năng đang tạm khóa bởi Admin');
+                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
                                                     openConfirm(
                                                         `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
                                                         () => handleDelete(t.id)
