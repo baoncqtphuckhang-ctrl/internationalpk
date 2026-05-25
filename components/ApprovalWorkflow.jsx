@@ -230,7 +230,9 @@ export default function ApprovalWorkflow({
     const filteredList = dnttList.filter(d => {
         // filter by tab status
         if (filter === 'active') {
-            if ([STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)) return false;
+            if ([STATUSES.APPROVED, STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)) return false;
+        } else if (filter === 'approved') {
+            if (d.status !== STATUSES.APPROVED) return false;
         } else if (filter === 'paid') {
             if (d.status !== STATUSES.PAID) return false;
         } else if (filter === 'accounted') {
@@ -369,7 +371,17 @@ export default function ApprovalWorkflow({
                             onClick={() => setFilter('active')}
                             className={`px-6 py-2.5 rounded-xl text-sm font-bold transition ${filter === 'active' ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
                         >
-                            Đang xử lý ({dnttList.filter(d => ![STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)).length})
+                            Đang xử lý ({dnttList.filter(d => ![STATUSES.APPROVED, STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)).length})
+                        </button>
+                        <button 
+                            onClick={() => setFilter('approved')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition ${filter === 'approved' ? 'bg-white text-amber-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Chờ chi tiền {dnttList.filter(d => d.status === STATUSES.APPROVED).length > 0 ? (
+                                <span className="ml-1 px-2 py-0.5 bg-amber-500 text-white rounded-full text-xs animate-pulse">
+                                    {dnttList.filter(d => d.status === STATUSES.APPROVED).length}
+                                </span>
+                            ) : '(0)'}
                         </button>
                         <button 
                             onClick={() => setFilter('paid')}
