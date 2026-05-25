@@ -462,7 +462,7 @@ export default function ApprovalWorkflow({
                                                     onClick={() => onUpdateStatus(item.id, STATUSES.PAID)} 
                                                     className="flex-1 lg:flex-none whitespace-nowrap bg-indigo-600 text-white px-4 sm:px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 justify-center shadow-lg shadow-indigo-600/20"
                                                 >
-                                                    <Coins size={18}/> Xác nhận Chi tiền
+                                                    <Coins size={18}/> Xác nhận đã thanh toán
                                                 </button>
                                             )}
                                             {activeTab === 'approvals' && item.status === STATUSES.PAID && canAccount && (
