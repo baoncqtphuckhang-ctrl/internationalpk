@@ -173,7 +173,7 @@ export default function ApprovalWorkflow({
                         recipient: distributeItem.recipient,
                         corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
                         invoice_date: d.invoiceDate,
-                        invoice_number: d.invoiceNumber
+                        invoice_no: d.invoiceNumber
                     })));
                     setDistributeItem(null);
                     setFilter('accounted');
@@ -190,7 +190,7 @@ export default function ApprovalWorkflow({
             recipient: distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate,
-            invoice_number: d.invoiceNumber
+            invoice_no: d.invoiceNumber
         }));
 
         onAccountDNTT(distributeItem.id, payload);
