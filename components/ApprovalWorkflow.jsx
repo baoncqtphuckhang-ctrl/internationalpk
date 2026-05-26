@@ -31,6 +31,8 @@ export default function ApprovalWorkflow({
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
+    const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
+    const [activeQrIndex, setActiveQrIndex] = useState(null); // Index của người đang quét QR trong TTL
     
     const [dnttData, setDnttData] = useState({
         docType: 'DNTT',
@@ -58,7 +60,7 @@ export default function ApprovalWorkflow({
     };
     
     const addDnttItem = () => { 
-        setDnttData(prev => ({ ...prev, items: [...prev.items, { id: Date.now(), content: '', amount: '', note: '' }] })); 
+        setDnttData(prev => ({ ...prev, items: [...prev.items, { id: Date.now(), content: '', amount: '', note: '', bankAccountName: '', bankAccountNumber: '', bankName: '' }] })); 
     };
     
     const removeDnttItem = (index) => { 
@@ -296,10 +298,14 @@ export default function ApprovalWorkflow({
                             <input type="radio" name="docType" value="DNTU" checked={dnttData.docType === 'DNTU'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
                             Đề nghị tạm ứng (DNTƯ)
                         </label>
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700 font-sans text-sm sm:text-base">
+                            <input type="radio" name="docType" value="TTL" checked={dnttData.docType === 'TTL'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
+                            Thanh toán lương (TTL)
+                        </label>
                     </div>
 
                     <div className="text-center mb-6">
-                        <h2 className="text-xl sm:text-2xl font-bold mb-2 uppercase">{dnttData.docType === 'DNTT' ? 'ĐỀ NGHỊ THANH TOÁN' : 'ĐỀ NGHỊ TẠM ỨNG'}</h2>
+                        <h2 className="text-xl sm:text-2xl font-bold mb-2 uppercase">{dnttData.docType === 'DNTT' ? 'ĐỀ NGHỊ THANH TOÁN' : dnttData.docType === 'TTL' ? 'ĐỀ NGHỊ THANH TOÁN LƯƠNG' : 'ĐỀ NGHỊ TẠM ỨNG'}</h2>
                         <div className="flex justify-center items-center text-sm gap-1 flex-wrap">
                             <span>Ngày</span><input type="text" value={new Date(dnttData.date).getDate().toString().padStart(2, '0')} readOnly className="w-8 text-center outline-none border-b border-dotted border-gray-400 bg-transparent" />
                             <span>Tháng</span><input type="text" value={(new Date(dnttData.date).getMonth() + 1).toString().padStart(2, '0')} readOnly className="w-8 text-center outline-none border-b border-dotted border-gray-400 bg-transparent" />
@@ -316,37 +322,69 @@ export default function ApprovalWorkflow({
                             </div>
                         </div>
                     </div>
-                    <div className="mb-2 font-bold uppercase">A. NỘI DUNG {dnttData.docType === 'DNTT' ? 'THANH TOÁN' : 'TẠM ỨNG'}</div>
+                    <div className="mb-2 font-bold uppercase">A. NỘI DUNG {dnttData.docType === 'DNTT' ? 'THANH TOÁN' : dnttData.docType === 'TTL' ? 'THANH TOÁN LƯƠNG' : 'TẠM ỨNG'}</div>
                     <div className="overflow-x-auto">
                         <table className="w-full border-collapse border border-black mb-2 min-w-[650px]">
-                            <thead><tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-32">Ghi chú</th><th className="border-none w-0 p-0"></th></tr></thead>
+                            <thead>
+                                {dnttData.docType === 'TTL' ? (
+                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Tên nhân viên</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center">Tên TK</th><th className="border border-black p-1 text-center w-32">Số TK</th><th className="border border-black p-1 text-center w-24">Ngân hàng</th><th className="border-none w-0 p-0"></th></tr>
+                                ) : (
+                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-32">Ghi chú</th><th className="border-none w-0 p-0"></th></tr>
+                                )}
+                            </thead>
                             <tbody>
                                 {dnttData.items.map((item, index) => (
                                     <tr key={item.id} className="group/row">
                                         <td className="border border-black p-1 text-center">{index + 1}</td>
-                                        <td className="border border-black p-1"><input type="text" value={item.content} onChange={(e) => handleDnttItemChange(index, 'content', e.target.value)} className="w-full outline-none bg-transparent" placeholder="Nhập chi tiết..." /></td>
+                                        <td className="border border-black p-1"><input type="text" value={item.content} onChange={(e) => handleDnttItemChange(index, 'content', e.target.value)} className="w-full outline-none bg-transparent" placeholder={dnttData.docType === 'TTL' ? "Tên nhân viên..." : "Nhập chi tiết..."} /></td>
                                         <td className="border border-black p-1"><input type="text" value={item.amount ? formatCurrency(item.amount) : ''} onChange={(e) => handleDnttItemChange(index, 'amount', Math.max(0, parseVietnameseNumber(e.target.value) || 0))} className="w-full outline-none text-right bg-transparent font-medium" placeholder="0" /></td>
-                                        <td className="border border-black p-1"><input type="text" value={item.note} onChange={(e) => handleDnttItemChange(index, 'note', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                                        {dnttData.docType === 'TTL' ? (
+                                            <>
+                                                <td className="border border-black p-1"><input type="text" value={item.bankAccountName || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountName', e.target.value)} className="w-full outline-none bg-transparent uppercase" placeholder="TÊN TK" /></td>
+                                                <td className="border border-black p-1"><input type="text" value={item.bankAccountNumber || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountNumber', e.target.value)} className="w-full outline-none bg-transparent font-bold" placeholder="SỐ TK" /></td>
+                                                <td className="border border-black p-1"><input type="text" value={item.bankName || ''} onChange={(e) => handleDnttItemChange(index, 'bankName', e.target.value)} className="w-full outline-none bg-transparent" placeholder="VCB" /></td>
+                                            </>
+                                        ) : (
+                                            <td className="border border-black p-1"><input type="text" value={item.note || ''} onChange={(e) => handleDnttItemChange(index, 'note', e.target.value)} className="w-full outline-none bg-transparent" /></td>
+                                        )}
                                         <td className="border-none align-middle pl-2 w-8"><button onClick={() => removeDnttItem(index)} className="text-red-400 hover:text-red-600 opacity-0 group-hover/row:opacity-100"><X size={16} /></button></td>
                                     </tr>
                                 ))}
-                                <tr><td colSpan="4" className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm dòng chi phí</td></tr>
-                                <tr><td colSpan="2" className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td className="border border-black p-1"></td></tr>
+                                <tr><td colSpan={dnttData.docType === 'TTL' ? 6 : 4} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {dnttData.docType === 'TTL' ? 'nhân viên' : 'dòng chi phí'}</td></tr>
+                                <tr><td colSpan="2" className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={dnttData.docType === 'TTL' ? 3 : 1} className="border border-black p-1"></td></tr>
                             </tbody>
                         </table>
                     </div>
                     <div className="mb-6"><span className="font-bold italic">Bằng chữ: </span><span className="italic font-medium">{docSoTiengViet(dnttTotalAmount)}</span></div>
-                    <div className="mb-2 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
-                    <div className="flex gap-8 mb-4 ml-4">
-                        <label className="flex items-center gap-2 cursor-pointer"><div className={`w-4 h-4 border border-black flex justify-center items-center ${dnttData.paymentMethod === 'tien_mat' ? 'bg-black text-white' : 'text-transparent'}`}><span className="text-[10px] pb-0.5 font-sans">x</span></div><input type="radio" name="paymentMethod" value="tien_mat" checked={dnttData.paymentMethod === 'tien_mat'} onChange={handleDnttChange} className="hidden" /> Tiền mặt</label>
-                        <label className="flex items-center gap-2 cursor-pointer"><div className={`w-4 h-4 border border-black flex justify-center items-center ${dnttData.paymentMethod === 'chuyen_khoan' ? 'bg-black text-white' : 'text-transparent'}`}><span className="text-[10px] pb-0.5 font-sans">x</span></div><input type="radio" name="paymentMethod" value="chuyen_khoan" checked={dnttData.paymentMethod === 'chuyen_khoan'} onChange={handleDnttChange} className="hidden" /> Chuyển khoản</label>
-                    </div>
-                    <div className="overflow-x-auto">
-                        <table className={`w-full border-collapse border border-black mb-12 ${dnttData.paymentMethod === 'tien_mat' ? 'opacity-30' : ''} min-w-[650px]`}>
-                            <thead><tr className="bg-slate-50 text-center font-bold"><th className="border border-black p-1 w-1/4">Tên chủ tài khoản</th><th className="border border-black p-1 w-1/4">Số tài khoản</th><th className="border border-black p-1 w-1/4">Ngân hàng</th><th className="border border-black p-1 w-1/4">Chi nhánh</th></tr></thead>
-                            <tbody><tr><td className="border border-black p-1"><input type="text" name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" /></td><td className="border border-black p-1"><input type="text" name="bankName" value={dnttData.bankName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td><td className="border border-black p-1"><input type="text" name="bankBranch" value={dnttData.bankBranch} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td></tr></tbody>
-                        </table>
-                    </div>
+                    {dnttData.docType !== 'TTL' && (
+                        <>
+                            <div className="mb-2 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
+                            <div className="flex gap-8 mb-4 ml-4">
+                                <label className="flex items-center gap-2 cursor-pointer"><div className={`w-4 h-4 border border-black flex justify-center items-center ${dnttData.paymentMethod === 'tien_mat' ? 'bg-black text-white' : 'text-transparent'}`}><span className="text-[10px] pb-0.5 font-sans">x</span></div><input type="radio" name="paymentMethod" value="tien_mat" checked={dnttData.paymentMethod === 'tien_mat'} onChange={handleDnttChange} className="hidden" /> Tiền mặt</label>
+                                <label className="flex items-center gap-2 cursor-pointer"><div className={`w-4 h-4 border border-black flex justify-center items-center ${dnttData.paymentMethod === 'chuyen_khoan' ? 'bg-black text-white' : 'text-transparent'}`}><span className="text-[10px] pb-0.5 font-sans">x</span></div><input type="radio" name="paymentMethod" value="chuyen_khoan" checked={dnttData.paymentMethod === 'chuyen_khoan'} onChange={handleDnttChange} className="hidden" /> Chuyển khoản</label>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className={`w-full border-collapse border border-black mb-4 ${dnttData.paymentMethod === 'tien_mat' ? 'opacity-30' : ''} min-w-[650px]`}>
+                                    <thead><tr className="bg-slate-50 text-center font-bold"><th className="border border-black p-1 w-1/4">Tên chủ tài khoản</th><th className="border border-black p-1 w-1/4">Số tài khoản</th><th className="border border-black p-1 w-1/4">Ngân hàng (Ví dụ: VCB, MB...)</th><th className="border border-black p-1 w-1/4">Chi nhánh</th></tr></thead>
+                                    <tbody><tr><td className="border border-black p-1"><input type="text" name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center uppercase" placeholder="NGUYEN VAN A" /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" placeholder="123456789" /></td><td className="border border-black p-1"><input type="text" name="bankName" value={dnttData.bankName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" placeholder="VCB" /></td><td className="border border-black p-1"><input type="text" name="bankBranch" value={dnttData.bankBranch} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td></tr></tbody>
+                                </table>
+                            </div>
+                            {dnttData.paymentMethod === 'chuyen_khoan' && dnttData.bankAccountNumber && dnttData.bankName && (
+                                <div className="flex justify-center mb-8">
+                                    <div className="flex flex-col items-center p-4 border-2 border-dashed border-blue-200 rounded-2xl bg-blue-50/50">
+                                        <p className="font-bold text-sm mb-2 text-blue-800">Mã QR Thanh Toán Tự Động (VietQR)</p>
+                                        <img 
+                                            src={`https://img.vietqr.io/image/${dnttData.bankName.trim().replace(/\s+/g, '')}-${dnttData.bankAccountNumber.trim()}-compact2.png?amount=${dnttTotalAmount}&addInfo=${encodeURIComponent(dnttData.docType + ' ' + dnttData.recipient)}&accountName=${encodeURIComponent(dnttData.bankAccountName || '')}`} 
+                                            alt="VietQR Preview" 
+                                            className="w-48 h-48 object-contain rounded-xl bg-white shadow-sm"
+                                            onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                        />
+                                        <p className="text-xs text-slate-500 mt-2 italic">*Mã QR sẽ tự động đính kèm vào phiếu in để kế toán quét thanh toán.</p>
+                                    </div>
+                                </div>
+                            )}
+                        </>
+                    )}
                     <div className="grid grid-cols-4 gap-2 text-center font-bold font-sans"><div>NGƯỜI ĐỀ NGHỊ</div><div>QS</div><div>KẾ TOÁN</div><div>GIÁM ĐỐC</div></div><div className="h-24"></div>
 
                     {formError && (
@@ -459,10 +497,10 @@ export default function ApprovalWorkflow({
                                             )}
                                             {activeTab === 'approvals' && item.status === STATUSES.APPROVED && canPay && (
                                                 <button 
-                                                    onClick={() => onUpdateStatus(item.id, STATUSES.PAID)} 
+                                                    onClick={() => { setQrPaymentModal(item); setActiveQrIndex(null); }} 
                                                     className="flex-1 lg:flex-none whitespace-nowrap bg-indigo-600 text-white px-4 sm:px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 justify-center shadow-lg shadow-indigo-600/20"
                                                 >
-                                                    <Coins size={18}/> Xác nhận đã thanh toán
+                                                    <Coins size={18}/> Tiến hành thanh toán
                                                 </button>
                                             )}
                                             {activeTab === 'approvals' && item.status === STATUSES.PAID && canAccount && (
@@ -499,6 +537,145 @@ export default function ApprovalWorkflow({
                                 );
                             })
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Quét Mã QR Thanh Toán */}
+            {qrPaymentModal && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95">
+                        <header className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                            <h3 className="font-black flex items-center gap-2 text-lg"><Coins size={20}/> Thanh Toán Phiếu</h3>
+                            <button onClick={() => setQrPaymentModal(null)} className="text-slate-400 hover:text-white transition"><X/></button>
+                        </header>
+                        <div className="p-6 flex flex-col items-center">
+                            {(() => {
+                                let itemData = {};
+                                try {
+                                    itemData = JSON.parse(qrPaymentModal.reason || '{}');
+                                } catch(e) {}
+                                
+                                const isBank = itemData.paymentMethod === 'chuyen_khoan';
+                                
+                                if (!isBank) {
+                                    return (
+                                        <div className="text-center">
+                                            <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <AlertCircle size={32} />
+                                            </div>
+                                            <p className="font-bold text-slate-700 mb-2">Không có thông tin chuyển khoản</p>
+                                            <p className="text-sm text-slate-500 mb-6">Phiếu này thanh toán bằng tiền mặt.</p>
+                                            <button 
+                                                onClick={() => {
+                                                    onUpdateStatus(qrPaymentModal.id, STATUSES.PAID);
+                                                    setQrPaymentModal(null);
+                                                }}
+                                                className="w-full bg-indigo-600 text-white py-3 rounded-xl font-bold shadow-lg hover:bg-indigo-700 transition"
+                                            >
+                                                Xác nhận ĐÃ THANH TOÁN
+                                            </button>
+                                        </div>
+                                    );
+                                }
+
+                                const isTTL = itemData.docType === 'TTL';
+
+                                if (!isTTL && !itemData.bankAccountNumber) {
+                                    return (
+                                        <div className="text-center">
+                                            <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                                <AlertCircle size={32} />
+                                            </div>
+                                            <p className="font-bold text-slate-700 mb-2">Chưa nhập số tài khoản</p>
+                                            <p className="text-sm text-slate-500 mb-6">Phiếu này thanh toán chuyển khoản nhưng chưa có số tài khoản.</p>
+                                            <button onClick={() => setQrPaymentModal(null)} className="w-full py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition">Đóng lại</button>
+                                        </div>
+                                    );
+                                }
+
+                                const amount = qrPaymentModal.total_amount || 0;
+
+                                return (
+                                    <>
+                                        {!isTTL ? (
+                                            <>
+                                                <div className="w-full bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100 space-y-2">
+                                                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                                        <span className="text-slate-500 font-bold text-xs uppercase">Số tiền</span>
+                                                        <span className="font-black text-lg text-slate-800">{formatCurrency(amount)} VNĐ</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                                        <span className="text-slate-500 font-bold text-xs uppercase">Người lập</span>
+                                                        <span className="font-bold text-sm text-slate-700 uppercase">{qrPaymentModal.created_by || '-'}</span>
+                                                    </div>
+                                                    <div className="flex justify-between items-center">
+                                                        <span className="text-slate-500 font-bold text-xs uppercase">Người nhận</span>
+                                                        <span className="font-bold text-sm text-slate-700 uppercase">{itemData.bankAccountName || itemData.recipient || '-'}</span>
+                                                    </div>
+                                                </div>
+                                                
+                                                <div className="p-2 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 mb-6">
+                                                    <img src={`https://img.vietqr.io/image/${itemData.bankName?.split('-')[0]?.trim()}-${itemData.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(itemData.docType + ' ' + itemData.recipient)}&accountName=${encodeURIComponent(itemData.bankAccountName || '')}`} alt="VietQR" className="w-56 h-56 object-contain rounded-xl bg-white mx-auto" />
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <div className="w-full mb-6 max-h-[60vh] overflow-y-auto custom-scrollbar pr-2">
+                                                <h4 className="font-black text-slate-800 mb-3 text-center">Danh sách nhận lương</h4>
+                                                <div className="space-y-3">
+                                                    {itemData.items.map((emp, index) => {
+                                                        const isActive = activeQrIndex === index;
+                                                        const qrUrl = emp.bankAccountNumber && emp.bankName ? `https://img.vietqr.io/image/${emp.bankName?.split('-')[0]?.trim()}-${emp.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${emp.amount}&addInfo=${encodeURIComponent('Thanh toan luong ' + emp.content)}&accountName=${encodeURIComponent(emp.bankAccountName || '')}` : null;
+                                                        return (
+                                                            <div key={index} className="border border-slate-200 rounded-xl overflow-hidden">
+                                                                <div 
+                                                                    className={`p-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition ${isActive ? 'bg-blue-50/50' : ''}`}
+                                                                    onClick={() => setActiveQrIndex(isActive ? null : index)}
+                                                                >
+                                                                    <div>
+                                                                        <div className="font-bold text-slate-800 text-sm">{emp.content || 'Không tên'}</div>
+                                                                        <div className="text-xs text-slate-500">{emp.bankName} - {emp.bankAccountNumber}</div>
+                                                                    </div>
+                                                                    <div className="font-black text-blue-700">{formatCurrency(emp.amount)}đ</div>
+                                                                </div>
+                                                                {isActive && qrUrl && (
+                                                                    <div className="p-4 bg-slate-50 border-t border-slate-200 flex justify-center">
+                                                                        <img src={qrUrl} alt="QR" className="w-48 h-48 rounded-lg bg-white shadow-sm" />
+                                                                    </div>
+                                                                )}
+                                                                {isActive && !qrUrl && (
+                                                                    <div className="p-4 bg-red-50 text-red-600 text-xs text-center border-t border-slate-200">
+                                                                        Nhân viên này chưa nhập đủ số tài khoản và ngân hàng.
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        );
+                                                    })}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        <div className="w-full space-y-3">
+                                            <button 
+                                                onClick={() => {
+                                                    onUpdateStatus(qrPaymentModal.id, STATUSES.PAID);
+                                                    setQrPaymentModal(null);
+                                                }}
+                                                className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+                                            >
+                                                <CheckCircle2 size={20} /> XÁC NHẬN ĐÃ CHUYỂN KHOẢN {isTTL && 'TOÀN BỘ'}
+                                            </button>
+                                            <button 
+                                                onClick={() => setQrPaymentModal(null)}
+                                                className="w-full py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition"
+                                            >
+                                                Đóng lại
+                                            </button>
+                                        </div>
+                                    </>
+                                );
+                            })()}
+                        </div>
                     </div>
                 </div>
             )}
@@ -693,17 +870,29 @@ export default function ApprovalWorkflow({
                             <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0">
                                 <div>
                                     {/* Company Header */}
-                                    <div className="text-center mb-8 print:mb-2">
-                                        <h1 className="font-bold text-[17px] uppercase tracking-wide">
-                                            CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG
-                                        </h1>
-                                        <p className="text-[13px]">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p>
+                                    <div className="flex justify-between items-start mb-8 print:mb-2">
+                                        <div className="text-center flex-1">
+                                            <h1 className="font-bold text-[17px] uppercase tracking-wide">
+                                                CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG
+                                            </h1>
+                                            <p className="text-[13px]">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p>
+                                        </div>
+                                        {printItem.parsed.paymentMethod === 'chuyen_khoan' && printItem.parsed.docType !== 'TTL' && printItem.parsed.bankAccountNumber && printItem.parsed.bankName && (
+                                            <div className="flex flex-col items-center p-2 border-2 border-dashed border-blue-200 rounded-xl bg-blue-50/50 print:border print:border-black print:bg-transparent print:p-1 w-28">
+                                                <img 
+                                                    src={`https://img.vietqr.io/image/${printItem.parsed.bankName.trim().replace(/\s+/g, '')}-${printItem.parsed.bankAccountNumber.trim()}-compact2.png?amount=${printItem.total_amount}&addInfo=${encodeURIComponent(printItem.parsed.docType + ' id ' + printItem.id.slice(0,6))}&accountName=${encodeURIComponent(printItem.parsed.bankAccountName || '')}`} 
+                                                    alt="VietQR" 
+                                                    className="w-full h-auto object-contain rounded bg-white"
+                                                    onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
+                                                />
+                                            </div>
+                                        )}
                                     </div>
 
                                     {/* Title & Date */}
                                     <div className="text-center mb-6 print:mb-2">
                                         <h2 className="text-2xl font-bold mb-2 uppercase">
-                                            {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : 'ĐỀ NGHỊ THANH TOÁN'}
+                                            {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : printItem.parsed.docType === 'TTL' ? 'ĐỀ NGHỊ THANH TOÁN LƯƠNG' : 'ĐỀ NGHỊ THANH TOÁN'}
                                         </h2>
                                         <div className="text-[14px]">
                                             {(() => {
@@ -727,7 +916,7 @@ export default function ApprovalWorkflow({
 
                                     {/* Content Table */}
                                     <div className="mb-2 print:mb-1 font-bold uppercase">
-                                        A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : 'THANH TOÁN'}
+                                        A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : printItem.parsed.docType === 'TTL' ? 'THANH TOÁN LƯƠNG' : 'THANH TOÁN'}
                                     </div>
                                     <div className="overflow-x-auto print:overflow-visible">
                                         <table className="w-full border-collapse border border-black mb-4 min-w-[650px] print:min-w-0">
@@ -786,26 +975,41 @@ export default function ApprovalWorkflow({
 
                                     {/* Bank Details Table */}
                                     {printItem.parsed.paymentMethod === 'chuyen_khoan' && (
-                                        <div className="overflow-x-auto print:overflow-visible">
-                                            <table className="w-full border-collapse border border-black mb-8 print:mb-2 min-w-[650px] print:min-w-0">
-                                                <thead>
-                                                    <tr className="bg-gray-50 font-bold text-center">
-                                                        <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
-                                                        <th className="border border-black p-2 w-1/4">Số tài khoản</th>
-                                                        <th className="border border-black p-2 w-1/4">Ngân hàng</th>
-                                                        <th className="border border-black p-2 w-1/4">Chi nhánh</th>
-                                                    </tr>
-                                                </thead>
-                                                <tbody>
-                                                    <tr className="text-center">
-                                                        <td className="border border-black p-2">{printItem.parsed.bankAccountName || '-'}</td>
-                                                        <td className="border border-black p-2 font-bold">{printItem.parsed.bankAccountNumber || '-'}</td>
-                                                        <td className="border border-black p-2">{printItem.parsed.bankName || '-'}</td>
-                                                        <td className="border border-black p-2">{printItem.parsed.bankBranch || '-'}</td>
-                                                    </tr>
-                                                </tbody>
-                                            </table>
-                                        </div>
+                                        <>
+                                            <div className="overflow-x-auto print:overflow-visible">
+                                                <table className="w-full border-collapse border border-black mb-4 print:mb-2 min-w-[650px] print:min-w-0">
+                                                    <thead>
+                                                        <tr className="bg-gray-50 font-bold text-center">
+                                                            {printItem.parsed.docType === 'TTL' && <th className="border border-black p-2 w-1/4">Tên nhân viên</th>}
+                                                            <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
+                                                            <th className="border border-black p-2 w-1/4">Số tài khoản</th>
+                                                            <th className="border border-black p-2 w-1/4">Ngân hàng</th>
+                                                            {printItem.parsed.docType === 'TTL' ? <th className="border border-black p-2 w-1/4">Số tiền</th> : <th className="border border-black p-2 w-1/4">Chi nhánh</th>}
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {printItem.parsed.docType === 'TTL' ? (
+                                                            printItem.parsed.items && printItem.parsed.items.map((emp, idx) => (
+                                                                <tr key={idx} className="text-center">
+                                                                    <td className="border border-black p-2">{emp.content || '-'}</td>
+                                                                    <td className="border border-black p-2 uppercase">{emp.bankAccountName || '-'}</td>
+                                                                    <td className="border border-black p-2 font-bold">{emp.bankAccountNumber || '-'}</td>
+                                                                    <td className="border border-black p-2">{emp.bankName || '-'}</td>
+                                                                    <td className="border border-black p-2 text-right font-bold">{emp.amount ? formatCurrency(emp.amount) : '-'}</td>
+                                                                </tr>
+                                                            ))
+                                                        ) : (
+                                                            <tr className="text-center">
+                                                                <td className="border border-black p-2">{printItem.parsed.bankAccountName || '-'}</td>
+                                                                <td className="border border-black p-2 font-bold">{printItem.parsed.bankAccountNumber || '-'}</td>
+                                                                <td className="border border-black p-2">{printItem.parsed.bankName || '-'}</td>
+                                                                <td className="border border-black p-2">{printItem.parsed.bankBranch || '-'}</td>
+                                                            </tr>
+                                                        )}
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </>
                                     )}
                                 </div>
 

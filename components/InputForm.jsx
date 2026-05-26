@@ -6,13 +6,16 @@ import { Save, Trash2, AlertCircle } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
-export default function InputForm({ projects, onSubmit, isLoading, editData, incomes = [], onCancel }) {
+export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
+    const [isCustomAccount, setIsCustomAccount] = useState(false);
     const [formData, setFormData] = useState({
         project_name: projects[0]?.name || '',
         accounting_date: new Date().toISOString().split('T')[0],
         invoice_no: '',
+        invoice_date: '',
+        corresponding_account: '',
         code: '',
         debit: 0,
         credit: 0,
@@ -24,12 +27,20 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         vat_amount: 0,
         post_tax_amount: 0,
         amount6418: 0,
-        actual_received_amount: 0
+        amount6418: 0,
+        actual_received_amount: 0,
+        creator: ''
     });
 
     const [errors, setErrors] = useState({});
     const [confirmSave, setConfirmSave] = useState(false);
     const [pendingSubmit, setPendingSubmit] = useState(null);
+    const [debtConfirmModal, setDebtConfirmModal] = useState({ 
+        isOpen: false, 
+        data: null, 
+        thuStatus: 'CHƯA XONG', 
+        thanhToanStatus: 'CHƯA XONG' 
+    });
 
     useEffect(() => {
         if (editData) {
@@ -38,6 +49,8 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 project_name: editData.project_name || projects[0]?.name || '',
                 accounting_date: editData.accounting_date || editData.date || new Date().toISOString().split('T')[0],
                 invoice_no: editData.invoice_no || '',
+                invoice_date: editData.invoice_date || '',
+                corresponding_account: editData.corresponding_account || '',
                 code: editData.code || '',
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
@@ -48,6 +61,7 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 vat_amount: editData.vat_amount || 0,
                 post_tax_amount: editData.post_tax_amount || 0,
                 amount6418: editData.amount6418 || 0,
+                creator: editData.created_by || '',
                 note: (() => {
                     if (editData.type === 'INCOME' && editData.note) {
                         try {
@@ -70,6 +84,10 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 })()
             });
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
+            
+            const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
+            setIsCustomAccount(editData.corresponding_account && !commonAccounts.includes(editData.corresponding_account));
+            
             setErrors({});
         }
     }, [editData, projects]);
@@ -127,10 +145,80 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         e.preventDefault();
         if (!validate()) return;
 
+        if (type === 'EXPENSE') {
+            const isBoth = ['6413', '6418'].includes(formData.code);
+            const isPayOnly = ['621', '623'].includes(formData.code);
+            
+            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
+                setDebtConfirmModal({ 
+                    isOpen: true, 
+                    data: formData,
+                    thuStatus: isBoth ? 'CHƯA XONG' : null,
+                    thanhToanStatus: 'CHƯA XONG',
+                    mode: isBoth ? 'BOTH' : 'PAY_ONLY'
+                });
+                return;
+            }
+        }
+
         // Hiện confirm trước khi lưu
         const action = editData ? 'cập nhật' : 'thêm mới';
         setPendingSubmit({ type, formData, editId: editData?.id });
         setConfirmSave(true);
+    };
+
+    const handleDebtConfirm = () => {
+        const data = debtConfirmModal.data;
+        const { thuStatus, thanhToanStatus, mode } = debtConfirmModal;
+        
+        setDebtConfirmModal({ isOpen: false, data: null, thuStatus: 'CHƯA XONG', thanhToanStatus: 'CHƯA XONG' });
+        
+        // 1. Submit normal transaction
+        onSubmit('EXPENSE', data, editData?.id);
+        
+        // 2 & 3. Submit debts
+        if (onAddDebt) {
+            const debts = [];
+            if (mode === 'BOTH') {
+                debts.push({
+                    project_name: data.project_name,
+                    partner_name: data.code === '6418' ? 'Nhân sự (Bảo hiểm)' : 'Công nhân (Hồ sơ)',
+                    debt_type: 'CẦN THU',
+                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                    status: thuStatus,
+                    note: `Thu lại từ nhân sự/công nhân - ${data.note || ''}`
+                });
+            }
+            
+            debts.push({
+                project_name: data.project_name,
+                partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
+                debt_type: 'CẦN TRẢ',
+                amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                status: thanhToanStatus,
+                note: `Thanh toán chi phí - ${data.note || ''}`
+            });
+            onAddDebt(debts);
+        }
+        
+        resetForm();
+    };
+
+    const resetForm = () => {
+        setFormData(prev => ({
+            ...prev,
+            invoice_no: '',
+            debit: 0,
+            credit: 0,
+            note: '',
+            amount: 0,
+            vat_rate: 8,
+            vat_amount: 0,
+            post_tax_amount: 0,
+            amount6418: 0,
+            actual_received_amount: 0
+        }));
+        setIsCustomCode(false);
     };
 
     const doSubmit = () => {
@@ -139,22 +227,7 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
         onSubmit(pendingSubmit.type, pendingSubmit.formData, pendingSubmit.editId);
         setPendingSubmit(null);
 
-        if (!editData) {
-            setFormData(prev => ({
-                ...prev,
-                invoice_no: '',
-                debit: 0,
-                credit: 0,
-                note: '',
-                amount: 0,
-                vat_rate: 8,
-                vat_amount: 0,
-                post_tax_amount: 0,
-                amount6418: 0,
-                actual_received_amount: 0
-            }));
-            setIsCustomCode(false);
-        }
+        if (!editData) resetForm();
     };
 
     const inputCls = (field) =>
@@ -184,6 +257,98 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                 onCancel={() => setConfirmSave(false)}
                 type={editData ? 'warning' : 'info'}
             />
+
+            {debtConfirmModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 border border-slate-100">
+                        <div className="p-8">
+                            <div className="flex items-center gap-3 text-amber-500 mb-6">
+                                <div className="p-3 bg-amber-50 rounded-2xl">
+                                    <AlertCircle size={28} />
+                                </div>
+                                <h3 className="text-xl font-black text-slate-800">Xác nhận Công Nợ</h3>
+                            </div>
+                            
+                            <p className="text-slate-600 mb-8 font-medium leading-relaxed">
+                                Chi phí này có mã <b>{debtConfirmModal.data?.code}</b>. Vui lòng xác nhận trạng thái để hệ thống tự động ghi nhận vào sổ công nợ.
+                            </p>
+                            
+                            <div className="space-y-6">
+                                {/* Khối Thu từ tổ đội */}
+                                {debtConfirmModal.mode === 'BOTH' && (
+                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                        <p className="font-bold text-slate-800 mb-3 text-sm">1. Đã thu lại tiền từ tổ đội/công nhân chưa?</p>
+                                        <div className="flex gap-3">
+                                            <button
+                                                onClick={() => setDebtConfirmModal(prev => ({...prev, thuStatus: 'ĐÃ XONG'}))}
+                                                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                    debtConfirmModal.thuStatus === 'ĐÃ XONG' 
+                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-sm' 
+                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
+                                                }`}
+                                            >
+                                                ĐÃ THU
+                                            </button>
+                                            <button
+                                                onClick={() => setDebtConfirmModal(prev => ({...prev, thuStatus: 'CHƯA XONG'}))}
+                                                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                    debtConfirmModal.thuStatus === 'CHƯA XONG' 
+                                                        ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
+                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
+                                                }`}
+                                            >
+                                                CHƯA THU
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Khối Thanh toán */}
+                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                                    <p className="font-bold text-slate-800 mb-3 text-sm">{debtConfirmModal.mode === 'BOTH' ? '2. ' : ''}Đã thanh toán chi phí này chưa?</p>
+                                    <div className="flex gap-3">
+                                        <button
+                                            onClick={() => setDebtConfirmModal(prev => ({...prev, thanhToanStatus: 'ĐÃ XONG'}))}
+                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                debtConfirmModal.thanhToanStatus === 'ĐÃ XONG' 
+                                                    ? 'bg-blue-50 text-blue-700 border-blue-500 shadow-sm' 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-blue-200 hover:bg-blue-50/50'
+                                            }`}
+                                        >
+                                            ĐÃ THANH TOÁN
+                                        </button>
+                                        <button
+                                            onClick={() => setDebtConfirmModal(prev => ({...prev, thanhToanStatus: 'CHƯA XONG'}))}
+                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                debtConfirmModal.thanhToanStatus === 'CHƯA XONG' 
+                                                    ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
+                                            }`}
+                                        >
+                                            CHƯA THANH TOÁN
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 mt-8">
+                                <button
+                                    onClick={handleDebtConfirm}
+                                    className="w-full py-4 bg-indigo-600 text-white hover:bg-indigo-700 font-bold rounded-2xl transition shadow-lg shadow-indigo-600/20"
+                                >
+                                    LƯU DỮ LIỆU & CHUYỂN TỚI CÔNG NỢ
+                                </button>
+                                <button
+                                    onClick={() => setDebtConfirmModal({ isOpen: false, data: null, thuStatus: 'CHƯA XONG', thanhToanStatus: 'CHƯA XONG' })}
+                                    className="w-full py-3 text-slate-500 hover:bg-slate-100 font-bold rounded-2xl transition"
+                                >
+                                    Hủy bỏ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                 <div className="flex border-b">
@@ -285,6 +450,85 @@ export default function InputForm({ projects, onSubmit, isLoading, editData, inc
                                         className={`${inputCls('debit')} font-bold text-red-600`}
                                     />
                                     {errorMsg('debit')}
+                                </div>
+                                {/* Số hóa đơn */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Số hóa đơn
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.invoice_no || ''}
+                                        onChange={(e) => handleChange('invoice_no', e.target.value)}
+                                        placeholder="Nhập số hóa đơn..."
+                                        className={inputCls('invoice_no')}
+                                    />
+                                </div>
+                                {/* Ngày hóa đơn */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Ngày hóa đơn
+                                    </label>
+                                    <input
+                                        type="date"
+                                        value={formData.invoice_date || ''}
+                                        onChange={(e) => handleChange('invoice_date', e.target.value)}
+                                        className={inputCls('invoice_date')}
+                                    />
+                                </div>
+                                {/* Tài khoản đối ứng */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Tài khoản đối ứng
+                                    </label>
+                                    <select
+                                        value={isCustomAccount ? 'Khác' : (formData.corresponding_account || '')}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Khác') {
+                                                setIsCustomAccount(true);
+                                                handleChange('corresponding_account', '');
+                                            } else {
+                                                setIsCustomAccount(false);
+                                                handleChange('corresponding_account', val);
+                                            }
+                                        }}
+                                        className={inputCls('corresponding_account')}
+                                    >
+                                        <option value="">-- Để trống --</option>
+                                        <option value="111 - Tiền mặt">111 - Tiền mặt</option>
+                                        <option value="112 - Tiền gửi NH">112 - Tiền gửi NH</option>
+                                        <option value="141 - Tạm ứng">141 - Tạm ứng</option>
+                                        <option value="152 - Nguyên liệu, vật liệu">152 - Nguyên liệu, vật liệu</option>
+                                        <option value="154 - Chi phí SXKD dở dang">154 - Chi phí SXKD dở dang</option>
+                                        <option value="331 - Phải trả người bán">331 - Phải trả người bán</option>
+                                        <option value="334 - Phải trả người lao động">334 - Phải trả người lao động</option>
+                                        <option value="338 - Phải trả khác">338 - Phải trả khác</option>
+                                        <option value="642 - Chi phí QLDN">642 - Chi phí QLDN</option>
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {isCustomAccount && (
+                                        <input
+                                            type="text"
+                                            value={formData.corresponding_account}
+                                            onChange={(e) => handleChange('corresponding_account', e.target.value)}
+                                            placeholder="Nhập tài khoản đối ứng khác..."
+                                            className={`${inputCls('corresponding_account')} mt-2`}
+                                        />
+                                    )}
+                                </div>
+                                {/* Người lập */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Người lập
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.creator}
+                                        onChange={(e) => handleChange('creator', e.target.value)}
+                                        placeholder="Nhập tên người lập..."
+                                        className={inputCls('creator')}
+                                    />
                                 </div>
                                 {/* Số tiền thu */}
                                 <div>

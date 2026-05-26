@@ -330,7 +330,9 @@ export default function HistoryTable({
                                     <td className="p-3 border-r border-slate-100 whitespace-nowrap">{formatDateVN(t.accounting_date)}</td>
                                     <td className="p-3 border-r border-slate-100 whitespace-nowrap">{formatDateVN(t.invoice_date)}</td>
                                     <td className="p-3 border-r border-slate-100 font-mono">{t.invoice_no || '-'}</td>
-                                    <td className="p-3 border-r border-slate-100 max-w-[250px] truncate" title={t.note}>{t.note}</td>
+                                    <td className="p-3 border-r border-slate-100 min-w-[200px] max-w-[300px]" title={t.note}>
+                                        <div className="line-clamp-3 break-words whitespace-normal leading-relaxed">{t.note}</div>
+                                    </td>
                                     <td className="p-3 border-r border-slate-100 font-bold text-blue-700">{t.code}</td>
                                     <td className="p-3 border-r border-slate-100 font-bold text-slate-600">{t.corresponding_account || '-'}</td>
                                     <td className="p-3 border-r border-slate-100 text-right text-red-600 font-medium">{t.debit > 0 ? formatCurrency(t.debit) : ''}</td>

@@ -164,7 +164,7 @@ export default function LoginForm({ onLogin, usersList }) {
                         </div>
 
                         <div className="flex flex-wrap gap-4 justify-center">
-                            {usersList.slice(0, 3).map((u, i) => (
+                            {usersList.map((u, i) => (
                                 <button 
                                     key={u.id} 
                                     onClick={() => {
@@ -173,10 +173,10 @@ export default function LoginForm({ onLogin, usersList }) {
                                         setShowPromptPassword(false);
                                         setError('');
                                     }} 
-                                    className={`flex items-center justify-center gap-2.5 px-6 py-3.5 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl text-[#B8B8B8] hover:text-[#FFFFFF] hover:bg-[#101010] hover:border-[#D4AF37]/60 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all duration-300 group ${i === 2 ? 'w-full max-w-[200px]' : 'flex-1'}`}
+                                    className="flex items-center justify-center gap-2.5 px-4 py-3 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl text-[#B8B8B8] hover:text-[#FFFFFF] hover:bg-[#101010] hover:border-[#D4AF37]/60 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all duration-300 group flex-1 min-w-[120px]"
                                 >
                                     <div className="text-[#D4AF37] group-hover:scale-110 transition-transform duration-300">
-                                        {i === 1 ? <Building2 size={16} /> : <Shield size={16} />}
+                                        <User size={16} />
                                     </div>
                                     <span className="text-[13px] font-semibold">{u.role}</span>
                                 </button>

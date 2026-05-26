@@ -53,6 +53,7 @@ export default function Sidebar({
         { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isThuKy },
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
+        { id: 'partner-debts', label: 'Công Nợ Tổ Đội', icon: ClipboardList, show: canInputData || isThuKy },
         { id: 'material-orders', label: 'Đặt Vật Tư', icon: ClipboardList, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'manage-material-orders', label: 'Quản Lý Đơn Vật Tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt', label: 'Lập DNTT / DNTƯ', icon: FileSignature, show: canCreateDNTT && !isThuKy, locked: systemConfig?.create_dntt && currentUser?.role !== 'ADMIN' },

@@ -11,6 +11,7 @@ import LoginForm from '@/components/LoginForm';
 import ApprovalWorkflow from '@/components/ApprovalWorkflow';
 import ProjectManager from '@/components/ProjectManager';
 import ExpenseSummary from '@/components/ExpenseSummary';
+import PartnerDebts from '@/components/PartnerDebts';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
@@ -114,6 +115,7 @@ export default function Home() {
     const [transactions, setTransactions] = useState([]);
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
+    const [partnerDebts, setPartnerDebts] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
     
@@ -162,6 +164,7 @@ export default function Home() {
                     .from('transactions')
                     .select('*')
                     .order('accounting_date', { ascending: false })
+                    .order('id', { ascending: true })
                     .range(page * pageSize, (page + 1) * pageSize - 1);
                 
                 if (error) {
@@ -189,6 +192,15 @@ export default function Home() {
 
             const { data: approvalData } = await supabase.from('approval_requests').select('*').order('created_at', { ascending: false });
             setDnttList(approvalData || []);
+
+            try {
+                const { data: debtsData, error: debtsError } = await supabase.from('partner_debts').select('*').order('created_at', { ascending: false });
+                if (!debtsError) {
+                    setPartnerDebts(debtsData || []);
+                }
+            } catch (e) {
+                console.warn('Partner debts table might not exist yet', e);
+            }
         } catch (error) {
             showToast('Lỗi kết nối Database!', 'error');
         } finally {
@@ -253,10 +265,14 @@ export default function Home() {
                 const payload = {
                     project_name: data.project_name,
                     accounting_date: data.accounting_date,
+                    invoice_date: data.invoice_date || null,
+                    invoice_no: data.invoice_no || '',
+                    recipient: data.recipient || '',
+                    corresponding_account: data.corresponding_account || '',
                     code: data.code,
                     debit: data.debit,
                     note: data.note,
-                    created_by: currentUser.username
+                    created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
@@ -286,7 +302,7 @@ export default function Home() {
                     post_tax_amount: data.post_tax_amount || data.amount,
                     is_paid: true,
                     note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0 }),
-                    created_by: currentUser.username
+                    created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const { error } = await supabase.from('incomes').update(payload).eq('id', editId);
@@ -728,6 +744,54 @@ export default function Home() {
         }
     };
 
+    const handleAddDebt = async (debtPayload) => {
+        setIsLoading(true);
+        try {
+            const payloadArray = Array.isArray(debtPayload) ? debtPayload : [debtPayload];
+            const dataToInsert = payloadArray.map(p => ({
+                ...p,
+                created_by: currentUser.username
+            }));
+            const { error } = await supabase.from('partner_debts').insert(dataToInsert);
+            if (error) throw error;
+            showToast('Đã ghi nhận công nợ mới!');
+            fetchData();
+        } catch (error) {
+            console.error('Error adding debt:', error.message || error);
+            showToast('Lỗi khi thêm công nợ: ' + (error.message || JSON.stringify(error)), 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleUpdateDebtStatus = async (id, newStatus) => {
+        setIsLoading(true);
+        try {
+            const { error } = await supabase.from('partner_debts').update({ status: newStatus }).eq('id', id);
+            if (error) throw error;
+            showToast(`Đã cập nhật trạng thái thành ${newStatus}!`);
+            fetchData();
+        } catch (error) {
+            showToast('Lỗi khi cập nhật công nợ!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleDeleteDebt = async (id) => {
+        setIsLoading(true);
+        try {
+            const { error } = await supabase.from('partner_debts').delete().eq('id', id);
+            if (error) throw error;
+            showToast('Đã xóa công nợ!');
+            fetchData();
+        } catch (error) {
+            showToast('Lỗi khi xóa công nợ!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleExportBackup = () => {
         const fileName = `Backup_ToanBoDuLieu_${new Date().toISOString().split('T')[0]}`;
         
@@ -978,7 +1042,9 @@ export default function Home() {
                 
                 {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} />}
                 
-                {activeTab === 'input' && <InputForm projects={allowedProjects} onSubmit={handleAddData} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} />}
+                {activeTab === 'input' && <InputForm projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} />}
+                
+                {activeTab === 'partner-debts' && <PartnerDebts debts={partnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals') && (
                     <ApprovalWorkflow 
