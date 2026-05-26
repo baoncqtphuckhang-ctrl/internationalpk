@@ -50,7 +50,7 @@ export default function Sidebar({
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
-        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isThuKy },
+        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports },
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
         { id: 'partner-debts', label: 'Công Nợ Tổ Đội', icon: ClipboardList, show: canInputData || isThuKy },
@@ -172,9 +172,11 @@ export default function Sidebar({
                                     <Users size={20} /> <span className="text-sm">QL Nhân viên</span>
                                 </button>
                             )}
-                            <button onClick={onOpenSystemConfig} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition text-slate-500 hover:bg-slate-800 hover:text-slate-300`}>
-                                <Settings size={20} /> <span className="text-sm">Khóa Chức Năng</span>
-                            </button>
+                            {currentUser?.role === 'ADMIN' && (
+                                <button onClick={onOpenSystemConfig} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition text-slate-500 hover:bg-slate-800 hover:text-slate-300`}>
+                                    <Settings size={20} /> <span className="text-sm">Khóa Chức Năng</span>
+                                </button>
+                            )}
                             {handleExportBackup && (
                                 <button onClick={handleExportBackup} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition text-green-500 hover:bg-slate-800 hover:text-green-400`}>
                                     <Download size={20} /> <span className="text-sm">Backup Dữ Liệu</span>
