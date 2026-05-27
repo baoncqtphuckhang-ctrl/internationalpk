@@ -33,6 +33,7 @@ export default function ApprovalWorkflow({
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
     const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
     const [activeQrIndex, setActiveQrIndex] = useState(null); // Index của người đang quét QR trong TTL
+    const [qrTransferContent, setQrTransferContent] = useState('');
     
     const [dnttData, setDnttData] = useState({
         docType: 'DNTT',
@@ -217,6 +218,7 @@ export default function ApprovalWorkflow({
     const canApproveKT = isAdminOrManager || ['KẾ TOÁN', 'QS'].includes(userRole);
     const canPay = canApproveKT || userRole === 'THƯ KÝ';
     const canAccount = canApproveKT;
+    const showApproveButtons = activeTab === 'approvals' || userRole === 'ADMIN';
 
     const getDisplayTitle = (item) => {
         if (item.doc_type === 'TTL') {
@@ -377,7 +379,7 @@ export default function ApprovalWorkflow({
                                     <div className="flex flex-col items-center p-4 border-2 border-dashed border-blue-200 rounded-2xl bg-blue-50/50">
                                         <p className="font-bold text-sm mb-2 text-blue-800">Mã QR Thanh Toán Tự Động (VietQR)</p>
                                         <img 
-                                            src={`https://img.vietqr.io/image/${dnttData.bankName.trim().replace(/\s+/g, '')}-${dnttData.bankAccountNumber.trim()}-compact2.png?amount=${dnttTotalAmount}&addInfo=${encodeURIComponent(dnttData.docType + ' ' + dnttData.recipient)}&accountName=${encodeURIComponent(dnttData.bankAccountName || '')}`} 
+                                            src={`https://img.vietqr.io/image/${dnttData.bankName.trim().replace(/\s+/g, '')}-${dnttData.bankAccountNumber.trim()}-compact2.png?amount=${dnttTotalAmount}&addInfo=${encodeURIComponent((dnttData.items[0]?.content || dnttData.docType) + ' ' + dnttData.project)}&accountName=${encodeURIComponent(dnttData.bankAccountName || '')}`} 
                                             alt="VietQR Preview" 
                                             className="w-48 h-48 object-contain rounded-xl bg-white shadow-sm"
                                             onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
@@ -486,27 +488,38 @@ export default function ApprovalWorkflow({
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
-                                            {activeTab === 'approvals' && item.status === STATUSES.WAITING_QS && canApproveQS && (
+                                            {showApproveButtons && item.status === STATUSES.WAITING_QS && canApproveQS && (
                                                 <>
                                                     <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.WAITING_ACC)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt (QS)</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
                                             )}
-                                            {activeTab === 'approvals' && item.status === STATUSES.WAITING_ACC && canApproveKT && (
+                                            {showApproveButtons && item.status === STATUSES.WAITING_ACC && canApproveKT && (
                                                 <>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.APPROVED)} className="flex-1 lg:flex-none whitespace-nowrap bg-green-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-green-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-green-600/20"><Check size={18}/> Duyệt (KT)</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
                                             )}
-                                            {activeTab === 'approvals' && item.status === STATUSES.APPROVED && canPay && (
+                                            {showApproveButtons && item.status === STATUSES.APPROVED && canPay && (
                                                 <button 
-                                                    onClick={() => { setQrPaymentModal(item); setActiveQrIndex(null); }} 
+                                                    onClick={() => { 
+                                                        let c = '';
+                                                        try {
+                                                            const p = JSON.parse(item.reason || '{}');
+                                                            c = (item.project_name || p.project || '') + ' ' + (p.items?.[0]?.content || p.docType || item.doc_type);
+                                                        } catch(e) { c = item.project_name || ''; }
+                                                        
+                                                        const unaccented = c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+                                                        setQrTransferContent(unaccented);
+                                                        setQrPaymentModal(item); 
+                                                        setActiveQrIndex(null); 
+                                                    }} 
                                                     className="flex-1 lg:flex-none whitespace-nowrap bg-indigo-600 text-white px-4 sm:px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 justify-center shadow-lg shadow-indigo-600/20"
                                                 >
                                                     <Coins size={18}/> Tiến hành thanh toán
                                                 </button>
                                             )}
-                                            {activeTab === 'approvals' && item.status === STATUSES.PAID && canAccount && (
+                                            {showApproveButtons && item.status === STATUSES.PAID && canAccount && (
                                                 <button 
                                                     onClick={() => openDistributeModal(item)} 
                                                     className="flex-1 lg:flex-none whitespace-nowrap bg-amber-500 text-white px-4 sm:px-8 py-2.5 rounded-xl font-bold hover:bg-amber-600 transition flex items-center gap-2 justify-center shadow-lg shadow-amber-500/20 animate-pulse hover:animate-none"
@@ -612,6 +625,10 @@ export default function ApprovalWorkflow({
                                                         <span className="text-slate-500 font-bold text-xs uppercase">Người lập</span>
                                                         <span className="font-bold text-sm text-slate-700 uppercase">{qrPaymentModal.created_by || '-'}</span>
                                                     </div>
+                                                    <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                                        <span className="text-slate-500 font-bold text-xs uppercase">Công trình</span>
+                                                        <span className="font-bold text-sm text-slate-700 uppercase">{qrPaymentModal.project_name || itemData.project || '-'}</span>
+                                                    </div>
                                                     <div className="flex justify-between items-center">
                                                         <span className="text-slate-500 font-bold text-xs uppercase">Người nhận</span>
                                                         <span className="font-bold text-sm text-slate-700 uppercase">{itemData.bankAccountName || itemData.recipient || '-'}</span>
@@ -619,7 +636,7 @@ export default function ApprovalWorkflow({
                                                 </div>
                                                 
                                                 <div className="p-2 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 mb-6">
-                                                    <img src={`https://img.vietqr.io/image/${itemData.bankName?.split('-')[0]?.trim()}-${itemData.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(itemData.docType + ' ' + itemData.recipient)}&accountName=${encodeURIComponent(itemData.bankAccountName || '')}`} alt="VietQR" className="w-56 h-56 object-contain rounded-xl bg-white mx-auto" />
+                                                    <img src={`https://img.vietqr.io/image/${itemData.bankName?.split('-')[0]?.trim()}-${itemData.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(qrTransferContent)}&accountName=${encodeURIComponent(itemData.bankAccountName || '')}`} alt="VietQR" className="w-56 h-56 object-contain rounded-xl bg-white mx-auto" />
                                                 </div>
                                             </>
                                         ) : (
@@ -628,12 +645,20 @@ export default function ApprovalWorkflow({
                                                 <div className="space-y-3">
                                                     {itemData.items.map((emp, index) => {
                                                         const isActive = activeQrIndex === index;
-                                                        const qrUrl = emp.bankAccountNumber && emp.bankName ? `https://img.vietqr.io/image/${emp.bankName?.split('-')[0]?.trim()}-${emp.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${emp.amount}&addInfo=${encodeURIComponent('Tam ung co huu ' + emp.content)}&accountName=${encodeURIComponent(emp.bankAccountName || '')}` : null;
+                                                        const qrUrl = emp.bankAccountNumber && emp.bankName ? `https://img.vietqr.io/image/${emp.bankName?.split('-')[0]?.trim()}-${emp.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${emp.amount}&addInfo=${encodeURIComponent(qrTransferContent)}&accountName=${encodeURIComponent(emp.bankAccountName || '')}` : null;
                                                         return (
                                                             <div key={index} className="border border-slate-200 rounded-xl overflow-hidden">
                                                                 <div 
                                                                     className={`p-3 flex justify-between items-center cursor-pointer hover:bg-slate-50 transition ${isActive ? 'bg-blue-50/50' : ''}`}
-                                                                    onClick={() => setActiveQrIndex(isActive ? null : index)}
+                                                                    onClick={() => {
+                                                                        if (isActive) setActiveQrIndex(null);
+                                                                        else {
+                                                                            const c = (qrPaymentModal.project_name || itemData.project || '') + ' ' + (emp.content || 'Tam ung co huu');
+                                                                            const unaccented = c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+                                                                            setQrTransferContent(unaccented);
+                                                                            setActiveQrIndex(index);
+                                                                        }
+                                                                    }}
                                                                 >
                                                                     <div>
                                                                         <div className="font-bold text-slate-800 text-sm">{emp.content || 'Không tên'}</div>
