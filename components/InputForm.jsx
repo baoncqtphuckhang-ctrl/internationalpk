@@ -85,7 +85,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
             });
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
             
-            const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
+            const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "131 - Công nợ phải thu", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
             setIsCustomAccount(editData.corresponding_account && !commonAccounts.includes(editData.corresponding_account));
             
             setErrors({});
@@ -146,7 +146,9 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         if (!validate()) return;
 
         if (type === 'EXPENSE') {
-            const isBoth = ['6413', '6418'].includes(formData.code);
+            const isBothCode = ['6413', '6418'].includes(formData.code);
+            const isDebtAccount = ['131', '141', '331'].some(acc => formData.corresponding_account?.startsWith(acc));
+            const isBoth = isBothCode || isDebtAccount;
             const isPayOnly = ['621', '623'].includes(formData.code);
             
             if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
@@ -180,13 +182,17 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         if (onAddDebt) {
             const debts = [];
             if (mode === 'BOTH') {
+                let partnerName = data.recipient || 'Đối tác/Nhà cung cấp';
+                if (data.code === '6418') partnerName = 'Nhân sự (Bảo hiểm)';
+                else if (data.code === '6413') partnerName = 'Công nhân (Hồ sơ)';
+
                 debts.push({
                     project_name: data.project_name,
-                    partner_name: data.code === '6418' ? 'Nhân sự (Bảo hiểm)' : 'Công nhân (Hồ sơ)',
+                    partner_name: partnerName,
                     debt_type: 'CẦN THU',
                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
                     status: thuStatus,
-                    note: `Thu lại từ nhân sự/công nhân - ${data.note || ''}`
+                    note: `Thu lại - ${data.note || ''}`
                 });
             }
             
@@ -498,6 +504,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                         <option value="">-- Để trống --</option>
                                         <option value="111 - Tiền mặt">111 - Tiền mặt</option>
                                         <option value="112 - Tiền gửi NH">112 - Tiền gửi NH</option>
+                                        <option value="131 - Công nợ phải thu">131 - Công nợ phải thu</option>
                                         <option value="141 - Tạm ứng">141 - Tạm ứng</option>
                                         <option value="152 - Nguyên liệu, vật liệu">152 - Nguyên liệu, vật liệu</option>
                                         <option value="154 - Chi phí SXKD dở dang">154 - Chi phí SXKD dở dang</option>

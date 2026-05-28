@@ -12,6 +12,9 @@ export default function PartnerDebts({
     isLoading,
     currentUser 
 }) {
+    const [confirmDebtModal, setConfirmDebtModal] = useState({ isOpen: false, debt: null });
+    const [debtAccount, setDebtAccount] = useState('131 - Công nợ phải thu');
+
     const [filterType, setFilterType] = useState('ALL'); // ALL, CẦN THU, CẦN TRẢ
     const [filterStatus, setFilterStatus] = useState('CHƯA XONG'); // ALL, CHƯA XONG, ĐÃ XONG
     const [searchTerm, setSearchTerm] = useState('');
@@ -262,7 +265,7 @@ export default function PartnerDebts({
                                             <div className="flex items-center justify-center gap-2">
                                                 {debt.status === 'CHƯA XONG' && (
                                                     <button 
-                                                        onClick={() => onUpdateDebtStatus(debt.id, 'ĐÃ XONG')}
+                                                        onClick={() => setConfirmDebtModal({ isOpen: true, debt })}
                                                         className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition"
                                                         title={`Đánh dấu là ${debt.debt_type === 'CẦN THU' ? 'Đã Thu' : 'Đã Trả'}`}
                                                     >
@@ -271,7 +274,7 @@ export default function PartnerDebts({
                                                 )}
                                                 {debt.status === 'ĐÃ XONG' && (
                                                     <button 
-                                                        onClick={() => onUpdateDebtStatus(debt.id, 'CHƯA XONG')}
+                                                        onClick={() => onUpdateDebtStatus(debt, 'CHƯA XONG')}
                                                         className="p-1.5 bg-slate-100 text-slate-500 hover:bg-amber-500 hover:text-white rounded-lg transition"
                                                         title="Đánh dấu lại là Chưa Xong"
                                                     >
@@ -312,6 +315,52 @@ export default function PartnerDebts({
                 onConfirm={confirmModal.onConfirm} 
                 onCancel={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} 
             />
+
+            {confirmDebtModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 border border-slate-100">
+                        <div className="p-8">
+                            <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><CheckCircle className="text-emerald-500" /> Xác nhận công nợ</h3>
+                            <p className="text-slate-600 mb-6 font-medium leading-relaxed">
+                                Bạn đang đánh dấu công nợ của <b>{confirmDebtModal.debt?.partner_name}</b> là <b>{confirmDebtModal.debt?.debt_type === 'CẦN THU' ? 'ĐÃ THU' : 'ĐÃ THANH TOÁN'}</b>.
+                                Vui lòng chọn tài khoản đối ứng (nếu có):
+                            </p>
+                            <div className="mb-8">
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tài khoản đối ứng</label>
+                                <select 
+                                    value={debtAccount} 
+                                    onChange={(e) => setDebtAccount(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-3 font-bold focus:border-blue-500 outline-none"
+                                >
+                                    <option value="">-- Bỏ qua / Không ghi nhận giao dịch --</option>
+                                    <option value="111 - Tiền mặt">111 - Tiền mặt</option>
+                                    <option value="112 - Tiền gửi NH">112 - Tiền gửi NH</option>
+                                    <option value="131 - Công nợ phải thu">131 - Công nợ phải thu</option>
+                                    <option value="141 - Tạm ứng">141 - Tạm ứng</option>
+                                    <option value="331 - Phải trả người bán">331 - Phải trả người bán</option>
+                                </select>
+                            </div>
+                            <div className="flex flex-col gap-3">
+                                <button
+                                    onClick={() => {
+                                        onUpdateDebtStatus(confirmDebtModal.debt, 'ĐÃ XONG', debtAccount);
+                                        setConfirmDebtModal({ isOpen: false, debt: null });
+                                    }}
+                                    className="w-full py-4 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-2xl transition shadow-lg shadow-emerald-600/20 flex justify-center items-center gap-2"
+                                >
+                                    <CheckCircle size={20} /> XÁC NHẬN
+                                </button>
+                                <button
+                                    onClick={() => setConfirmDebtModal({ isOpen: false, debt: null })}
+                                    className="w-full py-3 text-slate-500 hover:bg-slate-100 font-bold rounded-2xl transition"
+                                >
+                                    Hủy bỏ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
