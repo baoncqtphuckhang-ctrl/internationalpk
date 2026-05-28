@@ -127,6 +127,32 @@ export default function HistoryTable({
         }
         return unique;
     };
+
+    const getAvailableOptions = (stateKey, dbField) => {
+        const availableT = transactions.filter(t => {
+            if (selectedProject && t.project_name !== selectedProject) return false;
+            
+            if (!(t.invoice_no || '').toLowerCase().includes(textFilters.invoiceNo.toLowerCase())) return false;
+            if (!(t.note || '').toLowerCase().includes(textFilters.note.toLowerCase())) return false;
+
+            if (stateKey !== 'accountingDate' && !filterState.accountingDate.includes(t.accounting_date)) return false;
+            if (stateKey !== 'invoiceDate' && !filterState.invoiceDate.includes(t.invoice_date)) return false;
+            if (stateKey !== 'code' && !filterState.code.includes(t.code)) return false;
+            if (stateKey !== 'correspondingAccount' && !filterState.correspondingAccount.includes(t.corresponding_account)) return false;
+            if (stateKey !== 'recipient' && !filterState.recipient.includes(t.recipient)) return false;
+            if (stateKey !== 'createdBy' && !filterState.createdBy.includes(t.created_by)) return false;
+            if (stateKey !== 'projectName' && !filterState.projectName.includes(t.project_name)) return false;
+            
+            return true;
+        });
+
+        const unique = [...new Set(availableT.map(t => t[dbField]))].sort();
+        if (dbField === 'accounting_date' || dbField === 'invoice_date') {
+            return unique.reverse();
+        }
+        return unique;
+    };
+
     
     const [filterState, setFilterState] = useState({
         accountingDate: getUnique('accounting_date'),
@@ -282,15 +308,15 @@ export default function HistoryTable({
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 text-center w-12 align-middle">STT</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap align-middle">
                                     Công trình
-                                    <TableFilter title="Công trình" options={getUnique('project_name')} selectedValues={filterState.projectName} onToggle={(v) => handleToggle('projectName', v)} onSelectAll={() => handleSelectAll('projectName')} onClear={() => handleClear('projectName')} onSort={(dir) => handleSort('project_name', dir)} />
+                                    <TableFilter title="Công trình" options={getAvailableOptions('projectName', 'project_name')} selectedValues={filterState.projectName} onToggle={(v) => handleToggle('projectName', v)} onSelectAll={() => handleSelectAll('projectName')} onClear={() => handleClear('projectName')} onSort={(dir) => handleSort('project_name', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap align-middle">
                                     Ngày hạch toán
-                                    <TableFilter title="Ngày hạch toán" options={getUnique('accounting_date')} selectedValues={filterState.accountingDate} onToggle={(v) => handleToggle('accountingDate', v)} onSelectAll={() => handleSelectAll('accountingDate')} onClear={() => handleClear('accountingDate')} onSort={(dir) => handleSort('accounting_date', dir)} />
+                                    <TableFilter title="Ngày hạch toán" options={getAvailableOptions('accountingDate', 'accounting_date')} selectedValues={filterState.accountingDate} onToggle={(v) => handleToggle('accountingDate', v)} onSelectAll={() => handleSelectAll('accountingDate')} onClear={() => handleClear('accountingDate')} onSort={(dir) => handleSort('accounting_date', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap align-middle">
                                     Ngày hóa đơn
-                                    <TableFilter title="Ngày hóa đơn" options={getUnique('invoice_date')} selectedValues={filterState.invoiceDate} onToggle={(v) => handleToggle('invoiceDate', v)} onSelectAll={() => handleSelectAll('invoiceDate')} onClear={() => handleClear('invoiceDate')} onSort={(dir) => handleSort('invoice_date', dir)} />
+                                    <TableFilter title="Ngày hóa đơn" options={getAvailableOptions('invoiceDate', 'invoice_date')} selectedValues={filterState.invoiceDate} onToggle={(v) => handleToggle('invoiceDate', v)} onSelectAll={() => handleSelectAll('invoiceDate')} onClear={() => handleClear('invoiceDate')} onSort={(dir) => handleSort('invoice_date', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 whitespace-nowrap align-middle">
                                     Số hóa đơn
@@ -302,22 +328,22 @@ export default function HistoryTable({
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 align-middle">
                                     Tài khoản
-                                    <TableFilter title="Tài khoản" options={getUnique('code')} selectedValues={filterState.code} onToggle={(v) => handleToggle('code', v)} onSelectAll={() => handleSelectAll('code')} onClear={() => handleClear('code')} onSort={(dir) => handleSort('code', dir)} />
+                                    <TableFilter title="Tài khoản" options={getAvailableOptions('code', 'code')} selectedValues={filterState.code} onToggle={(v) => handleToggle('code', v)} onSelectAll={() => handleSelectAll('code')} onClear={() => handleClear('code')} onSort={(dir) => handleSort('code', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 align-middle">
                                     TK đối ứng
-                                    <TableFilter title="TK đối ứng" options={getUnique('corresponding_account')} selectedValues={filterState.correspondingAccount} onToggle={(v) => handleToggle('correspondingAccount', v)} onSelectAll={() => handleSelectAll('correspondingAccount')} onClear={() => handleClear('correspondingAccount')} onSort={(dir) => handleSort('corresponding_account', dir)} />
+                                    <TableFilter title="TK đối ứng" options={getAvailableOptions('correspondingAccount', 'corresponding_account')} selectedValues={filterState.correspondingAccount} onToggle={(v) => handleToggle('correspondingAccount', v)} onSelectAll={() => handleSelectAll('correspondingAccount')} onClear={() => handleClear('correspondingAccount')} onSort={(dir) => handleSort('corresponding_account', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 text-right align-middle">Phát sinh Nợ</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 text-right align-middle">Phát sinh Có</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 text-right align-middle">Số tiền</th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 align-middle">
                                     Tên đối tượng
-                                    <TableFilter title="Tên đối tượng" options={getUnique('recipient')} selectedValues={filterState.recipient} onToggle={(v) => handleToggle('recipient', v)} onSelectAll={() => handleSelectAll('recipient')} onClear={() => handleClear('recipient')} onSort={(dir) => handleSort('recipient', dir)} />
+                                    <TableFilter title="Tên đối tượng" options={getAvailableOptions('recipient', 'recipient')} selectedValues={filterState.recipient} onToggle={(v) => handleToggle('recipient', v)} onSelectAll={() => handleSelectAll('recipient')} onClear={() => handleClear('recipient')} onSort={(dir) => handleSort('recipient', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-r border-slate-200 font-bold text-slate-700 align-middle">
                                     Người nhập
-                                    <TableFilter title="Người nhập" options={getUnique('created_by')} selectedValues={filterState.createdBy} onToggle={(v) => handleToggle('createdBy', v)} onSelectAll={() => handleSelectAll('createdBy')} onClear={() => handleClear('createdBy')} onSort={(dir) => handleSort('created_by', dir)} />
+                                    <TableFilter title="Người nhập" options={getAvailableOptions('createdBy', 'created_by')} selectedValues={filterState.createdBy} onToggle={(v) => handleToggle('createdBy', v)} onSelectAll={() => handleSelectAll('createdBy')} onClear={() => handleClear('createdBy')} onSort={(dir) => handleSort('created_by', dir)} />
                                 </th>
                                 <th className="p-3 border-b border-slate-200 font-bold text-slate-700 text-center align-middle">Thao tác</th>
                             </tr>
