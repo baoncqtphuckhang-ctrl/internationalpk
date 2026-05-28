@@ -215,6 +215,9 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     );
                                 })}
                             </tr>
+                            <tr className="bg-white border-none h-[24px]">
+                                <td colSpan={filteredData.length + 1} className="bg-white border-none p-0"></td>
+                            </tr>
                         </tfoot>
                     </table>
                 </div>
