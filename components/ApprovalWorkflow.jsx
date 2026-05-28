@@ -362,10 +362,6 @@ export default function ApprovalWorkflow({
                             Đề nghị tạm ứng (DNTƯ)
                         </label>
                         <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700 font-sans text-sm sm:text-base">
-                            <input type="radio" name="docType" value="TTL" checked={dnttData.docType === 'TTL'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
-                            Đề nghị tạm ứng cơ hữu (TTL)
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700 font-sans text-sm sm:text-base">
                             <input type="radio" name="docType" value="DNTUCH" checked={dnttData.docType === 'DNTUCH'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
                             Đề nghị tạm ứng cơ hữu (DNTUCH)
                         </label>
