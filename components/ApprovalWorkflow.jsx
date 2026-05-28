@@ -303,8 +303,8 @@ export default function ApprovalWorkflow({
     const showApproveButtons = activeTab === 'approvals' || userRole === 'ADMIN';
 
     const getDisplayTitle = (item) => {
-        if (item.doc_type === 'TTL') {
-            return item.recipient || 'Đề nghị tạm ứng cơ hữu';
+        if (item.doc_type === 'TTL' || item.doc_type === 'DNTUCH') {
+            return 'TẠM ỨNG CƠ HỮU';
         }
         let displayTitle = 'Đề nghị thanh toán';
         try {
