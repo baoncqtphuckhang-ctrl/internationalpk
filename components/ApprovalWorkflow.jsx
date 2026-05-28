@@ -7,6 +7,9 @@ import ConfirmModal from './ConfirmModal';
 
 const getTransferContent = (data) => {
     let content = data.project || '';
+    if (data.docType === 'DNTUCH' || data.docType === 'TTL') {
+        return content + ' [CH]';
+    }
     const maChiList = Array.from(new Set((data.items || []).map(i => i.maChi).filter(Boolean)));
     if (maChiList.length > 0) {
         content += ' - ' + maChiList.join(' ');
@@ -14,6 +17,50 @@ const getTransferContent = (data) => {
         content += ' - ' + (data.items?.[0]?.content || data.docType || 'DNTT');
     }
     return content.trim();
+};
+
+const MaChiSelect = ({ value, onChange }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const options = [
+        { value: "", label: "Khác (Để trống)" },
+        { value: "[TVGS]", label: "[TVGS] - Chi phí cho tư vấn" },
+        { value: "[CP]", label: "[CP] - Chi phí công trình" },
+        { value: "[TRỌ]", label: "[TRỌ] - Chi phí tiền trọ" },
+        { value: "[CH]", label: "[CH] - Lương Cơ hữu" },
+        { value: "[TĐ]", label: "[TĐ] - Tạm ứng tổ đội" },
+        { value: "[VTP]", label: "[VTP] - Vật tư phụ" },
+        { value: "[TN]", label: "[TN] - Chi phí thí nghiệm" },
+        { value: "[BD]", label: "[BD] - Bồi Dưỡng" },
+        { value: "[VC]", label: "[VC] - Vận chuyển" }
+    ];
+
+    return (
+        <div className="relative w-full">
+            <div 
+                className="w-full outline-none bg-transparent cursor-pointer flex justify-between items-center min-h-[28px]"
+                onClick={() => setIsOpen(!isOpen)}
+            >
+                <span className="truncate">{value || 'Khác...'}</span>
+                <svg className="w-3 h-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
+            </div>
+            {isOpen && (
+                <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)}></div>
+                    <div className="absolute left-0 top-full mt-1 min-w-[240px] max-w-[300px] bg-white border border-slate-200 shadow-xl rounded-lg z-50 py-1 max-h-[300px] overflow-y-auto">
+                        {options.map(opt => (
+                            <div 
+                                key={opt.value} 
+                                className={`px-3 py-2 hover:bg-blue-50 cursor-pointer text-sm whitespace-nowrap ${value === opt.value ? 'bg-blue-50 text-blue-600 font-bold' : 'text-slate-700'}`}
+                                onClick={() => { onChange(opt.value); setIsOpen(false); }}
+                            >
+                                {opt.label}
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+        </div>
+    );
 };
 
 export default function ApprovalWorkflow({ 
@@ -318,10 +365,14 @@ export default function ApprovalWorkflow({
                             <input type="radio" name="docType" value="TTL" checked={dnttData.docType === 'TTL'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
                             Đề nghị tạm ứng cơ hữu (TTL)
                         </label>
+                        <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700 font-sans text-sm sm:text-base">
+                            <input type="radio" name="docType" value="DNTUCH" checked={dnttData.docType === 'DNTUCH'} onChange={handleDnttChange} className="w-4 h-4 text-blue-600 focus:ring-blue-500" /> 
+                            Đề nghị tạm ứng cơ hữu (DNTUCH)
+                        </label>
                     </div>
 
                     <div className="text-center mb-6">
-                        <h2 className="text-xl sm:text-2xl font-bold mb-2 uppercase">{dnttData.docType === 'DNTT' ? 'ĐỀ NGHỊ THANH TOÁN' : dnttData.docType === 'TTL' ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'ĐỀ NGHỊ TẠM ỨNG'}</h2>
+                        <h2 className="text-xl sm:text-2xl font-bold mb-2 uppercase">{dnttData.docType === 'DNTT' ? 'ĐỀ NGHỊ THANH TOÁN' : (dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'ĐỀ NGHỊ TẠM ỨNG'}</h2>
                         <div className="flex justify-center items-center text-sm gap-1 flex-wrap">
                             <span>Ngày</span><input type="text" value={new Date(dnttData.date).getDate().toString().padStart(2, '0')} readOnly className="w-8 text-center outline-none border-b border-dotted border-gray-400 bg-transparent" />
                             <span>Tháng</span><input type="text" value={(new Date(dnttData.date).getMonth() + 1).toString().padStart(2, '0')} readOnly className="w-8 text-center outline-none border-b border-dotted border-gray-400 bg-transparent" />
@@ -338,11 +389,11 @@ export default function ApprovalWorkflow({
                             </div>
                         </div>
                     </div>
-                    <div className="mb-2 font-bold uppercase">A. NỘI DUNG {dnttData.docType === 'DNTT' ? 'THANH TOÁN' : dnttData.docType === 'TTL' ? 'TẠM ỨNG CƠ HỮU' : 'TẠM ỨNG'}</div>
+                    <div className="mb-2 font-bold uppercase">A. NỘI DUNG {dnttData.docType === 'DNTT' ? 'THANH TOÁN' : (dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'TẠM ỨNG CƠ HỮU' : 'TẠM ỨNG'}</div>
                     <div className="overflow-x-auto">
                         <table className="w-full border-collapse border border-black mb-2 min-w-[650px]">
                             <thead>
-                                {dnttData.docType === 'TTL' ? (
+                                {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? (
                                     <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Tên đối tượng</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center">Tên TK</th><th className="border border-black p-1 text-center w-32">Số TK</th><th className="border border-black p-1 text-center w-24">Ngân hàng</th></tr>
                                 ) : (
                                     <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center w-48">Mã chi</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
@@ -352,25 +403,14 @@ export default function ApprovalWorkflow({
                                 {dnttData.items.map((item, index) => (
                                     <tr key={item.id} className="group/row">
                                         <td className="border border-black p-1 text-center">{index + 1}</td>
-                                        {dnttData.docType !== 'TTL' && (
+                                        {(dnttData.docType !== 'TTL' && dnttData.docType !== 'DNTUCH') && (
                                             <td className="border border-black p-1">
-                                                <select value={item.maChi || ''} onChange={(e) => handleDnttItemChange(index, 'maChi', e.target.value)} className="w-full outline-none bg-transparent">
-                                                    <option value="">Khác (Để trống)</option>
-                                                    <option value="[TVGS]">[TVGS] - Chi phí cho tư vấn</option>
-                                                    <option value="[CP]">[CP] - Chi phí công trình</option>
-                                                    <option value="[TRỌ]">[TRỌ] - Chi phí tiền trọ</option>
-                                                    <option value="[CH]">[CH] - Lương Cơ hữu</option>
-                                                    <option value="[TĐ]">[TĐ] - Tạm ứng tổ đội</option>
-                                                    <option value="[VTP]">[VTP] - Vật tư phụ</option>
-                                                    <option value="[TN]">[TN] - Chi phí thí nghiệm</option>
-                                                    <option value="[BD]">[BD] - Bồi Dưỡng</option>
-                                                    <option value="[VC]">[VC] - Vận chuyển</option>
-                                                </select>
+                                                <MaChiSelect value={item.maChi || ''} onChange={(val) => handleDnttItemChange(index, 'maChi', val)} />
                                             </td>
                                         )}
-                                        <td className="border border-black p-1"><textarea value={item.content} onChange={(e) => handleDnttItemChange(index, 'content', e.target.value)} className="w-full outline-none bg-transparent resize-y min-h-[40px] p-1" placeholder={dnttData.docType === 'TTL' ? "Tên đối tượng..." : "Nhập chi tiết..."} /></td>
+                                        <td className="border border-black p-1"><textarea value={item.content} onChange={(e) => handleDnttItemChange(index, 'content', e.target.value)} className="w-full outline-none bg-transparent resize-y min-h-[40px] p-1" placeholder={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? "Tên đối tượng..." : "Nhập chi tiết..."} /></td>
                                         <td className="border border-black p-1"><input type="text" value={item.amount ? formatCurrency(item.amount) : ''} onChange={(e) => handleDnttItemChange(index, 'amount', Math.max(0, parseVietnameseNumber(e.target.value) || 0))} className="w-full outline-none text-right bg-transparent font-medium" placeholder="0" /></td>
-                                        {dnttData.docType === 'TTL' ? (
+                                        {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? (
                                             <>
                                                 <td className="border border-black p-1"><input type="text" value={item.bankAccountName || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountName', e.target.value)} className="w-full outline-none bg-transparent uppercase" placeholder="TÊN TK" /></td>
                                                 <td className="border border-black p-1"><input type="text" value={item.bankAccountNumber || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountNumber', e.target.value)} className="w-full outline-none bg-transparent font-bold" placeholder="SỐ TK" /></td>
@@ -391,13 +431,13 @@ export default function ApprovalWorkflow({
                                         )}
                                     </tr>
                                 ))}
-                                <tr><td colSpan={dnttData.docType === 'TTL' ? 6 : 5} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {dnttData.docType === 'TTL' ? 'đối tượng' : 'dòng chi phí'}</td></tr>
-                                <tr><td colSpan={dnttData.docType === 'TTL' ? 2 : 3} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={dnttData.docType === 'TTL' ? 3 : 1} className="border border-black p-1"></td></tr>
+                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 6 : 5} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'đối tượng' : 'dòng chi phí'}</td></tr>
+                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 3 : 1} className="border border-black p-1"></td></tr>
                             </tbody>
                         </table>
                     </div>
                     <div className="mb-6"><span className="font-bold italic">Bằng chữ: </span><span className="italic font-medium">{docSoTiengViet(dnttTotalAmount)}</span></div>
-                    {dnttData.docType !== 'TTL' && (
+                    {(dnttData.docType !== 'TTL' && dnttData.docType !== 'DNTUCH') && (
                         <>
                             <div className="mb-2 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
                             <div className="flex gap-8 mb-4 ml-4">
@@ -632,7 +672,7 @@ export default function ApprovalWorkflow({
                                     );
                                 }
 
-                                const isTTL = itemData.docType === 'TTL';
+                                const isTTL = itemData.docType === 'TTL' || itemData.docType === 'DNTUCH';
 
                                 if (!isTTL && !itemData.bankAccountNumber) {
                                     return (
@@ -946,7 +986,7 @@ export default function ApprovalWorkflow({
                                             </h1>
                                             <p className="text-[13px]">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p>
                                         </div>
-                                        {printItem.parsed.paymentMethod === 'chuyen_khoan' && printItem.parsed.docType !== 'TTL' && printItem.parsed.bankAccountNumber && printItem.parsed.bankName && (
+                                        {printItem.parsed.paymentMethod === 'chuyen_khoan' && printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && printItem.parsed.bankAccountNumber && printItem.parsed.bankName && (
                                             <div className="flex flex-col items-center p-2 border-2 border-dashed border-blue-200 rounded-xl bg-blue-50/50 print:border print:border-black print:bg-transparent print:p-1 w-28">
                                                 <img 
                                                     src={`https://img.vietqr.io/image/${printItem.parsed.bankName.trim().replace(/\s+/g, '')}-${printItem.parsed.bankAccountNumber.trim()}-compact2.png?amount=${printItem.total_amount}&addInfo=${encodeURIComponent(getTransferContent(printItem.parsed).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D"))}&accountName=${encodeURIComponent(printItem.parsed.bankAccountName || '')}`} 
@@ -961,7 +1001,7 @@ export default function ApprovalWorkflow({
                                     {/* Title & Date */}
                                     <div className="text-center mb-6 print:mb-2">
                                         <h2 className="text-2xl font-bold mb-2 uppercase">
-                                            {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : printItem.parsed.docType === 'TTL' ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'ĐỀ NGHỊ THANH TOÁN'}
+                                            {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : (printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'ĐỀ NGHỊ THANH TOÁN'}
                                         </h2>
                                         <div className="text-[14px]">
                                             {(() => {
@@ -985,12 +1025,12 @@ export default function ApprovalWorkflow({
 
                                     {/* Content Table */}
                                     <div className="mb-2 print:mb-1 font-bold uppercase">
-                                        A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : printItem.parsed.docType === 'TTL' ? 'TẠM ỨNG CƠ HỮU' : 'THANH TOÁN'}
+                                        A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : (printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 'TẠM ỨNG CƠ HỮU' : 'THANH TOÁN'}
                                     </div>
                                     <div className="overflow-x-auto print:overflow-visible">
                                         <table className="w-full border-collapse border border-black mb-4 min-w-[650px] print:min-w-0">
                                             <thead>
-                                                {printItem.parsed.docType === 'TTL' ? (
+                                                {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
                                                     <tr className="bg-gray-50">
                                                         <th className="border border-black p-2 text-center w-12 font-bold">STT</th>
                                                         <th className="border border-black p-2 text-center font-bold">Tên đối tượng</th>
@@ -1013,14 +1053,14 @@ export default function ApprovalWorkflow({
                                                 {printItem.parsed.items && printItem.parsed.items.map((item, index) => (
                                                     <tr key={index}>
                                                         <td className="border border-black p-2 text-center">{index + 1}</td>
-                                                        {printItem.parsed.docType !== 'TTL' && (
+                                                        {(printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH') && (
                                                             <td className="border border-black p-2 text-center">{item.maChi || ''}</td>
                                                         )}
                                                         <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
                                                         <td className="border border-black p-2 text-right font-medium">
                                                             {item.amount ? formatCurrency(item.amount) : '-'}
                                                         </td>
-                                                        {printItem.parsed.docType === 'TTL' ? (
+                                                        {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
                                                             <>
                                                                 <td className="border border-black p-2 uppercase">{item.bankAccountName || ''}</td>
                                                                 <td className="border border-black p-2 font-bold">{item.bankAccountNumber || ''}</td>
@@ -1032,11 +1072,11 @@ export default function ApprovalWorkflow({
                                                     </tr>
                                                 ))}
                                                 <tr>
-                                                    <td colSpan={printItem.parsed.docType === 'TTL' ? 2 : 3} className="border border-black p-2 font-bold text-center">Tổng cộng</td>
+                                                    <td colSpan={(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-2 font-bold text-center">Tổng cộng</td>
                                                     <td className="border border-black p-2 font-bold text-right text-[16px]">
                                                         {formatCurrency(printItem.total_amount)}
                                                     </td>
-                                                    <td colSpan={printItem.parsed.docType === 'TTL' ? 3 : 1} className="border border-black p-2"></td>
+                                                    <td colSpan={(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 3 : 1} className="border border-black p-2"></td>
                                                 </tr>
                                             </tbody>
                                         </table>
@@ -1072,15 +1112,15 @@ export default function ApprovalWorkflow({
                                                 <table className="w-full border-collapse border border-black mb-4 print:mb-2 min-w-[650px] print:min-w-0">
                                                     <thead>
                                                         <tr className="bg-gray-50 font-bold text-center">
-                                                            {printItem.parsed.docType === 'TTL' && <th className="border border-black p-2 w-1/4">Tên đối tượng</th>}
+                                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && <th className="border border-black p-2 w-1/4">Tên đối tượng</th>}
                                                             <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
                                                             <th className="border border-black p-2 w-1/4">Số tài khoản</th>
                                                             <th className="border border-black p-2 w-1/4">Ngân hàng</th>
-                                                            {printItem.parsed.docType === 'TTL' ? <th className="border border-black p-2 w-1/4">Số tiền</th> : <th className="border border-black p-2 w-1/4">Chi nhánh</th>}
+                                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? <th className="border border-black p-2 w-1/4">Số tiền</th> : <th className="border border-black p-2 w-1/4">Chi nhánh</th>}
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {printItem.parsed.docType === 'TTL' ? (
+                                                        {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
                                                             printItem.parsed.items && printItem.parsed.items.map((emp, idx) => (
                                                                 <tr key={idx} className="text-center">
                                                                     <td className="border border-black p-2">{emp.content || '-'}</td>
