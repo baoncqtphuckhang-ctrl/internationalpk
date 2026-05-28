@@ -178,8 +178,8 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30">
-                            <tr>
+                        <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                            <tr className="border-t-[8px] border-slate-200">
                                 <td className="p-3 border-r border-slate-700 sticky left-0 bg-slate-800 z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">TỔNG CHI PHÍ</td>
                                 {filteredData.map(d => (
                                     <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-3 border-r border-slate-700 text-right min-w-[150px]">
