@@ -9,6 +9,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
     const [editingProject, setEditingProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [formData, setFormData] = useState({
+        original_name: '',
         name: '',
         contract_no: '',
         contract_value_after_tax: 0,
@@ -30,6 +31,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
         const details = projectDetails[p.name] || {};
         setEditingProject(p.name);
         setFormData({
+            original_name: p.name,
             name: p.name,
             contract_no: details.contractNo || '',
             contract_value_after_tax: details.contractValueAfterTax || 0,
@@ -47,7 +49,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
     };
 
     // Sắp xếp theo thời gian từ gần tới xa (Mới nhất xếp đầu)
@@ -86,7 +88,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -105,9 +107,8 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                                 type="text"
                                 value={formData.name}
                                 onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                disabled={!!editingProject}
                                 required
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800 disabled:opacity-60 disabled:cursor-not-allowed"
+                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
                                 placeholder="Ví dụ: Công trình A..."
                             />
                         </div>

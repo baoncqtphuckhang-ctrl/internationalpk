@@ -363,6 +363,7 @@ export default function Home() {
         try {
             if (isEdit) {
                 const { error } = await supabase.from('projects').update({
+                    name: data.name,
                     contract_no: data.contract_no,
                     contract_value_after_tax: data.contract_value_after_tax,
                     advance_value: data.advance_value,
@@ -370,8 +371,17 @@ export default function Home() {
                     address: data.address,
                     cht_name: data.cht_name,
                     cht_phone: data.cht_phone
-                }).eq('name', data.name);
+                }).eq('name', data.original_name || data.name);
                 if (error) throw error;
+                
+                if (data.original_name && data.name !== data.original_name) {
+                    await Promise.all([
+                        supabase.from('transactions').update({ project_name: data.name }).eq('project_name', data.original_name),
+                        supabase.from('incomes').update({ project_name: data.name }).eq('project_name', data.original_name),
+                        supabase.from('approval_requests').update({ project_name: data.name }).eq('project_name', data.original_name),
+                        supabase.from('partner_debts').update({ project_name: data.name }).eq('project_name', data.original_name)
+                    ]);
+                }
             } else {
                 const { error } = await supabase.from('projects').insert([{
                     name: data.name,
@@ -458,11 +468,17 @@ export default function Home() {
         const table = originalTable.cloneNode(true);
         table.querySelectorAll('input, button, svg, .filter-dropdown').forEach(el => el.remove());
         
+        const isExpenseTable = tableId === 'expense-table';
         const rows = table.querySelectorAll('tr');
         rows.forEach(row => {
-            if (row.lastElementChild) row.lastElementChild.remove();
+            if (!isExpenseTable && row.lastElementChild) row.lastElementChild.remove();
             
             Array.from(row.children).forEach(cell => {
+                const excelVal = cell.getAttribute('data-excel-value');
+                if (excelVal !== null) {
+                    cell.innerText = excelVal;
+                }
+                
                 if (cell.tagName === 'TH') {
                     cell.innerHTML = cell.innerText.trim().split('\n')[0];
                     cell.style.textAlign = 'center';

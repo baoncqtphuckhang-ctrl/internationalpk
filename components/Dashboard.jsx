@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { Copy, Download, Check, Search, X, Printer } from 'lucide-react';
+import { Copy, Download, Check, Search, X, Printer, EyeOff } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
 
 export default function Dashboard({ 
@@ -16,7 +16,27 @@ export default function Dashboard({
     onProjectDoubleClick
 }) {
     const [filterText, setFilterText] = useState('');
+    const [hiddenCols, setHiddenCols] = useState([]);
     const [promptModal, setPromptModal] = useState({ isOpen: false, project: '', value: '', type: '', title: '' });
+
+    const toggleCol = (colId) => {
+        setHiddenCols(prev => prev.includes(colId) ? prev.filter(c => c !== colId) : [...prev, colId]);
+    };
+
+    const COLUMN_NAMES = {
+        contractValueAfterTax: 'Giá trị HĐ',
+        debtToCollect: 'Công Nợ Cần Thu',
+        totalExpense: 'Tổng Chi Phí',
+        totalPhaseReceived: 'Thực nhận các đợt',
+        totalReceivedAmount: 'Tổng G.Trị Thực nhận',
+        profit: 'Lợi nhuận',
+        totalActualIncome: 'Tổng SẢN LƯỢNG',
+        phases: 'Chi tiết thu các đợt',
+        advanceValue: 'Giá trị Tạm ứng',
+        recoveredAdvance: 'Giá trị thu hồi',
+        utilityValue: 'Giá trị tiện ích',
+        remainingCost: 'Chi phí còn lại'
+    };
 
     const handleOpenPrompt = (project, currentValue, type, title) => {
         setPromptModal({ isOpen: true, project, value: currentValue ? currentValue.toString() : '', type, title });
@@ -105,27 +125,39 @@ export default function Dashboard({
 
             {/* Bảng: giới hạn chiều cao để thanh scroll ngang luôn hiển thị */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden w-full" style={{ height: 'calc(100vh - 220px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
-                <div className="p-4 border-b bg-slate-50 flex items-center gap-3 flex-shrink-0">
-                    <Search size={18} className="text-slate-400" />
-                    <div className="relative w-full flex items-center">
-                        <input 
-                            type="text" 
-                            value={filterText}
-                            onChange={(e) => setFilterText(e.target.value)}
-                            placeholder="Tìm kiếm công trình..."
-                            className="bg-transparent outline-none font-bold text-slate-700 w-full pr-8"
-                            list="dashboard-projects"
-                        />
-                        {filterText && (
-                            <button 
-                                onClick={() => setFilterText('')}
-                                className="absolute right-0 p-1 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-200 transition-colors"
-                                title="Xóa tìm kiếm"
-                            >
-                                <X size={16} />
-                            </button>
-                        )}
+                <div className="p-4 border-b bg-slate-50 flex flex-col gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Search size={18} className="text-slate-400" />
+                        <div className="relative w-full flex items-center">
+                            <input 
+                                type="text" 
+                                value={filterText}
+                                onChange={(e) => setFilterText(e.target.value)}
+                                placeholder="Tìm kiếm công trình..."
+                                className="bg-transparent outline-none font-bold text-slate-700 w-full pr-8"
+                                list="dashboard-projects"
+                            />
+                            {filterText && (
+                                <button 
+                                    onClick={() => setFilterText('')}
+                                    className="absolute right-0 p-1 text-slate-400 hover:text-red-500 rounded-full hover:bg-slate-200 transition-colors"
+                                    title="Xóa tìm kiếm"
+                                >
+                                    <X size={16} />
+                                </button>
+                            )}
+                        </div>
                     </div>
+                    {hiddenCols.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                            <span className="text-xs text-slate-500 font-medium">Cột đã ẩn:</span>
+                            {hiddenCols.map(colId => (
+                                <span key={colId} onClick={() => toggleCol(colId)} className="inline-flex items-center gap-1 bg-white border border-slate-200 shadow-sm text-slate-700 text-[10px] px-2 py-1 rounded-md font-bold cursor-pointer hover:bg-slate-100 transition-colors">
+                                    {COLUMN_NAMES[colId]} <span className="text-slate-400 hover:text-red-500 font-bold ml-1">×</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                     <datalist id="dashboard-projects">
                         {filteredDashboardData.map(row => (
                             <option key={row.project} value={row.project} />
@@ -139,20 +171,56 @@ export default function Dashboard({
                                 <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-40 min-w-[100px] max-w-[110px] lg:min-w-[150px] lg:max-w-[250px] whitespace-normal break-words align-middle" rowSpan="2">
                                     Công trình
                                 </th>
-                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px]" rowSpan="2">Giá trị HĐ<br />(Trước thuế)</th>
-                                <th className="p-3 border-b border-r border-slate-200 font-black text-right text-orange-600 bg-orange-50 align-top min-w-[120px]" rowSpan="2">Công Nợ<br />Cần Thu</th>
-                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-red-600 bg-red-50 align-top min-w-[120px]" rowSpan="2">Tổng Chi Phí</th>
-                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-emerald-700 bg-emerald-50 align-top min-w-[120px]" rowSpan="2">Thực nhận<br/>các đợt</th>
-                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-teal-700 bg-teal-50 align-top min-w-[120px]" rowSpan="2">Tổng G.Trị<br/>Thực nhận</th>
-                                <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-indigo-700 bg-indigo-50 align-top min-w-[120px]" rowSpan="2">Lợi nhuận</th>
-                                <th className="p-3 border-b border-r-2 border-slate-300 font-bold text-right text-green-600 bg-green-50 align-top min-w-[120px]" rowSpan="2">Tổng SẢN LƯỢNG</th>
-                                {allPhases.length > 0 && <th className="p-2 border-b border-slate-200 font-bold text-center bg-yellow-50 text-yellow-800" colSpan={allPhases.length}>CHI TIẾT THU CÁC ĐỢT</th>}
-                                <th className="p-3 border-b border-l-2 border-slate-300 border-r border-slate-300 font-bold text-right text-amber-700 bg-amber-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />Tạm ứng</th>
-                                <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-cyan-700 bg-cyan-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />thu hồi tạm ứng</th>
-                                <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-violet-700 bg-violet-50 align-top min-w-[120px]" rowSpan="2">Giá trị<br />tiện ích</th>
-                                <th className="p-3 border-b border-slate-300 font-bold text-right text-pink-700 bg-pink-50 align-top min-w-[120px]" rowSpan="2">Chi phí<br />còn lại</th>
+                                {!hiddenCols.includes('contractValueAfterTax') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('contractValueAfterTax')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Giá trị HĐ<br />(Trước thuế)
+                                </th>}
+                                {!hiddenCols.includes('debtToCollect') && <th className="p-3 border-b border-r border-slate-200 font-black text-right text-orange-600 bg-orange-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('debtToCollect')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-orange-400 hover:text-red-500 transition-all p-1 bg-orange-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Công Nợ<br />Cần Thu
+                                </th>}
+                                {!hiddenCols.includes('totalExpense') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-red-600 bg-red-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('totalExpense')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-red-400 hover:text-red-700 transition-all p-1 bg-red-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Tổng Chi Phí
+                                </th>}
+                                {!hiddenCols.includes('totalPhaseReceived') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-emerald-700 bg-emerald-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('totalPhaseReceived')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-emerald-400 hover:text-red-500 transition-all p-1 bg-emerald-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Thực nhận<br/>các đợt
+                                </th>}
+                                {!hiddenCols.includes('totalReceivedAmount') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-teal-700 bg-teal-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('totalReceivedAmount')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-teal-400 hover:text-red-500 transition-all p-1 bg-teal-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Tổng G.Trị<br/>Thực nhận
+                                </th>}
+                                {!hiddenCols.includes('profit') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right text-indigo-700 bg-indigo-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('profit')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-indigo-400 hover:text-red-500 transition-all p-1 bg-indigo-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Lợi nhuận
+                                </th>}
+                                {!hiddenCols.includes('totalActualIncome') && <th className="p-3 border-b border-r-2 border-slate-300 font-bold text-right text-green-600 bg-green-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('totalActualIncome')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-green-400 hover:text-red-500 transition-all p-1 bg-green-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Tổng SẢN LƯỢNG
+                                </th>}
+                                {!hiddenCols.includes('phases') && allPhases.length > 0 && <th className="p-2 border-b border-slate-200 font-bold text-center bg-yellow-50 text-yellow-800 relative group" colSpan={allPhases.length}>
+                                    <button onClick={() => toggleCol('phases')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-yellow-600 hover:text-red-500 transition-all p-1 bg-yellow-100/50 rounded" title="Ẩn nhóm cột này"><EyeOff size={14} /></button>
+                                    CHI TIẾT THU CÁC ĐỢT
+                                </th>}
+                                {!hiddenCols.includes('advanceValue') && <th className="p-3 border-b border-l-2 border-slate-300 border-r border-slate-300 font-bold text-right text-amber-700 bg-amber-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('advanceValue')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-amber-400 hover:text-red-500 transition-all p-1 bg-amber-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Giá trị<br />Tạm ứng
+                                </th>}
+                                {!hiddenCols.includes('recoveredAdvance') && <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-cyan-700 bg-cyan-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('recoveredAdvance')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-cyan-400 hover:text-red-500 transition-all p-1 bg-cyan-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Giá trị<br />thu hồi tạm ứng
+                                </th>}
+                                {!hiddenCols.includes('utilityValue') && <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-violet-700 bg-violet-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('utilityValue')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-violet-400 hover:text-red-500 transition-all p-1 bg-violet-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Giá trị<br />tiện ích
+                                </th>}
+                                {!hiddenCols.includes('remainingCost') && <th className="p-3 border-b border-slate-300 font-bold text-right text-pink-700 bg-pink-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('remainingCost')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-pink-400 hover:text-red-500 transition-all p-1 bg-pink-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Chi phí<br />còn lại
+                                </th>}
                             </tr>
-                            {allPhases.length > 0 && (
+                            {!hiddenCols.includes('phases') && allPhases.length > 0 && (
                                 <tr className="bg-yellow-50 text-slate-600">
                                     {allPhases.map(phase => (<th key={phase} className="p-2 border-b border-r border-slate-200 text-center font-bold text-xs min-w-[100px] bg-yellow-50">{phase}</th>))}
                                 </tr>
@@ -166,14 +234,14 @@ export default function Dashboard({
                                         onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(row.project)}
                                         title="Nhấp đúp để xem chi tiết công trình"
                                     >{row.project}</td>
-                                    <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums">{formatCurrency(row.contractValueAfterTax)}</td>
-                                    <td className="p-3 text-right font-black border-b border-r border-slate-100 text-[14px] text-orange-600 bg-orange-50/30 tabular-nums">{formatCurrency(row.debtToCollect)}</td>
-                                    <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-red-600 bg-red-50/30 tabular-nums">{formatCurrency(row.totalExpense)}</td>
-                                    <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-emerald-700 bg-emerald-50/30 tabular-nums">{formatCurrency(row.totalPhaseReceived || 0)}</td>
-                                    <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-teal-700 bg-teal-50/30 tabular-nums">{formatCurrency(row.totalReceivedAmount)}</td>
-                                    <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-indigo-700 bg-indigo-50/30 tabular-nums">{formatCurrency(row.profit)}</td>
-                                    <td className="p-3 text-right font-bold border-b border-r-2 border-slate-200 text-[14px] text-green-600 bg-green-50/30 tabular-nums">{formatCurrency(row.totalActualIncome)}</td>
-                                    {allPhases.map(phase => {
+                                    {!hiddenCols.includes('contractValueAfterTax') && <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums">{formatCurrency(row.contractValueAfterTax)}</td>}
+                                    {!hiddenCols.includes('debtToCollect') && <td className="p-3 text-right font-black border-b border-r border-slate-100 text-[14px] text-orange-600 bg-orange-50/30 tabular-nums">{formatCurrency(row.debtToCollect)}</td>}
+                                    {!hiddenCols.includes('totalExpense') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-red-600 bg-red-50/30 tabular-nums">{formatCurrency(row.totalExpense)}</td>}
+                                    {!hiddenCols.includes('totalPhaseReceived') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-emerald-700 bg-emerald-50/30 tabular-nums">{formatCurrency(row.totalPhaseReceived || 0)}</td>}
+                                    {!hiddenCols.includes('totalReceivedAmount') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-teal-700 bg-teal-50/30 tabular-nums">{formatCurrency(row.totalReceivedAmount)}</td>}
+                                    {!hiddenCols.includes('profit') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-indigo-700 bg-indigo-50/30 tabular-nums">{formatCurrency(row.profit)}</td>}
+                                    {!hiddenCols.includes('totalActualIncome') && <td className="p-3 text-right font-bold border-b border-r-2 border-slate-200 text-[14px] text-green-600 bg-green-50/30 tabular-nums">{formatCurrency(row.totalActualIncome)}</td>}
+                                    {!hiddenCols.includes('phases') && allPhases.map(phase => {
                                         const pTotal = row.phases[phase]?.total || 0;
                                         const pPaid = row.phases[phase]?.paid || 0;
                                         const pActual = row.phases[phase]?.actual_received || 0;
@@ -199,8 +267,8 @@ export default function Dashboard({
                                             </td>
                                         );
                                     })}
-                                    <td className="p-3 text-right border-b border-l-2 border-slate-200 border-r border-slate-200 font-bold text-amber-700 bg-amber-50/30 text-[14px] tabular-nums">{formatCurrency(row.advanceValue || 0)}</td>
-                                    <td 
+                                    {!hiddenCols.includes('advanceValue') && <td className="p-3 text-right border-b border-l-2 border-slate-200 border-r border-slate-200 font-bold text-amber-700 bg-amber-50/30 text-[14px] tabular-nums">{formatCurrency(row.advanceValue || 0)}</td>}
+                                    {!hiddenCols.includes('recoveredAdvance') && <td 
                                         className="p-3 text-right border-b border-r border-slate-200 bg-cyan-50/50 transition-colors hover:bg-cyan-100 cursor-pointer font-bold text-cyan-700 text-[14px] tabular-nums"
                                         onClick={() => {
                                             if (handleSaveRecoveredAdvance) {
@@ -210,8 +278,8 @@ export default function Dashboard({
                                         title="Nhấn để nhập"
                                     >
                                         {row.recoveredAdvance > 0 ? formatCurrency(row.recoveredAdvance) : <span className="text-cyan-300 text-[11px] font-normal italic">Nhập số...</span>}
-                                    </td>
-                                    <td 
+                                    </td>}
+                                    {!hiddenCols.includes('utilityValue') && <td 
                                         className="p-3 text-right border-b border-r border-slate-200 bg-violet-50/50 transition-colors hover:bg-violet-100 cursor-pointer font-bold text-violet-700 text-[14px] tabular-nums"
                                         onClick={() => {
                                             if (handleSaveUtilityValue) {
@@ -221,8 +289,8 @@ export default function Dashboard({
                                         title="Nhấn để nhập"
                                     >
                                         {row.utilityValue > 0 ? formatCurrency(row.utilityValue) : <span className="text-violet-300 text-[11px] font-normal italic">Nhập số...</span>}
-                                    </td>
-                                    <td 
+                                    </td>}
+                                    {!hiddenCols.includes('remainingCost') && <td 
                                         className="p-3 text-right border-b border-slate-200 bg-pink-50/50 transition-colors hover:bg-pink-100 cursor-pointer font-bold text-pink-700 text-[14px] tabular-nums"
                                         onClick={() => {
                                             if (handleSaveRemainingCost) {
@@ -232,27 +300,27 @@ export default function Dashboard({
                                         title="Nhấn để nhập"
                                     >
                                         {row.remainingCost > 0 ? formatCurrency(row.remainingCost) : <span className="text-pink-300 text-[11px] font-normal italic">Nhập số...</span>}
-                                    </td>
+                                    </td>}
                                 </tr>
                             ))}
                             <tr className="bg-slate-200 font-bold">
                                 <td className="p-3 sticky left-0 bg-slate-200 z-10">TỔNG CỘNG</td>
-                                <td className="p-3 text-right tabular-nums">{formatCurrency(computedTotals.contractValueAfterTax)}</td>
-                                <td className="p-3 text-right text-orange-600 tabular-nums">{formatCurrency(computedTotals.debtToCollect)}</td>
-                                <td className="p-3 text-right text-red-700 tabular-nums">{formatCurrency(computedTotals.totalExpense)}</td>
-                                <td className="p-3 text-right text-emerald-800 tabular-nums">{formatCurrency(computedTotals.totalPhaseReceived || 0)}</td>
-                                <td className="p-3 text-right text-teal-800 tabular-nums">{formatCurrency(computedTotals.totalReceivedAmount)}</td>
-                                <td className="p-3 text-right text-indigo-800 tabular-nums">{formatCurrency(computedTotals.profit)}</td>
-                                <td className="p-3 text-right text-green-700 tabular-nums">{formatCurrency(computedTotals.totalActualIncome)}</td>
-                                {allPhases.map(phase => (
+                                {!hiddenCols.includes('contractValueAfterTax') && <td className="p-3 text-right tabular-nums">{formatCurrency(computedTotals.contractValueAfterTax)}</td>}
+                                {!hiddenCols.includes('debtToCollect') && <td className="p-3 text-right text-orange-600 tabular-nums">{formatCurrency(computedTotals.debtToCollect)}</td>}
+                                {!hiddenCols.includes('totalExpense') && <td className="p-3 text-right text-red-700 tabular-nums">{formatCurrency(computedTotals.totalExpense)}</td>}
+                                {!hiddenCols.includes('totalPhaseReceived') && <td className="p-3 text-right text-emerald-800 tabular-nums">{formatCurrency(computedTotals.totalPhaseReceived || 0)}</td>}
+                                {!hiddenCols.includes('totalReceivedAmount') && <td className="p-3 text-right text-teal-800 tabular-nums">{formatCurrency(computedTotals.totalReceivedAmount)}</td>}
+                                {!hiddenCols.includes('profit') && <td className="p-3 text-right text-indigo-800 tabular-nums">{formatCurrency(computedTotals.profit)}</td>}
+                                {!hiddenCols.includes('totalActualIncome') && <td className="p-3 text-right text-green-700 tabular-nums">{formatCurrency(computedTotals.totalActualIncome)}</td>}
+                                {!hiddenCols.includes('phases') && allPhases.map(phase => (
                                     <td key={phase} className="p-2 text-right border-r border-slate-300">-</td>
                                 ))}
-                                <td className="p-3 text-right text-amber-800 bg-slate-300 border-l-2 border-slate-400 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.advanceValue || 0)}</td>
-                                <td className="p-3 text-right text-cyan-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.recoveredAdvance || 0)}</td>
-                                <td className="p-3 text-right text-violet-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.utilityValue || 0)}</td>
-                                <td className="p-3 text-right text-pink-800 bg-slate-300 border-slate-400 tabular-nums">
+                                {!hiddenCols.includes('advanceValue') && <td className="p-3 text-right text-amber-800 bg-slate-300 border-l-2 border-slate-400 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.advanceValue || 0)}</td>}
+                                {!hiddenCols.includes('recoveredAdvance') && <td className="p-3 text-right text-cyan-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.recoveredAdvance || 0)}</td>}
+                                {!hiddenCols.includes('utilityValue') && <td className="p-3 text-right text-violet-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.utilityValue || 0)}</td>}
+                                {!hiddenCols.includes('remainingCost') && <td className="p-3 text-right text-pink-800 bg-slate-300 border-slate-400 tabular-nums">
                                     {formatCurrency(computedTotals.remainingCost || 0)}
-                                </td>
+                                </td>}
                             </tr>
                         </tbody>
                     </table>

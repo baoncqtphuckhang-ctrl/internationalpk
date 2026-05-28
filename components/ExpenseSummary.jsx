@@ -1,11 +1,28 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { PieChart, Download, Copy, Search, Printer } from 'lucide-react';
+import { PieChart, Download, Copy, Search, Printer, EyeOff } from 'lucide-react';
 import { formatCurrency, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function ExpenseSummary({ projects, projectDetails = {}, transactions, handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
     const [filterText, setFilterText] = useState('');
+    const [hiddenProjects, setHiddenProjects] = useState([]);
+
+    const toggleHideProject = (projectName) => {
+        setHiddenProjects(prev => 
+            prev.includes(projectName) 
+                ? prev.filter(p => p !== projectName)
+                : [...prev, projectName]
+        );
+    };
+
+    const renderExpense = (val) => {
+        if (!val || val === 0) return '-';
+        if (val > 0) {
+            return <span className="text-red-500 font-bold">({formatCurrency(val)})</span>;
+        }
+        return <span className="text-green-600 font-bold">{formatCurrency(Math.abs(val))}</span>;
+    };
 
     const expenseMatrixData = useMemo(() => {
         return projects.map(p => {
@@ -22,15 +39,28 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
     }, [transactions, projects]);
 
     const filteredData = useMemo(() => {
-        return expenseMatrixData.filter(d => d.project.toLowerCase().includes(filterText.toLowerCase()));
-    }, [expenseMatrixData, filterText]);
+        return expenseMatrixData.filter(d => 
+            d.project.toLowerCase().includes(filterText.toLowerCase()) && 
+            !hiddenProjects.includes(d.project)
+        );
+    }, [expenseMatrixData, filterText, hiddenProjects]);
 
-    const totals = useMemo(() => {
+    const transposedRows = useMemo(() => {
+        return EXPENSE_CATEGORIES.map(cat => {
+            const row = { category: cat, total: 0 };
+            filteredData.forEach(d => {
+                row[d.project] = d[cat.code];
+                row.total += d[cat.code];
+            });
+            return row;
+        });
+    }, [filteredData]);
+
+    const transposedTotals = useMemo(() => {
         const t = { total: 0 };
-        EXPENSE_CATEGORIES.forEach(cat => {
-            const sum = filteredData.reduce((acc, row) => acc + row[cat.code], 0);
-            t[cat.code] = sum;
-            t.total += sum;
+        filteredData.forEach(d => {
+            t[d.project] = d.total;
+            t.total += d.total;
         });
         return t;
     }, [filteredData]);
@@ -78,51 +108,71 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
             </header>
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: 'calc(100vh - 220px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
-                <div className="p-4 border-b bg-slate-50 flex items-center gap-3 flex-shrink-0">
-                    <Search size={18} className="text-slate-400" />
-                    <input 
-                        type="text" 
-                        value={filterText}
-                        onChange={(e) => setFilterText(e.target.value)}
-                        placeholder="Tìm kiếm công trình..."
-                        className="bg-transparent outline-none font-bold text-slate-700 w-full"
-                    />
+                <div className="p-4 border-b bg-slate-50 flex flex-col gap-3 flex-shrink-0">
+                    <div className="flex items-center gap-3">
+                        <Search size={18} className="text-slate-400" />
+                        <input 
+                            type="text" 
+                            value={filterText}
+                            onChange={(e) => setFilterText(e.target.value)}
+                            placeholder="Tìm kiếm công trình..."
+                            className="bg-transparent outline-none font-bold text-slate-700 w-full"
+                        />
+                    </div>
+                    {hiddenProjects.length > 0 && (
+                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                            <span className="text-xs text-slate-500 font-medium">Đã ẩn:</span>
+                            {hiddenProjects.map(p => (
+                                <span key={p} onClick={() => toggleHideProject(p)} className="inline-flex items-center gap-1 bg-white border border-slate-200 shadow-sm text-slate-700 text-[10px] px-2 py-1 rounded-md font-bold cursor-pointer hover:bg-slate-100 transition-colors">
+                                    {p} <span className="text-slate-400 hover:text-red-500 font-bold ml-1">×</span>
+                                </span>
+                            ))}
+                        </div>
+                    )}
                 </div>
                 <div className="overflow-auto custom-scrollbar flex-1" style={{ overflowX: 'auto', overflowY: 'auto' }}>
                     <table id="expense-table" className="w-full text-left text-sm border-collapse min-w-[2000px]">
                         <thead>
                             <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wider">
-                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 bg-slate-100 z-20 min-w-[200px]">
-                                    Công trình
+                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-30 w-[160px] min-w-[160px] max-w-[160px]">
+                                    Chi tiết
                                 </th>
-                                <th className="p-3 border-b border-r border-slate-200 font-black text-red-600 text-right bg-red-50 min-w-[145px]">
-                                    TỔNG CHI PHÍ
-                                </th>
-                                {EXPENSE_CATEGORIES.map(cat => (
-                                    <th key={cat.code} className="p-3 border-b border-r border-slate-200 font-bold text-right min-w-[120px]" title={cat.name}>
-                                        {cat.code}
-                                        <div className="text-[9px] text-slate-400 font-normal normal-case mt-0.5">{cat.name}</div>
+                                {filteredData.map(d => (
+                                    <th 
+                                        key={d.project} 
+                                        className="p-3 border-b border-r border-slate-200 font-bold text-right min-w-[150px] max-w-[200px] hover:bg-slate-200 transition-colors group relative sticky top-0 bg-slate-100 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                                    >
+                                        <div className="flex items-center justify-end gap-1">
+                                            <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all absolute left-2">
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); toggleHideProject(d.project); }}
+                                                    className="p-1 text-slate-400 hover:text-red-500 rounded focus:opacity-100 bg-white shadow-sm border border-slate-200"
+                                                    title="Ẩn công trình này"
+                                                >
+                                                    <EyeOff size={14} />
+                                                </button>
+                                            </div>
+                                            <span className="cursor-pointer truncate ml-14" title="Nhấp đúp để xem chi tiết công trình" onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(d.project)}>
+                                                {d.project}
+                                            </span>
+                                        </div>
                                     </th>
                                 ))}
                             </tr>
                         </thead>
                         <tbody>
-                            {filteredData.map((row, idx) => (
+                            {transposedRows.map((row) => (
                                 <tr 
-                                    key={row.project} 
-                                    className={`border-b transition cursor-pointer group bg-white odd:bg-slate-50/50 hover:bg-blue-50/50`}
-                                    onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(row.project)}
-                                    title="Nhấp đúp để xem chi tiết công trình"
+                                    key={row.category.code} 
+                                    className={`border-b transition bg-white odd:bg-slate-50 hover:bg-blue-50`}
                                 >
-                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 shadow-[2px_0_5px_-2px_rgba(0,0,0,0.1)]">
-                                        {row.project}
+                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 w-[160px] min-w-[160px] max-w-[160px]" title={row.category.name}>
+                                        {row.category.code}
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{row.category.name}</div>
                                     </td>
-                                    <td className="p-3 border-r border-slate-100 font-black text-red-600 text-right bg-red-50/30">
-                                        {formatCurrency(row.total)}
-                                    </td>
-                                    {EXPENSE_CATEGORIES.map(cat => (
-                                        <td key={cat.code} className="p-3 border-r border-slate-100 text-right text-slate-600">
-                                            {row[cat.code] !== 0 ? formatCurrency(row[cat.code]) : '-'}
+                                    {filteredData.map(d => (
+                                        <td key={d.project} data-excel-value={row[d.project] !== 0 ? -row[d.project] : ''} className="p-3 border-r border-slate-100 text-right min-w-[150px]">
+                                            {renderExpense(row[d.project])}
                                         </td>
                                     ))}
                                 </tr>
@@ -130,10 +180,11 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                         </tbody>
                         <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30">
                             <tr>
-                                <td className="p-3 border-r border-slate-700 sticky left-0 bg-slate-800 z-40 uppercase">TỔNG CỘNG</td>
-                                <td className="p-3 border-r border-slate-700 text-right text-red-400 font-black bg-slate-900/50">{formatCurrency(totals.total)}</td>
-                                {EXPENSE_CATEGORIES.map(cat => (
-                                    <td key={cat.code} className="p-3 border-r border-slate-700 text-right">{totals[cat.code] !== 0 ? formatCurrency(totals[cat.code]) : '-'}</td>
+                                <td className="p-3 border-r border-slate-700 sticky left-0 bg-slate-800 z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">TỔNG CHI PHÍ</td>
+                                {filteredData.map(d => (
+                                    <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-3 border-r border-slate-700 text-right min-w-[150px]">
+                                        {renderExpense(transposedTotals[d.project])}
+                                    </td>
                                 ))}
                             </tr>
                         </tfoot>
