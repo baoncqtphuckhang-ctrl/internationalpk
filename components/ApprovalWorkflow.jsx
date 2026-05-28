@@ -5,6 +5,30 @@ import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, F
 import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import ConfirmModal from './ConfirmModal';
 
+const BANK_OPTIONS = [
+    { value: 'VCB', label: 'VCB - Vietcombank' },
+    { value: 'TCB', label: 'TCB - Techcombank' },
+    { value: 'MB', label: 'MB - MBBank' },
+    { value: 'BIDV', label: 'BIDV - BIDV' },
+    { value: 'ICB', label: 'ICB - VietinBank' },
+    { value: 'VPB', label: 'VPB - VPBank' },
+    { value: 'ACB', label: 'ACB - ACB' },
+    { value: 'STB', label: 'STB - Sacombank' },
+    { value: 'TPB', label: 'TPB - TPBank' },
+    { value: 'VIB', label: 'VIB - VIB' },
+    { value: 'HDB', label: 'HDB - HDBank' },
+    { value: 'SHB', label: 'SHB - SHB' },
+    { value: 'EIB', label: 'EIB - Eximbank' },
+    { value: 'MSB', label: 'MSB - MSB' },
+    { value: 'OCB', label: 'OCB - OCB' },
+    { value: 'ABB', label: 'ABB - ABBank' },
+    { value: 'VBA', label: 'VBA - Agribank' },
+    { value: 'LPB', label: 'LPB - LPBank' },
+    { value: 'NAB', label: 'NAB - Nam A Bank' },
+    { value: 'KLB', label: 'KLB - Kienlongbank' },
+    { value: 'BVB', label: 'BVB - BaoViet Bank' }
+];
+
 const getTransferContent = (data) => {
     let content = data.project || '';
     if (data.docType === 'DNTUCH' || data.docType === 'TTL') {
@@ -392,7 +416,7 @@ export default function ApprovalWorkflow({
                                 {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? (
                                     <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Tên đối tượng</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center">Tên TK</th><th className="border border-black p-1 text-center w-32">Số TK</th><th className="border border-black p-1 text-center w-24">Ngân hàng</th></tr>
                                 ) : (
-                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center w-48">Mã chi</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
+                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center w-28">Mã chi</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
                                 )}
                             </thead>
                             <tbody>
@@ -412,7 +436,10 @@ export default function ApprovalWorkflow({
                                                 <td className="border border-black p-1"><input type="text" value={item.bankAccountNumber || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountNumber', e.target.value)} className="w-full outline-none bg-transparent font-bold" placeholder="SỐ TK" /></td>
                                                 <td className="border border-black p-1 relative">
                                                     <div className="flex items-center gap-1">
-                                                        <input type="text" value={item.bankName || ''} onChange={(e) => handleDnttItemChange(index, 'bankName', e.target.value)} className="w-full outline-none bg-transparent" placeholder="VCB" />
+                                                        <select value={item.bankName || ''} onChange={(e) => handleDnttItemChange(index, 'bankName', e.target.value)} className="w-full outline-none bg-transparent text-[13px] text-slate-700">
+                                                            <option value="">-- Chọn NH --</option>
+                                                            {BANK_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.value}</option>)}
+                                                        </select>
                                                         <button onClick={() => removeDnttItem(index)} className="text-red-400 hover:text-red-600 opacity-0 group-hover/row:opacity-100 flex-shrink-0"><X size={16} /></button>
                                                     </div>
                                                 </td>
@@ -442,8 +469,13 @@ export default function ApprovalWorkflow({
                             </div>
                             <div className="overflow-x-auto">
                                 <table className={`w-full border-collapse border border-black mb-4 ${dnttData.paymentMethod === 'tien_mat' ? 'opacity-30' : ''} min-w-[650px]`}>
-                                    <thead><tr className="bg-slate-50 text-center font-bold"><th className="border border-black p-1 w-1/4">Tên chủ tài khoản</th><th className="border border-black p-1 w-1/4">Số tài khoản</th><th className="border border-black p-1 w-1/4">Ngân hàng (Ví dụ: VCB, MB...)</th><th className="border border-black p-1 w-1/4">Chi nhánh</th></tr></thead>
-                                    <tbody><tr><td className="border border-black p-1"><input type="text" name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center uppercase" placeholder="NGUYEN VAN A" /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" placeholder="123456789" /></td><td className="border border-black p-1"><input type="text" name="bankName" value={dnttData.bankName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" placeholder="VCB" /></td><td className="border border-black p-1"><input type="text" name="bankBranch" value={dnttData.bankBranch} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td></tr></tbody>
+                                    <thead><tr className="bg-slate-50 text-center font-bold"><th className="border border-black p-1 w-1/4">Tên chủ tài khoản</th><th className="border border-black p-1 w-1/4">Số tài khoản</th><th className="border border-black p-1 w-1/4">Ngân hàng</th><th className="border border-black p-1 w-1/4">Chi nhánh</th></tr></thead>
+                                    <tbody><tr><td className="border border-black p-1"><input type="text" name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center uppercase" placeholder="NGUYEN VAN A" /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" placeholder="123456789" /></td><td className="border border-black p-1">
+                                        <select name="bankName" value={dnttData.bankName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center text-[13px] text-slate-700">
+                                            <option value="">-- Chọn ngân hàng --</option>
+                                            {BANK_OPTIONS.map(b => <option key={b.value} value={b.value}>{b.label}</option>)}
+                                        </select>
+                                    </td><td className="border border-black p-1"><input type="text" name="bankBranch" value={dnttData.bankBranch} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center" /></td></tr></tbody>
                                 </table>
                             </div>
                             {dnttData.paymentMethod === 'chuyen_khoan' && dnttData.bankAccountNumber && dnttData.bankName && (
