@@ -4,7 +4,7 @@ import React, { useState, useMemo } from 'react';
 import { PieChart, Download, Copy, Search, Printer, EyeOff } from 'lucide-react';
 import { formatCurrency, EXPENSE_CATEGORIES } from '@/lib/utils';
 
-export default function ExpenseSummary({ projects, projectDetails = {}, transactions, handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
+export default function ExpenseSummary({ projects, projectDetails = {}, transactions, dashboardData = [], handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
     const [filterText, setFilterText] = useState('');
     const [hiddenProjects, setHiddenProjects] = useState([]);
 
@@ -186,6 +186,34 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         {renderExpense(transposedTotals[d.project])}
                                     </td>
                                 ))}
+                            </tr>
+                            <tr className="bg-emerald-800">
+                                <td className="p-3 border-r border-slate-700 sticky left-0 bg-emerald-800 z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">TỔNG GT THỰC NHẬN</td>
+                                {filteredData.map(d => {
+                                    const projData = dashboardData.find(item => item.project === d.project);
+                                    const totalReceived = projData ? projData.totalReceivedAmount : 0;
+                                    return (
+                                        <td key={d.project} data-excel-value={totalReceived !== 0 ? totalReceived : ''} className="p-3 border-r border-slate-700 text-right min-w-[150px]">
+                                            {totalReceived !== 0 ? <span className="text-emerald-100 font-bold">{formatCurrency(totalReceived)}</span> : '-'}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                            <tr className="bg-indigo-900">
+                                <td className="p-3 border-r border-slate-700 sticky left-0 bg-indigo-900 z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">LỢI NHUẬN</td>
+                                {filteredData.map(d => {
+                                    const projData = dashboardData.find(item => item.project === d.project);
+                                    const profit = projData ? projData.profit : 0;
+                                    return (
+                                        <td key={d.project} data-excel-value={profit !== 0 ? profit : ''} className="p-3 border-r border-slate-700 text-right min-w-[150px]">
+                                            {profit !== 0 ? (
+                                                <span className={`font-bold ${profit > 0 ? 'text-indigo-100' : 'text-red-300'}`}>
+                                                    {profit > 0 ? formatCurrency(profit) : `(${formatCurrency(Math.abs(profit))})`}
+                                                </span>
+                                            ) : '-'}
+                                        </td>
+                                    );
+                                })}
                             </tr>
                         </tfoot>
                     </table>

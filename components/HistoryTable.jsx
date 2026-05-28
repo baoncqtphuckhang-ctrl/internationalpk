@@ -28,7 +28,7 @@ function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAl
             {isOpen && (
                 <>
                     <div className="fixed inset-0 z-[60]" onClick={() => setIsOpen(false)}></div>
-                    <div className="absolute left-0 mt-2 w-64 bg-white border border-slate-300 shadow-2xl rounded-lg z-[70] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+                    <div className="absolute left-0 mt-2 min-w-[300px] w-max max-w-[85vw] bg-white border border-slate-300 shadow-2xl rounded-lg z-[70] overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
                         {/* Sort Options */}
                         <div className="p-1 border-b border-slate-100">
                             <button onClick={() => { onSort('asc'); setIsOpen(false); }} className="w-full flex items-center gap-3 px-3 py-2 text-xs text-slate-700 hover:bg-blue-50 rounded transition">
@@ -75,7 +75,7 @@ function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAl
                                         onChange={() => onToggle(opt)}
                                         className="w-4 h-4 rounded text-blue-600 border-slate-300 focus:ring-blue-500"
                                     />
-                                    <span className="text-xs text-slate-600 flex-1 truncate">{opt || '(Trống)'}</span>
+                                    <span className="text-xs text-slate-600 flex-1 break-words whitespace-normal leading-tight">{opt || '(Trống)'}</span>
                                     <button 
                                         onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClear(); onToggle(opt); }}
                                         className="text-[10px] text-blue-500 opacity-0 group-hover:opacity-100 hover:underline"

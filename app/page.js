@@ -476,7 +476,17 @@ export default function Home() {
             Array.from(row.children).forEach(cell => {
                 const excelVal = cell.getAttribute('data-excel-value');
                 if (excelVal !== null) {
-                    cell.innerText = excelVal;
+                    if (excelVal === '') {
+                        cell.innerText = '-';
+                    } else {
+                        const num = Number(excelVal);
+                        if (!isNaN(num)) {
+                            // Format with vi-VN to get standard thousand separators (e.g. -208.185.294)
+                            cell.innerText = new Intl.NumberFormat('vi-VN').format(num);
+                        } else {
+                            cell.innerText = excelVal;
+                        }
+                    }
                 }
                 
                 if (cell.tagName === 'TH') {
@@ -1073,7 +1083,7 @@ export default function Home() {
 
                 {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleSaveRecoveredAdvance={handleSaveRecoveredAdvance} handleSaveUtilityValue={handleSaveUtilityValue} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
+                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
                 {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} />}
                 
