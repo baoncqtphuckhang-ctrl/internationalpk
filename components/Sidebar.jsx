@@ -24,6 +24,7 @@ export default function Sidebar({
     canManageUsers,
     canViewApprovals,
     dnttList,
+    partnerDebts,
     STATUSES,
     onDeleteProject,
     handleExportBackup,
@@ -47,13 +48,15 @@ export default function Sidebar({
         return false;
     }).length || 0;
 
+    const pendingDebtsCount = partnerDebts?.filter(d => d.status === 'CHƯA XONG').length || 0;
+
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
         { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports },
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
-        { id: 'partner-debts', label: 'Công Nợ Tổ Đội', icon: ClipboardList, show: canInputData || isThuKy },
+        { id: 'partner-debts', label: 'Công Nợ Tổ Đội', icon: ClipboardList, show: canInputData || isThuKy, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
         { id: 'material-orders', label: 'Đặt Vật Tư', icon: ClipboardList, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'manage-material-orders', label: 'Quản Lý Đơn Vật Tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt', label: 'Lập DNTT / DNTƯ', icon: FileSignature, show: canCreateDNTT && !isThuKy, locked: systemConfig?.create_dntt && currentUser?.role !== 'ADMIN' },

@@ -60,6 +60,11 @@ export default function PartnerDebts({
         });
     };
 
+    const removeAccents = (str) => {
+        if (!str) return '';
+        return str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D');
+    };
+
     const filteredDebts = useMemo(() => {
         if (!debts) return [];
         return debts.filter(d => {
@@ -67,11 +72,15 @@ export default function PartnerDebts({
             if (filterStatus !== 'ALL' && d.status !== filterStatus) return false;
             
             if (searchTerm) {
-                const term = searchTerm.toLowerCase();
+                const term = removeAccents(searchTerm.toLowerCase());
+                const pName = removeAccents((d.partner_name || '').toLowerCase());
+                const pProject = removeAccents((d.project_name || '').toLowerCase());
+                const pNote = removeAccents((d.note || '').toLowerCase());
+                
                 return (
-                    d.partner_name.toLowerCase().includes(term) ||
-                    d.project_name.toLowerCase().includes(term) ||
-                    (d.note && d.note.toLowerCase().includes(term))
+                    pName.includes(term) ||
+                    pProject.includes(term) ||
+                    pNote.includes(term)
                 );
             }
             return true;

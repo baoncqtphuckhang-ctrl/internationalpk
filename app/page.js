@@ -931,6 +931,7 @@ export default function Home() {
     const utilityValues = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'UTILITY_VALUE'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
+    const allowedPartnerDebts = useMemo(() => partnerDebts.filter(d => assignedProjectNames.includes(d.project_name)), [partnerDebts, assignedProjectNames]);
 
     const allPhases = useMemo(() => Array.from(new Set(allowedIncomes.map(i => i.phase))).sort((a, b) => {
         const numA = parseInt(a.match(/\d+/) || [0], 10);
@@ -1051,6 +1052,7 @@ export default function Home() {
                 canManageUsers={canManageUsers}
                 canViewApprovals={canViewApprovals}
                 dnttList={allowedDnttList}
+                partnerDebts={allowedPartnerDebts}
                 STATUSES={STATUSES}
                 onDeleteProject={handleDeleteProject}
                 systemConfig={systemConfig}
@@ -1089,7 +1091,7 @@ export default function Home() {
                 
                 {activeTab === 'input' && <InputForm projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} />}
                 
-                {activeTab === 'partner-debts' && <PartnerDebts debts={partnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
+                {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals') && (
                     <ApprovalWorkflow 

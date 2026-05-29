@@ -183,8 +183,9 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
             const debts = [];
             if (mode === 'BOTH') {
                 let partnerName = data.recipient || 'Đối tác/Nhà cung cấp';
-                if (data.code === '6418') partnerName = 'Nhân sự (Bảo hiểm)';
-                else if (data.code === '6413') partnerName = 'Công nhân (Hồ sơ)';
+                let debtNote = `Thu lại - ${data.note || ''}`;
+                if (data.code === '6418') debtNote = `Thu lại (Bảo hiểm) - ${data.note || ''}`;
+                else if (data.code === '6413') debtNote = `Thu lại (Hồ sơ) - ${data.note || ''}`;
 
                 debts.push({
                     project_name: data.project_name,
@@ -192,7 +193,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                     debt_type: 'CẦN THU',
                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
                     status: thuStatus,
-                    note: `Thu lại - ${data.note || ''}`
+                    note: debtNote
                 });
             }
             
