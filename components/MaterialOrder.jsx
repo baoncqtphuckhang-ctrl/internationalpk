@@ -81,6 +81,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectFilter, setSelectedProjectFilter] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+    const [isCustomCompany, setIsCustomCompany] = useState(false);
 
     // Config state
     const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
@@ -97,7 +98,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             order_date: new Date().toISOString().split('T')[0],
             address: firstProj?.address || 'BÌNH HÒA, TP HCM',
             category: 'THI CÔNG SƠN NƯỚC',
-            company: 'CÔNG TY CỔ PHẦN XÂY DỰNG C - CONSTRUCTION',
+            company: '',
             recipient: (firstProj?.cht_name && firstProj?.cht_phone)
                 ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
                 : 'VÕ NGỌC LÂM (SĐT: 033 2620148)',
@@ -343,6 +344,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             recipient: formData.recipient,
                             project: formData.project_name,
                             paymentMethod: 'chuyen_khoan',
+                            orderPhase: formData.order_phase,
                             items: itemsList
                         })
                     };
@@ -441,7 +443,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             order_date: new Date().toISOString().split('T')[0],
             address: address,
             category: 'THI CÔNG SƠN NƯỚC',
-            company: 'CÔNG TY CỔ PHẦN XÂY DỰNG C - CONSTRUCTION',
+            company: '',
             recipient: recipient,
             categories: template,
             show_signature: true
@@ -902,13 +904,15 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                 >
                                                     <Edit3 size={18} />
                                                 </button>
-                                                <button 
-                                                    onClick={() => handleDelete(order.id)}
-                                                    className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition"
-                                                    title="Xóa đơn hàng"
-                                                >
-                                                    <Trash2 size={18} />
-                                                </button>
+                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                    <button 
+                                                        onClick={() => handleDelete(order.id)}
+                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition"
+                                                        title="Xóa đơn hàng"
+                                                    >
+                                                        <Trash2 size={18} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     </div>
@@ -1164,12 +1168,66 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Đơn vị đặt hàng (Công ty)</label>
-                                <input 
-                                    type="text"
-                                    value={formData.company}
-                                    onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                                <select 
+                                    value={
+                                        isCustomCompany ? "custom" : (
+                                            [
+                                                "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
+                                                "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
+                                                "Công ty TNHH Sơn Jotun Việt Nam",
+                                                "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
+                                                "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
+                                                "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
+                                                "CÔNG TY CP NAM VIỆT ÚC",
+                                                "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
+                                                "CÔNG TY TNHH SƠN NGHĨA PHÁT",
+                                                ""
+                                            ].includes(formData.company) ? formData.company : "custom"
+                                        )
+                                    }
+                                    onChange={(e) => {
+                                        if (e.target.value === 'custom') {
+                                            setIsCustomCompany(true);
+                                            setFormData({ ...formData, company: '' });
+                                        } else {
+                                            setIsCustomCompany(false);
+                                            setFormData({ ...formData, company: e.target.value });
+                                        }
+                                    }}
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-medium text-slate-800 transition"
-                                />
+                                >
+                                    <option value="">-- Chọn đơn vị đặt hàng --</option>
+                                    <option value="CÔNG TY TNHH AKZO NOBEL VIỆT NAM">CÔNG TY TNHH AKZO NOBEL VIỆT NAM</option>
+                                    <option value="CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI">CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI</option>
+                                    <option value="Công ty TNHH Sơn Jotun Việt Nam">Công ty TNHH Sơn Jotun Việt Nam</option>
+                                    <option value="CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN">CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN</option>
+                                    <option value="CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM">CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM</option>
+                                    <option value="CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1">CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1</option>
+                                    <option value="CÔNG TY CP NAM VIỆT ÚC">CÔNG TY CP NAM VIỆT ÚC</option>
+                                    <option value="CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT">CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT</option>
+                                    <option value="CÔNG TY TNHH SƠN NGHĨA PHÁT">CÔNG TY TNHH SƠN NGHĨA PHÁT</option>
+                                    <option value="custom">Khác (Nhập tay)...</option>
+                                </select>
+                                {isCustomCompany || ![
+                                    "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
+                                    "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
+                                    "Công ty TNHH Sơn Jotun Việt Nam",
+                                    "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
+                                    "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
+                                    "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
+                                    "CÔNG TY CP NAM VIỆT ÚC",
+                                    "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
+                                    "CÔNG TY TNHH SƠN NGHĨA PHÁT",
+                                    ""
+                                ].includes(formData.company) ? (
+                                    <input 
+                                        type="text"
+                                        value={formData.company}
+                                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                                        placeholder="Nhập tên đơn vị đặt hàng khác..."
+                                        className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
+                                    />
+                                ) : null}
                             </div>
 
                             <div className="space-y-2">
@@ -1315,8 +1373,13 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                         <td className="border border-black p-2">
                                                             <input 
                                                                 type="number"
+                                                                min="0"
                                                                 value={item.quantity}
-                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'quantity', e.target.value === '' ? '' : parseInt(e.target.value))}
+                                                                onChange={(e) => {
+                                                                    let val = e.target.value === '' ? '' : parseInt(e.target.value);
+                                                                    if (val !== '' && val < 0) val = 0;
+                                                                    handleItemChange(catIdx, itemIdx, 'quantity', val);
+                                                                }}
                                                                 className="w-full outline-none text-right font-bold bg-transparent text-slate-900"
                                                                 placeholder="-"
                                                             />

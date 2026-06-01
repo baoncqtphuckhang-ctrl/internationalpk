@@ -380,19 +380,21 @@ export default function HistoryTable({
                                             >
                                                 <Edit size={14} />
                                             </button>
-                                            <button
-                                                onClick={() => {
-                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
-                                                    openConfirm(
-                                                        `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
-                                                        () => handleDelete(t.id)
-                                                    );
-                                                }}
-                                                title="Xóa dòng này"
-                                                className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
+                                            {isAdmin && (
+                                                <button
+                                                    onClick={() => {
+                                                        if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
+                                                        openConfirm(
+                                                            `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
+                                                            () => handleDelete(t.id)
+                                                        );
+                                                    }}
+                                                    title="Xóa dòng này"
+                                                    className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

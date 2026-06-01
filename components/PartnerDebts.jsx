@@ -290,7 +290,7 @@ export default function PartnerDebts({
                                                         <Clock size={16} />
                                                     </button>
                                                 )}
-                                                {isAdminOrManager && (
+                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
                                                     <button 
                                                         onClick={() => {
                                                             setConfirmModal({

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
-export default function ExpectedInvoices({ projects, projectDetails }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -358,9 +358,11 @@ export default function ExpectedInvoices({ projects, projectDetails }) {
                                                 <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa">
                                                     <Edit2 size={16} />
                                                 </button>
-                                                <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa">
-                                                    <Trash2 size={16} />
-                                                </button>
+                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                    <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa">
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                )}
                                             </div>
                                         </td>
                                     </tr>

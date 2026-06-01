@@ -32,7 +32,9 @@ export default function Sidebar({
     onOpenSystemConfig
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+    const [isProjectsMenuOpen, setIsProjectsMenuOpen] = useState(false);
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
+    const [deletePassword, setDeletePassword] = useState('');
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
     
@@ -189,52 +191,70 @@ export default function Sidebar({
                     )}
 
                     <div className="pt-6 pb-2 space-y-1 border-t border-slate-800 mt-4">
-                        <p className="text-[10px] text-slate-600 uppercase font-black px-4 tracking-widest mb-2">Công Trình</p>
-                        <div className="space-y-1">
-                            {projects.map(p => (
-                                <div key={p.id} className="flex flex-col">
-                                    {deleteProjectConfirmName === p.name ? (
-                                        <div className="mt-1 mx-3 p-3 bg-slate-800 border border-red-900/50 rounded-xl animate-in fade-in">
-                                            <p className="text-xs text-red-400 mb-3 font-bold">Xóa dữ liệu công trình này?</p>
-                                            <div className="flex gap-2">
-                                                <button onClick={() => { onDeleteProject(p.name); setDeleteProjectConfirmName(null); }} className="flex-1 bg-red-600/20 text-red-500 hover:bg-red-600 hover:text-white py-1.5 rounded-lg text-xs font-bold transition">Xóa</button>
-                                                <button onClick={() => setDeleteProjectConfirmName(null)} className="flex-1 bg-slate-700 text-slate-300 hover:bg-slate-600 py-1.5 rounded-lg text-xs font-bold transition">Hủy</button>
+                        <button 
+                            onClick={() => setIsProjectsMenuOpen(!isProjectsMenuOpen)}
+                            className="w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group hover:bg-slate-800 text-slate-400 hover:text-slate-200 uppercase mb-1"
+                        >
+                            <span className="text-sm">Công trình</span>
+                            <ChevronRight size={16} className={`transition-transform duration-200 ${isProjectsMenuOpen ? 'rotate-90' : ''}`} />
+                        </button>
+                        
+                        {isProjectsMenuOpen && (
+                            <div className="space-y-1 pl-2">
+                                {projects.map(p => (
+                                    <div key={p.id} className="flex flex-col">
+                                        {deleteProjectConfirmName === p.name ? (
+                                            <div className="mt-1 mx-3 p-3 bg-slate-800 border border-red-900/50 rounded-xl animate-in fade-in">
+                                                <p className="text-xs text-red-400 mb-2 font-bold">Nhập mật khẩu để xóa:</p>
+                                                <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-red-500 mb-3" placeholder="Mật khẩu..." />
+                                                <div className="flex gap-2">
+                                                    <button onClick={() => { 
+                                                        if (deletePassword === '123456') {
+                                                            onDeleteProject(p.name); 
+                                                            setDeleteProjectConfirmName(null); 
+                                                            setDeletePassword('');
+                                                        } else {
+                                                            alert('Mật khẩu không đúng!');
+                                                        }
+                                                    }} className="flex-1 bg-red-600/20 text-red-500 hover:bg-red-600 hover:text-white py-1.5 rounded-lg text-xs font-bold transition">Xác nhận</button>
+                                                    <button onClick={() => { setDeleteProjectConfirmName(null); setDeletePassword(''); }} className="flex-1 bg-slate-700 text-slate-300 hover:bg-slate-600 py-1.5 rounded-lg text-xs font-bold transition">Hủy</button>
+                                                </div>
                                             </div>
-                                        </div>
-                                    ) : (
-                                        <div
-                                            className={`w-full flex items-center justify-between p-3.5 rounded-xl transition group cursor-pointer ${
-                                                selectedProject === p.name && activeTab === 'project-detail'
-                                                ? 'bg-slate-800 text-blue-400 border border-slate-700/50 shadow-inner' 
-                                                : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
-                                            }`}
-                                        >
-                                            <div 
-                                                className="flex-1 flex items-center overflow-hidden" 
-                                                onClick={() => { setSelectedProject(p.name); toggleTab('project-detail'); }}
+                                        ) : (
+                                            <div
+                                                className={`w-full flex items-center justify-between p-3.5 rounded-xl transition group cursor-pointer ${
+                                                    selectedProject === p.name && activeTab === 'project-detail'
+                                                    ? 'bg-slate-800 text-blue-400 border border-slate-700/50 shadow-inner' 
+                                                    : 'text-slate-500 hover:text-slate-300 hover:bg-slate-800/50'
+                                                }`}
                                             >
-                                                <span className="text-sm font-bold truncate pr-2">{p.name}</span>
+                                                <div 
+                                                    className="flex-1 flex items-center overflow-hidden" 
+                                                    onClick={() => { setSelectedProject(p.name); toggleTab('project-detail'); }}
+                                                >
+                                                    <span className="text-sm font-bold truncate pr-2">{p.name}</span>
+                                                </div>
+                                                
+                                                <div className="flex items-center gap-1">
+                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                        <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
+                                                            <button 
+                                                                onClick={(e) => { e.stopPropagation(); setDeleteProjectConfirmName(p.name); }} 
+                                                                className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition"
+                                                                title="Xóa công trình"
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        </div>
+                                                    )}
+                                                    <ChevronRight size={14} className={`transition-transform duration-200 ml-1 ${selectedProject === p.name ? 'translate-x-1 opacity-100' : 'opacity-0'}`} />
+                                                </div>
                                             </div>
-                                            
-                                            <div className="flex items-center gap-1">
-                                                {canManageSystem && (
-                                                    <div className="flex opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <button 
-                                                            onClick={(e) => { e.stopPropagation(); setDeleteProjectConfirmName(p.name); }} 
-                                                            className="p-1.5 text-slate-500 hover:text-red-400 hover:bg-slate-700 rounded-md transition"
-                                                            title="Xóa công trình"
-                                                        >
-                                                            <Trash2 size={14} />
-                                                        </button>
-                                                    </div>
-                                                )}
-                                                <ChevronRight size={14} className={`transition-transform duration-200 ml-1 ${selectedProject === p.name ? 'translate-x-1 opacity-100' : 'opacity-0'}`} />
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-                            ))}
-                        </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                     
                     <div className="mt-8 mb-4 px-4 flex justify-center opacity-70 hover:opacity-100 transition-opacity">

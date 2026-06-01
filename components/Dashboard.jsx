@@ -24,7 +24,7 @@ export default function Dashboard({
     };
 
     const COLUMN_NAMES = {
-        contractValueAfterTax: 'Giá trị HĐ',
+        totalContractAndPlhd: 'Giá trị HĐ & PLHĐ',
         debtToCollect: 'Công Nợ Cần Thu',
         totalExpense: 'Tổng Chi Phí',
         totalPhaseReceived: 'Thực nhận các đợt',
@@ -65,7 +65,7 @@ export default function Dashboard({
 
     const computedTotals = useMemo(() => {
         return filteredData.reduce((acc, row) => ({
-            contractValueAfterTax: acc.contractValueAfterTax + (row.contractValueAfterTax || 0),
+            totalContractAndPlhd: acc.totalContractAndPlhd + (row.totalContractAndPlhd || 0),
             debtToCollect: acc.debtToCollect + (row.debtToCollect || 0),
             totalExpense: acc.totalExpense + row.totalExpense,
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
@@ -75,7 +75,7 @@ export default function Dashboard({
             recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
             utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, remainingCost: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
+        }), { totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalReceivedAmount: 0, remainingCost: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [filteredData]);
 
     return (
@@ -171,9 +171,9 @@ export default function Dashboard({
                                 <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-40 min-w-[100px] max-w-[110px] lg:min-w-[150px] lg:max-w-[250px] whitespace-normal break-words align-middle" rowSpan="2">
                                     Công trình
                                 </th>
-                                {!hiddenCols.includes('contractValueAfterTax') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px] group relative" rowSpan="2">
-                                    <button onClick={() => toggleCol('contractValueAfterTax')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
-                                    Giá trị HĐ<br />(Trước thuế)
+                                {!hiddenCols.includes('totalContractAndPlhd') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px] group relative" rowSpan="2">
+                                    <button onClick={() => toggleCol('totalContractAndPlhd')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                    Tổng HĐ & PLHĐ<br />(Trước thuế)
                                 </th>}
                                 {!hiddenCols.includes('debtToCollect') && <th className="p-3 border-b border-r border-slate-200 font-black text-right text-orange-600 bg-orange-50 align-top min-w-[120px] group relative" rowSpan="2">
                                     <button onClick={() => toggleCol('debtToCollect')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-orange-400 hover:text-red-500 transition-all p-1 bg-orange-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
@@ -234,7 +234,7 @@ export default function Dashboard({
                                         onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(row.project)}
                                         title="Nhấp đúp để xem chi tiết công trình"
                                     >{row.project}</td>
-                                    {!hiddenCols.includes('contractValueAfterTax') && <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums">{formatCurrency(row.contractValueAfterTax)}</td>}
+                                    {!hiddenCols.includes('totalContractAndPlhd') && <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums" title={`Hợp đồng: ${formatCurrency(row.contractValueAfterTax || 0)}`}>{formatCurrency(row.totalContractAndPlhd)}</td>}
                                     {!hiddenCols.includes('debtToCollect') && <td className="p-3 text-right font-black border-b border-r border-slate-100 text-[14px] text-orange-600 bg-orange-50/30 tabular-nums">{formatCurrency(row.debtToCollect)}</td>}
                                     {!hiddenCols.includes('totalExpense') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-red-600 bg-red-50/30 tabular-nums">{formatCurrency(row.totalExpense)}</td>}
                                     {!hiddenCols.includes('totalPhaseReceived') && <td className="p-3 text-right font-bold border-b border-r border-slate-100 text-[14px] text-emerald-700 bg-emerald-50/30 tabular-nums">{formatCurrency(row.totalPhaseReceived || 0)}</td>}
@@ -305,7 +305,7 @@ export default function Dashboard({
                             ))}
                             <tr className="bg-slate-200 font-bold">
                                 <td className="p-3 sticky left-0 bg-slate-200 z-10">TỔNG CỘNG</td>
-                                {!hiddenCols.includes('contractValueAfterTax') && <td className="p-3 text-right tabular-nums">{formatCurrency(computedTotals.contractValueAfterTax)}</td>}
+                                {!hiddenCols.includes('totalContractAndPlhd') && <td className="p-3 text-right tabular-nums">{formatCurrency(computedTotals.totalContractAndPlhd)}</td>}
                                 {!hiddenCols.includes('debtToCollect') && <td className="p-3 text-right text-orange-600 tabular-nums">{formatCurrency(computedTotals.debtToCollect)}</td>}
                                 {!hiddenCols.includes('totalExpense') && <td className="p-3 text-right text-red-700 tabular-nums">{formatCurrency(computedTotals.totalExpense)}</td>}
                                 {!hiddenCols.includes('totalPhaseReceived') && <td className="p-3 text-right text-emerald-800 tabular-nums">{formatCurrency(computedTotals.totalPhaseReceived || 0)}</td>}

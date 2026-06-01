@@ -309,7 +309,9 @@ export default function ApprovalWorkflow({
         let displayTitle = 'Đề nghị thanh toán';
         try {
             const parsed = JSON.parse(item.reason);
-            if (parsed.items && parsed.items.length > 0) {
+            if (item.doc_type === 'Đơn Vật Tư') {
+                displayTitle = parsed.orderPhase || (parsed.items?.[0]?.note?.split(' | ')[1]) || parsed.items?.[0]?.content || 'Đơn Vật Tư';
+            } else if (parsed.items && parsed.items.length > 0) {
                 displayTitle = parsed.items[0].content || 'Đề nghị thanh toán';
             }
         } catch(e) {}
@@ -594,13 +596,13 @@ export default function ApprovalWorkflow({
                                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
                                             {showApproveButtons && item.status === STATUSES.WAITING_QS && canApproveQS && (
                                                 <>
-                                                    <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.WAITING_ACC)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt (QS)</button>
+                                                    <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.WAITING_ACC : STATUSES.WAITING_ACC)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt (QS)</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
                                             )}
                                             {showApproveButtons && item.status === STATUSES.WAITING_ACC && canApproveKT && (
                                                 <>
-                                                    <button onClick={() => onUpdateStatus(item.id, STATUSES.APPROVED)} className="flex-1 lg:flex-none whitespace-nowrap bg-green-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-green-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-green-600/20"><Check size={18}/> Duyệt (KT)</button>
+                                                    <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED)} className="flex-1 lg:flex-none whitespace-nowrap bg-green-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-green-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-green-600/20"><Check size={18}/> Duyệt (KT)</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
                                             )}
@@ -639,7 +641,7 @@ export default function ApprovalWorkflow({
                                             >
                                                 <Printer size={20}/>
                                             </button>
-                                            {isAdminOrManager && (
+                                            {currentUser?.role?.toUpperCase() === 'ADMIN' && (
                                                 <button onClick={() => { 
                                                     setConfirmModal({
                                                         isOpen: true,
@@ -700,9 +702,9 @@ export default function ApprovalWorkflow({
                                     );
                                 }
 
-                                const isTTL = itemData.docType === 'TTL' || itemData.docType === 'DNTUCH';
+                                const isNoBankRequired = itemData.docType === 'TTL' || itemData.docType === 'DNTUCH' || itemData.docType === 'Đơn Vật Tư';
 
-                                if (!isTTL && !itemData.bankAccountNumber) {
+                                if (!isNoBankRequired && !itemData.bankAccountNumber) {
                                     return (
                                         <div className="text-center">
                                             <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -719,7 +721,7 @@ export default function ApprovalWorkflow({
 
                                 return (
                                     <>
-                                        {!isTTL ? (
+                                        {!isNoBankRequired ? (
                                             <>
                                                 <div className="w-full bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100 space-y-2">
                                                     <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">

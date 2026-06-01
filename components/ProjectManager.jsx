@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
-export default function ProjectManager({ projects, projectDetails, onUpsertProject, onDeleteProject, isLoading, usersList = [] }) {
+export default function ProjectManager({ currentUser, projects, projectDetails, onUpsertProject, onDeleteProject, isLoading, usersList = [] }) {
     const [isAdding, setIsAdding] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -17,10 +17,12 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
         address: '',
         cht_name: '',
         cht_phone: '',
-        debt_to_collect: 0
+        debt_to_collect: 0,
+        plhd_list: []
     });
 
     const [currentPage, setCurrentPage] = useState(1);
+    const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectName: '', password: '' });
     const itemsPerPage = 6;
 
     useEffect(() => {
@@ -39,7 +41,8 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
             address: details.address || '',
             cht_name: details.chtName || '',
             cht_phone: details.chtPhone || '',
-            debt_to_collect: details.debtToCollect || 0
+            debt_to_collect: details.debtToCollect || 0,
+            plhd_list: p.plhds || []
         });
         setIsAdding(true);
     };
@@ -49,8 +52,27 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
     };
+
+    const handleDelete = (projectName) => {
+        if (currentUser?.role?.toUpperCase() !== 'ADMIN') {
+            alert('Chỉ Admin mới có quyền xóa công trình!');
+            return;
+        }
+        setDeleteModal({ isOpen: true, projectName, password: '' });
+    };
+
+    const confirmDelete = () => {
+        if (deleteModal.password !== '123456') {
+            alert('Mật khẩu không đúng!');
+            return;
+        }
+        onDeleteProject(deleteModal.projectName);
+        setDeleteModal({ isOpen: false, projectName: '', password: '' });
+        setIsAdding(false);
+    };
+
 
     // Sắp xếp theo thời gian từ gần tới xa (Mới nhất xếp đầu)
     const sortedProjects = [...projects].sort((a, b) => {
@@ -77,7 +99,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
     const paginatedProjects = filteredProjects.slice(startIndex, startIndex + itemsPerPage);
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 relative">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -88,7 +110,7 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '' });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -98,120 +120,165 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
             </header>
 
             {isAdding && (
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 mb-8 animate-in slide-in-from-top-4">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4">{editingProject ? 'Sửa thông tin' : 'Thêm công trình mới'}</h3>
-                    <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">Tên công trình *</label>
-                            <input 
-                                type="text"
-                                value={formData.name}
-                                onChange={(e) => setFormData({...formData, name: e.target.value})}
-                                required
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
-                                placeholder="Ví dụ: Công trình A..."
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">Số hợp đồng</label>
-                            <input 
-                                type="text"
-                                value={formData.contract_no}
-                                onChange={(e) => setFormData({...formData, contract_no: e.target.value})}
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
-                                placeholder="Ví dụ: HĐ-01/2026..."
-                            />
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                            <label className="block text-sm font-black text-slate-900">Địa chỉ công trình</label>
-                            <input 
-                                type="text"
-                                value={formData.address}
-                                onChange={(e) => setFormData({...formData, address: e.target.value})}
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
-                                placeholder="Địa chỉ chi tiết của dự án..."
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">Chỉ Huy Trưởng (CHT)</label>
-                            <select 
-                                value={formData.cht_name}
-                                onChange={(e) => {
-                                    const selectedCht = usersList.find(u => u.name === e.target.value);
-                                    setFormData({
-                                        ...formData, 
-                                        cht_name: e.target.value,
-                                        cht_phone: selectedCht?.phone || ''
-                                    });
-                                }}
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
-                            >
-                                <option value="">-- Chọn Chỉ Huy Trưởng --</option>
-                                {usersList.filter(u => u.role !== 'ADMIN' && u.role !== 'KẾ TOÁN' && u.role !== 'THƯ KÝ').map(u => (
-                                    <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
-                                ))}
-                            </select>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">SĐT Chỉ Huy Trưởng</label>
-                            <input 
-                                type="text"
-                                value={formData.cht_phone}
-                                readOnly
-                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none bg-slate-100 text-slate-500"
-                            />
-                        </div>
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">Giá trị HĐ (Trước thuế)</label>
-                            <div className="relative flex items-center">
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto animate-in fade-in">
+                    <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto animate-in zoom-in-95">
+                        <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Building2 className="text-indigo-600" /> 
+                            {editingProject ? 'Sửa thông tin công trình' : 'Thêm công trình mới'}
+                        </h3>
+                        <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">Tên công trình *</label>
                                 <input 
                                     type="text"
-                                    value={formData.contract_value_after_tax ? formatCurrency(formData.contract_value_after_tax) : ''}
-                                    onChange={(e) => setFormData({...formData, contract_value_after_tax: parseVietnameseNumber(e.target.value)})}
-                                    className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-blue-700"
-                                    placeholder="0"
+                                    value={formData.name}
+                                    onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                    required
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                    placeholder="Ví dụ: Công trình A..."
                                 />
-                                <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
                             </div>
-                        </div>
-                        <div className="space-y-2">
-                            <label className="block text-sm font-black text-slate-900">Giá trị Tạm ứng</label>
-                            <div className="relative flex items-center">
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">Số hợp đồng</label>
                                 <input 
                                     type="text"
-                                    value={formData.advance_value ? formatCurrency(formData.advance_value) : ''}
-                                    onChange={(e) => setFormData({...formData, advance_value: parseVietnameseNumber(e.target.value)})}
-                                    className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-amber-600"
-                                    placeholder="0"
+                                    value={formData.contract_no}
+                                    onChange={(e) => setFormData({...formData, contract_no: e.target.value})}
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                    placeholder="Ví dụ: HĐ-01/2026..."
                                 />
-                                <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
                             </div>
-                        </div>
-                        <div className="space-y-2 md:col-span-2">
-                            <label className="block text-sm font-black text-slate-900">Giá trị PLHĐ (Trước thuế)</label>
-                            <div className="relative flex items-center">
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="block text-sm font-black text-slate-900">Địa chỉ công trình</label>
                                 <input 
                                     type="text"
-                                    value={formData.debt_to_collect ? formatCurrency(formData.debt_to_collect) : ''}
-                                    onChange={(e) => setFormData({...formData, debt_to_collect: parseVietnameseNumber(e.target.value)})}
-                                    className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-orange-600"
-                                    placeholder="0"
+                                    value={formData.address}
+                                    onChange={(e) => setFormData({...formData, address: e.target.value})}
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                    placeholder="Địa chỉ chi tiết của dự án..."
                                 />
-                                <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
                             </div>
-                        </div>
-                        <div className="md:col-span-2 flex justify-between gap-3 pt-4 border-t">
-                            {editingProject ? (
-                                <button type="button" onClick={() => { if(window.confirm('Chắc chắn xóa công trình này?')) { onDeleteProject(editingProject); setIsAdding(false); } }} className="px-6 py-2.5 rounded-xl font-bold text-red-500 hover:bg-red-50 transition flex items-center gap-2"><Trash2 size={18}/> XÓA</button>
-                            ) : <div></div>}
-                            <div className="flex gap-3">
-                                <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy bỏ</button>
-                                <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition flex items-center gap-2">
-                                    <Save size={18} /> LƯU THÔNG TIN
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">Chỉ Huy Trưởng (CHT)</label>
+                                <select 
+                                    value={formData.cht_name}
+                                    onChange={(e) => {
+                                        const selectedCht = usersList.find(u => u.name === e.target.value);
+                                        setFormData({
+                                            ...formData, 
+                                            cht_name: e.target.value,
+                                            cht_phone: selectedCht?.phone || ''
+                                        });
+                                    }}
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                >
+                                    <option value="">-- Chọn Chỉ Huy Trưởng --</option>
+                                    {usersList.filter(u => u.role !== 'ADMIN' && u.role !== 'KẾ TOÁN' && u.role !== 'THƯ KÝ').map(u => (
+                                        <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">SĐT Chỉ Huy Trưởng</label>
+                                <input 
+                                    type="text"
+                                    value={formData.cht_phone}
+                                    readOnly
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none bg-slate-100 text-slate-500"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">Giá trị HĐ (Trước thuế)</label>
+                                <div className="relative flex items-center">
+                                    <input 
+                                        type="text"
+                                        value={formData.contract_value_after_tax ? formatCurrency(formData.contract_value_after_tax) : ''}
+                                        onChange={(e) => setFormData({...formData, contract_value_after_tax: parseVietnameseNumber(e.target.value)})}
+                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-blue-700"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <label className="block text-sm font-black text-slate-900">Giá trị Tạm ứng</label>
+                                <div className="relative flex items-center">
+                                    <input 
+                                        type="text"
+                                        value={formData.advance_value ? formatCurrency(formData.advance_value) : ''}
+                                        onChange={(e) => setFormData({...formData, advance_value: parseVietnameseNumber(e.target.value)})}
+                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-amber-600"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
+                                </div>
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="block text-sm font-black text-slate-900">Giá trị PLHĐ 1 (Trước thuế)</label>
+                                <div className="relative flex items-center">
+                                    <input 
+                                        type="text"
+                                        value={formData.debt_to_collect ? formatCurrency(formData.debt_to_collect) : ''}
+                                        onChange={(e) => setFormData({...formData, debt_to_collect: parseVietnameseNumber(e.target.value)})}
+                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-orange-600"
+                                        placeholder="0"
+                                    />
+                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
+                                </div>
+                            </div>
+                            {formData.plhd_list?.map((plhd, index) => (
+                                <div key={index} className="space-y-2 md:col-span-2 relative">
+                                    <label className="block text-sm font-black text-slate-900">Giá trị PLHĐ {index + 2} (Trước thuế)</label>
+                                    <div className="relative flex items-center">
+                                        <input 
+                                            type="text"
+                                            value={plhd ? formatCurrency(plhd) : ''}
+                                            onChange={(e) => {
+                                                const newList = [...formData.plhd_list];
+                                                newList[index] = parseVietnameseNumber(e.target.value);
+                                                setFormData({...formData, plhd_list: newList});
+                                            }}
+                                            className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-orange-600"
+                                            placeholder="0"
+                                        />
+                                        <span className="absolute right-12 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                const newList = [...formData.plhd_list];
+                                                newList.splice(index, 1);
+                                                setFormData({...formData, plhd_list: newList});
+                                            }}
+                                            className="absolute right-2 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                                            title="Xóa phụ lục này"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                    </div>
+                                </div>
+                            ))}
+                            <div className="md:col-span-2 flex justify-start">
+                                <button 
+                                    type="button"
+                                    onClick={() => setFormData({...formData, plhd_list: [...(formData.plhd_list || []), 0]})}
+                                    className="text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 text-sm bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition"
+                                >
+                                    <Plus size={16} /> Thêm Phụ Lục HĐ
                                 </button>
                             </div>
-                        </div>
-                    </form>
+                            <div className="md:col-span-2 flex justify-between gap-3 pt-6 mt-2 border-t">
+                                {editingProject && currentUser?.role?.toUpperCase() === 'ADMIN' ? (
+                                    <button type="button" onClick={() => handleDelete(editingProject)} className="px-6 py-2.5 rounded-xl font-bold text-red-500 hover:bg-red-50 transition flex items-center gap-2"><Trash2 size={18}/> XÓA</button>
+                                ) : <div></div>}
+                                <div className="flex gap-3">
+                                    <button type="button" onClick={() => setIsAdding(false)} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy bỏ</button>
+                                    <button type="submit" disabled={isLoading} className="bg-indigo-600 text-white px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 shadow-lg transition flex items-center gap-2">
+                                        <Save size={18} /> LƯU THÔNG TIN
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+                    </div>
                 </div>
             )}
 
@@ -248,9 +315,11 @@ export default function ProjectManager({ projects, projectDetails, onUpsertProje
                                         <button onClick={() => handleOpenEdit(p)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-indigo-50 transition" title="Sửa công trình">
                                             <Edit3 size={18} />
                                         </button>
-                                        <button onClick={() => { if(window.confirm('Chắc chắn xóa công trình này?')) onDeleteProject(p.name); }} className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition" title="Xóa công trình">
-                                            <Trash2 size={18} />
-                                        </button>
+                                        {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                            <button onClick={() => handleDelete(p.name)} className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition" title="Xóa công trình">
+                                                <Trash2 size={18} />
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                                 <h3 className="text-lg font-black text-slate-900 mb-2">{p.name}</h3>

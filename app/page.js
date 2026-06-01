@@ -167,14 +167,21 @@ export default function Home() {
 
             const details = {};
             projData?.forEach(p => {
+                const plhdArray = p.plhds || [];
+                const extraPlhdTotal = plhdArray.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+                const debtToCollect = p.debt_to_collect || 0;
+                
                 details[p.name] = { 
                     contractValueAfterTax: p.contract_value_after_tax,
                     advanceValue: p.advance_value,
-                    debtToCollect: p.debt_to_collect || 0,
+                    debtToCollect: debtToCollect,
+                    extraPlhdTotal: extraPlhdTotal,
+                    totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal,
                     contractNo: p.contract_no,
                     address: p.address || '',
                     chtName: p.cht_name || '',
-                    chtPhone: p.cht_phone || ''
+                    chtPhone: p.cht_phone || '',
+                    plhds: plhdArray
                 };
             });
             setProjectDetails(details);
@@ -404,6 +411,7 @@ export default function Home() {
                     contract_value_after_tax: data.contract_value_after_tax,
                     advance_value: data.advance_value,
                     debt_to_collect: data.debt_to_collect,
+                    plhds: data.plhd_list || [],
                     address: data.address,
                     cht_name: data.cht_name,
                     cht_phone: data.cht_phone
@@ -425,6 +433,7 @@ export default function Home() {
                     contract_value_after_tax: data.contract_value_after_tax,
                     advance_value: data.advance_value,
                     debt_to_collect: data.debt_to_collect,
+                    plhds: data.plhd_list || [],
                     address: data.address,
                     cht_name: data.cht_name,
                     cht_phone: data.cht_phone
@@ -1036,6 +1045,7 @@ export default function Home() {
             return {
                 project: name,
                 contractValueAfterTax: details.contractValueAfterTax,
+                totalContractAndPlhd: details.totalContractAndPlhd,
                 debtToCollect: calculatedDebtToCollect,
                 totalExpense: totalExp,
                 totalActualIncome: actInc,
@@ -1053,6 +1063,7 @@ export default function Home() {
     const totals = useMemo(() => {
         return dashboardData.reduce((acc, row) => ({
             contractValueAfterTax: acc.contractValueAfterTax + (row.contractValueAfterTax || 0),
+            totalContractAndPlhd: acc.totalContractAndPlhd + (row.totalContractAndPlhd || 0),
             debtToCollect: acc.debtToCollect + (row.debtToCollect || 0),
             totalExpense: acc.totalExpense + row.totalExpense,
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
@@ -1062,7 +1073,7 @@ export default function Home() {
             recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
             utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {
@@ -1162,6 +1173,7 @@ export default function Home() {
 
                 {activeTab === 'projects' && (
                     <ProjectManager 
+                        currentUser={currentUser}
                         projects={projects}
                         projectDetails={projectDetails}
                         onUpsertProject={handleUpsertProject}
@@ -1193,6 +1205,7 @@ export default function Home() {
                     <ExpectedInvoices 
                         projects={allowedProjects} 
                         projectDetails={projectDetails}
+                        currentUser={currentUser}
                     />
                 )}
 
@@ -1206,8 +1219,10 @@ export default function Home() {
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                     <div className="bg-blue-600 p-6 rounded-2xl text-white shadow-lg">
-                                        <p className="text-xs font-bold uppercase opacity-80">Giá trị Hợp đồng</p>
-                                        <p className="text-3xl font-black mt-2">{formatCurrency(projectDetails[selectedProject]?.contractValueAfterTax || 0)}</p>
+                                        <p className="text-xs font-bold uppercase opacity-80">Tổng HĐ & PLHĐ</p>
+                                        <p className="text-3xl font-black mt-2" title={`Hợp đồng: ${formatCurrency(projectDetails[selectedProject]?.contractValueAfterTax || 0)}\nPLHĐ 1: ${formatCurrency(projectDetails[selectedProject]?.debtToCollect || 0)}\nCác PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTotal || 0)}`}>
+                                            {formatCurrency(projectDetails[selectedProject]?.totalContractAndPlhd || 0)}
+                                        </p>
                                     </div>
                                     <div className="bg-amber-500 p-6 rounded-2xl text-white shadow-lg">
                                         <p className="text-xs font-bold uppercase opacity-80">Đã Tạm ứng</p>
