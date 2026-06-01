@@ -20,9 +20,10 @@ import ConfirmModal from '@/components/ConfirmModal';
 import UserModal from '@/components/UserModal';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import SystemConfigModal from '@/components/SystemConfigModal';
+import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
-import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const ROLES = {
@@ -124,6 +125,8 @@ export default function Home() {
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [userModal, setUserModal] = useState({ isOpen: false, user: null });
     const [passwordModal, setPasswordModal] = useState({ isOpen: false, user: null });
+    const [historyModal, setHistoryModal] = useState({ isOpen: false, user: null });
+    const [activityLogs, setActivityLogs] = useState([]);
     
     const showToast = (msg, type = 'success') => {
         setToast({ show: true, msg, type });
@@ -133,6 +136,26 @@ export default function Home() {
     const handleLogin = (user) => {
         setCurrentUser(user);
         setActiveTab('home');
+    };
+
+    const logActivity = async (actionType, module, description, projectName = null) => {
+        if (!currentUser) return;
+        try {
+            const { error } = await supabase.from('activity_logs').insert([{
+                username: currentUser.username,
+                action_type: actionType,
+                module: module,
+                description: description,
+                project_name: projectName
+            }]);
+            if (error) {
+                console.error('Supabase insert error for activity_logs:', error);
+                // Optionally show a toast for debugging:
+                // showToast('Lỗi ghi log: ' + error.message, 'error');
+            }
+        } catch (e) {
+            console.error('Failed to log activity', e);
+        }
     };
 
     const fetchData = async () => {
@@ -201,6 +224,15 @@ export default function Home() {
             } catch (e) {
                 console.warn('Partner debts table might not exist yet', e);
             }
+
+            try {
+                const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
+                if (!logsError) {
+                    setActivityLogs(logsData || []);
+                }
+            } catch (e) {
+                console.warn('Activity logs table might not exist yet', e);
+            }
         } catch (error) {
             showToast('Lỗi kết nối Database!', 'error');
         } finally {
@@ -227,6 +259,7 @@ export default function Home() {
                 }]);
             }
             showToast('Lưu cấu hình hệ thống thành công!', 'success');
+            logActivity('Cập nhật', 'Hệ thống', 'Lưu cấu hình hệ thống');
         } catch (err) {
             console.error('Error saving system config:', err);
             showToast('Lỗi khi lưu cấu hình', 'error');
@@ -248,6 +281,7 @@ export default function Home() {
                 const { error } = await supabase.from('transactions').insert(processedTransactions);
                 if (error) throw error;
                 showToast(`Đã nhập thành công ${processedTransactions.length} dòng dữ liệu!`);
+                logActivity('Thêm', 'Giao dịch', `Nhập từ Excel ${processedTransactions.length} dòng`, processedTransactions[0]?.project_name);
                 setPasteText('');
                 setIsPasting(false);
                 fetchData();
@@ -313,6 +347,7 @@ export default function Home() {
                 }
             }
             showToast('Đã lưu dữ liệu thành công!');
+            logActivity(editId ? 'Cập nhật' : 'Thêm', type === 'EXPENSE' ? 'Chi phí' : 'Thu tiền', type === 'EXPENSE' ? `Chi phí: ${data.debit} - ${data.note}` : `Thu đợt ${data.phase}: ${data.amount}`, data.project_name);
             setEditTransaction(null);
             if (previousTab) {
                 setActiveTab(previousTab);
@@ -349,6 +384,7 @@ export default function Home() {
             
             if (error) throw error;
             showToast(`Đã ${!isFullyPaid ? 'xác nhận thu tiền' : 'hủy xác nhận thu tiền'} đợt ${phase}!`);
+            logActivity('Cập nhật', 'Thu tiền', `${!isFullyPaid ? 'Xác nhận thu tiền' : 'Hủy xác nhận thu tiền'} đợt ${phase}`, projectName);
             fetchData();
         } catch (error) {
             console.error(error);
@@ -396,6 +432,7 @@ export default function Home() {
                 if (error) throw error;
             }
             showToast('Đã cập nhật thông tin công trình!');
+            logActivity(isEdit ? 'Sửa' : 'Thêm', 'Công trình', isEdit ? `Cập nhật thông tin: ${data.name}` : `Tạo mới: ${data.name}`, data.name);
             fetchData();
         } catch (error) {
             console.error('Error saving project:', error);
@@ -417,6 +454,7 @@ export default function Home() {
             if (error) throw error;
             
             showToast('Đã xóa công trình!');
+            logActivity('Xóa', 'Công trình', `Xóa công trình: ${name}`, name);
             if (selectedProject === name) setSelectedProject('');
             fetchData();
         } catch (error) {
@@ -549,6 +587,7 @@ export default function Home() {
             const { error } = await supabase.from('transactions').delete().eq('id', id);
             if (error) throw error;
             showToast('Đã xóa dữ liệu chi!');
+            logActivity('Xóa', 'Chi phí', `Xóa giao dịch chi (ID: ${id})`);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu!', 'error');
@@ -563,6 +602,7 @@ export default function Home() {
             const { error } = await supabase.from('incomes').delete().eq('id', id);
             if (error) throw error;
             showToast('Đã xóa dữ liệu thu!');
+            logActivity('Xóa', 'Thu tiền', `Xóa giao dịch thu (ID: ${id})`);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu thu!', 'error');
@@ -577,6 +617,7 @@ export default function Home() {
             const { error } = await supabase.from('incomes').update({ is_paid: !currentStatus }).eq('id', id);
             if (error) throw error;
             showToast(`Đã cập nhật trạng thái thành: ${!currentStatus ? 'Đã thu' : 'Chưa thu'}!`);
+            logActivity('Cập nhật', 'Thu tiền', `Đổi trạng thái (ID: ${id}) thành: ${!currentStatus ? 'Đã thu' : 'Chưa thu'}`);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi cập nhật trạng thái thu!', 'error');
@@ -602,6 +643,7 @@ export default function Home() {
             const { error } = await supabase.from('transactions').delete().eq('project_name', selectedProject);
             if (error) throw error;
             showToast(`Đã xóa toàn bộ dữ liệu giao dịch của công trình ${selectedProject}!`);
+            logActivity('Xóa', 'Chi phí', `Xóa toàn bộ giao dịch của công trình`, selectedProject);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu!', 'error');
@@ -627,6 +669,7 @@ export default function Home() {
                     created_by: currentUser.username
                 }]);
             }
+            logActivity('Cập nhật', 'Giao dịch', `Cập nhật dữ liệu đặc biệt (${code}): ${val}`, projectName);
             fetchData();
         } catch (err) {
             showToast('Lỗi khi lưu dữ liệu', 'error');
@@ -657,6 +700,7 @@ export default function Home() {
             }]);
             if (error) throw error;
             showToast('Đã gửi yêu cầu phê duyệt!');
+            logActivity('Thêm', 'Đề nghị thanh toán', `Tạo yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi gửi yêu cầu!', 'error');
@@ -697,6 +741,7 @@ export default function Home() {
             if (appError) throw appError;
 
             showToast('Đã xóa phiếu và dữ liệu đồng bộ liên quan!');
+            logActivity('Xóa', 'Đề nghị thanh toán', `Xóa phiếu và dữ liệu đồng bộ (ID: ${id})`);
             fetchData();
         } catch (error) {
             console.error(error);
@@ -714,6 +759,7 @@ export default function Home() {
             const { error } = await supabase.from('approval_requests').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
             showToast('Đã cập nhật trạng thái!');
+            logActivity('Duyệt', 'Đề nghị thanh toán', `Cập nhật trạng thái phiếu (ID: ${id}) thành: ${newStatus}`);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi cập nhật!', 'error');
@@ -743,6 +789,7 @@ export default function Home() {
             if (statusError) throw statusError;
 
             showToast('Đã hạch toán chi phí thành công!');
+            logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})`);
             fetchData();
         } catch (error) {
             console.error(error);
@@ -761,6 +808,7 @@ export default function Home() {
             }]);
             if (error) throw error;
             showToast('Đơn đặt hàng đã được chuyển sang kế toán hạch toán!');
+            logActivity('Thêm', 'Đề nghị thanh toán', `Chuyển đơn đặt hàng sang kế toán: ${dnttPayload.doc_type}`, dnttPayload.project_name);
             fetchData();
         } catch (error) {
             console.error('Error creating accounting request:', error);
@@ -781,6 +829,7 @@ export default function Home() {
             const { error } = await supabase.from('partner_debts').insert(dataToInsert);
             if (error) throw error;
             showToast('Đã ghi nhận công nợ mới!');
+            logActivity('Thêm', 'Công nợ', `Tạo mới ${payloadArray.length} công nợ`, payloadArray[0]?.project_name);
             fetchData();
         } catch (error) {
             console.error('Error adding debt:', error.message || error);
@@ -796,6 +845,7 @@ export default function Home() {
             const id = typeof debtOrId === 'object' ? debtOrId.id : debtOrId;
             const { error } = await supabase.from('partner_debts').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
+            logActivity('Cập nhật', 'Công nợ', `Đổi trạng thái công nợ (ID: ${id}) thành: ${newStatus}`);
 
             if (newStatus === 'ĐÃ XONG' && correspondingAccount && typeof debtOrId === 'object') {
                 const debt = debtOrId;
@@ -1391,6 +1441,11 @@ export default function Home() {
                                                     </div>
                                                 </td>
                                                 <td className="p-4 text-right flex justify-end gap-1">
+                                                    {role === 'ADMIN' && (
+                                                        <button onClick={() => setHistoryModal({ isOpen: true, user: u })} className="text-indigo-500 hover:text-indigo-700 p-2 hover:bg-indigo-50 rounded transition" title="Lịch sử làm việc">
+                                                            <Clock size={16} />
+                                                        </button>
+                                                    )}
                                                     <button onClick={() => setUserModal({ isOpen: true, user: u })} className="text-amber-500 hover:text-amber-600 p-2 hover:bg-amber-50 rounded transition" title="Sửa thông tin">
                                                         <Edit3 size={16} />
                                                     </button>
@@ -1408,6 +1463,7 @@ export default function Home() {
                                                                 } catch(e) {}
                                                                 setUsersList(usersList.filter(x => x.id !== u.id));
                                                                 showToast('Đã xóa tài khoản!');
+                                                                logActivity('Xóa', 'Hệ thống', `Xóa tài khoản nhân viên: ${u.username}`);
                                                                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                                                             }
                                                         });
@@ -1459,6 +1515,7 @@ export default function Home() {
                         } catch(e) {}
                         setUsersList(usersList.map(x => x.id === userModal.user.id ? { ...x, ...data } : x));
                         showToast('Đã cập nhật thông tin nhân viên!');
+                        logActivity('Sửa', 'Hệ thống', `Cập nhật thông tin nhân viên: ${data.username}`);
                     } else {
                         const newId = 'u' + Date.now();
                         try {
@@ -1475,6 +1532,7 @@ export default function Home() {
                         } catch(e) {}
                         setUsersList([...usersList, { id: newId, ...data, isLocked: false, canViewFinance: true }]);
                         showToast('Đã thêm nhân viên mới!');
+                        logActivity('Thêm', 'Hệ thống', `Tạo tài khoản nhân viên: ${data.username}`);
                     }
                     setUserModal({ isOpen: false, user: null });
                 }}
@@ -1489,6 +1547,7 @@ export default function Home() {
                     } catch(e) {}
                     setUsersList(usersList.map(u => u.id === passwordModal.user.id ? { ...u, password: newPass } : u));
                     showToast('Đã cập nhật mật khẩu thành công!');
+                    logActivity('Sửa', 'Hệ thống', `Đổi mật khẩu tài khoản: ${passwordModal.user.username}`);
                     setPasswordModal({ isOpen: false, user: null });
                 }} 
             />
@@ -1497,6 +1556,12 @@ export default function Home() {
                 onClose={() => setIsSystemConfigModalOpen(false)} 
                 currentConfig={systemConfig} 
                 onSave={handleSaveSystemConfig} 
+            />
+            <UserWorkHistoryModal
+                isOpen={historyModal.isOpen}
+                onClose={() => setHistoryModal({ isOpen: false, user: null })}
+                user={historyModal.user}
+                activityLogs={activityLogs}
             />
         </div>
     );
