@@ -976,8 +976,9 @@ export default function ApprovalWorkflow({
                             </div>
                         </div>
 
-                        <footer className="p-4 sm:p-6 bg-white border-t-2 border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-4 sm:gap-6">
-                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                        <footer className="p-4 sm:p-6 bg-white border-t-2 border-slate-100 flex flex-col gap-5">
+                            {/* Row 1: Select & Total */}
+                            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 w-full">
                                 <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 w-full sm:w-auto flex-1">
                                     <span className="text-slate-500 font-bold text-sm whitespace-nowrap">Trạng thái thanh toán:</span>
                                     <select 
@@ -989,21 +990,23 @@ export default function ApprovalWorkflow({
                                         <option value="CHƯA XONG">Chưa thanh toán</option>
                                     </select>
                                 </div>
-                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto flex-1">
+                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto flex-1 max-w-sm">
                                     <span className="text-amber-800 font-bold text-sm uppercase whitespace-nowrap">Tổng phân bổ:</span>
                                     <span className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
                                 </div>
                             </div>
-                            <div className="flex gap-3 w-full lg:w-auto mt-2 lg:mt-0">
+                            
+                            {/* Row 2: Buttons */}
+                            <div className="flex gap-3 w-full justify-end">
                                 <button 
                                     onClick={() => setDistributeItem(null)}
-                                    className="px-6 py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm whitespace-nowrap flex-1 lg:flex-none text-center"
+                                    className="px-6 sm:px-8 py-3.5 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm sm:text-base whitespace-nowrap text-center"
                                 >
                                     Để sau
                                 </button>
                                 <button 
                                     onClick={handleSaveDistribution}
-                                    className="px-8 py-3 rounded-2xl font-black bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200 text-sm whitespace-nowrap flex-[2] lg:flex-none text-center"
+                                    className="flex-1 sm:flex-none px-8 sm:px-12 py-3.5 rounded-2xl font-black bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200 text-sm sm:text-base whitespace-nowrap text-center"
                                 >
                                     HOÀN TẤT HẠCH TOÁN
                                 </button>
