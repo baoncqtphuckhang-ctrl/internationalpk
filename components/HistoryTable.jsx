@@ -112,12 +112,12 @@ export default function HistoryTable({
     expenseCategories,
     systemConfig
 }) {
-    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa' });
+    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
 
-    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa') => {
-        setConfirmState({ isOpen: true, message, onConfirm, title });
+    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa', requirePassword = false) => {
+        setConfirmState({ isOpen: true, message, onConfirm, title, requirePassword });
     };
-    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa' });
+    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
     const [sortConfig, setSortConfig] = useState({ key: 'accounting_date', direction: 'desc' });
 
     const getUnique = (key) => {
@@ -246,7 +246,8 @@ export default function HistoryTable({
                 isOpen={confirmState.isOpen}
                 title={confirmState.title}
                 message={confirmState.message}
-                onConfirm={() => { confirmState.onConfirm?.(); closeConfirm(); }}
+                requirePassword={confirmState.requirePassword}
+                onConfirm={(pwd) => { confirmState.onConfirm?.(pwd); closeConfirm(); }}
                 onCancel={closeConfirm}
                 type="danger"
             />
@@ -287,8 +288,9 @@ export default function HistoryTable({
                                 if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
                                 openConfirm(
                                     `Bạn sắp xóa TOÀN BỘ dữ liệu giao dịch của công trình "${selectedProject}". Hành động này không thể hoàn tác!`,
-                                    handleDeleteAll,
-                                    'Xóa toàn bộ dữ liệu'
+                                    (pwd) => handleDeleteAll(pwd),
+                                    'Xóa toàn bộ dữ liệu',
+                                    true
                                 );
                             }}
                             className={`text-white px-4 py-2 rounded-lg font-bold flex items-center gap-2 shadow-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'bg-slate-400 cursor-not-allowed' : 'bg-red-600 hover:bg-red-700'}`}

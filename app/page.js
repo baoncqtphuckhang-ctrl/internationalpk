@@ -635,13 +635,12 @@ export default function Home() {
         }
     };
 
-    const handleDeleteAllTransactions = async () => {
+    const handleDeleteAllTransactions = async (pass) => {
         if (!selectedProject) {
             showToast('Vui lòng chọn một công trình cụ thể!', 'error');
             return;
         }
 
-        const pass = prompt('Vui lòng nhập mật khẩu tài khoản ADMIN để xác nhận thao tác xóa:');
         if (pass !== currentUser.password) {
             alert('Mật khẩu không chính xác! Hủy thao tác xóa.');
             return;

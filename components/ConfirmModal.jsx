@@ -3,7 +3,15 @@
 import React from 'react';
 import { AlertTriangle, Trash2, Info } from 'lucide-react';
 
-export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận' }) {
+export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận', requirePassword = false }) {
+    const [password, setPassword] = React.useState('');
+
+    React.useEffect(() => {
+        if (isOpen) {
+            setPassword('');
+        }
+    }, [isOpen]);
+
     if (!isOpen) return null;
 
     const isDanger = type === 'danger';
@@ -34,18 +42,32 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, typ
                     </div>
                     <h3 className="text-lg font-black text-slate-800 mb-2">{title}</h3>
                     <p className="text-slate-500 text-sm leading-relaxed">{message}</p>
+                    
+                    {requirePassword && (
+                        <div className="mt-5 text-left">
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Mật khẩu xác nhận</label>
+                            <input 
+                                type="password" 
+                                value={password}
+                                onChange={(e) => setPassword(e.target.value)}
+                                placeholder="Nhập mật khẩu của bạn..."
+                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white outline-none transition-colors"
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div className="px-6 pb-6 flex gap-3">
                     <button
                         onClick={onCancel}
-                        className="flex-1 py-2.5 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition text-sm"
+                        className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition text-sm"
                     >
                         Hủy bỏ
                     </button>
                     <button
-                        onClick={onConfirm}
-                        className={`flex-1 py-2.5 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm`}
+                        onClick={() => onConfirm(requirePassword ? password : null)}
+                        disabled={requirePassword && !password}
+                        className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm ${requirePassword && !password ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         {isDanger ? 'Xóa ngay' : 'Đồng ý'}
                     </button>
