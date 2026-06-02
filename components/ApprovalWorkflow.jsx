@@ -283,7 +283,7 @@ export default function ApprovalWorkflow({
         });
     };
 
-    const handleDebtConfirm = () => {
+    const handleDebtConfirm = (status) => {
         const { distributeItem, distributionData } = debtConfirmModal.data;
         
         const payload = distributionData.map(d => ({
@@ -305,7 +305,7 @@ export default function ApprovalWorkflow({
                 partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
                 debt_type: 'CẦN TRẢ',
                 amount: distributeItem.total_amount,
-                status: debtConfirmModal.thanhToanStatus,
+                status: status || debtConfirmModal.thanhToanStatus,
                 note: `Thanh toán chi phí - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
             });
         }
@@ -1212,6 +1212,44 @@ export default function ApprovalWorkflow({
                                     </div>
                                     <div className="h-24"></div>
                                 </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {debtConfirmModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4 font-sans">
+                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-indigo-600 p-6 text-center">
+                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <CheckCircle2 size={32} className="text-white" />
+                            </div>
+                            <h3 className="text-2xl font-black text-white uppercase tracking-wider">Xác Nhận Công Nợ</h3>
+                        </div>
+                        
+                        <div className="p-8">
+                            <p className="text-slate-600 text-center text-lg mb-8 font-medium">Chi phí này đã được thanh toán chưa?</p>
+                            
+                            <div className="space-y-4">
+                                <button 
+                                    onClick={() => handleDebtConfirm('ĐÃ XONG')}
+                                    className="w-full p-4 rounded-2xl font-bold bg-green-500 text-white shadow-lg shadow-green-500/30 hover:bg-green-600 transition-all hover:-translate-y-1"
+                                >
+                                    ĐÃ THANH TOÁN
+                                </button>
+                                <button 
+                                    onClick={() => handleDebtConfirm('CHƯA XONG')}
+                                    className="w-full p-4 rounded-2xl font-bold bg-amber-500 text-white shadow-lg shadow-amber-500/30 hover:bg-amber-600 transition-all hover:-translate-y-1"
+                                >
+                                    CHƯA THANH TOÁN
+                                </button>
+                                <button 
+                                    onClick={() => setDebtConfirmModal({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' })}
+                                    className="w-full p-4 rounded-2xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all mt-4"
+                                >
+                                    HỦY BỎ
+                                </button>
                             </div>
                         </div>
                     </div>
