@@ -856,22 +856,7 @@ export default function Home() {
             if (error) throw error;
             logActivity('Cập nhật', 'Công nợ', `Đổi trạng thái công nợ (ID: ${id}) thành: ${newStatus}`);
 
-            if (newStatus === 'ĐÃ XONG' && correspondingAccount && typeof debtOrId === 'object') {
-                const debt = debtOrId;
-                const isThu = debt.debt_type === 'CẦN THU';
-                const payload = {
-                    project_name: debt.project_name,
-                    accounting_date: new Date().toISOString().split('T')[0],
-                    recipient: debt.partner_name,
-                    corresponding_account: correspondingAccount,
-                    code: isThu ? 'THU_CONG_NO' : 'TRA_CONG_NO',
-                    debit: isThu ? 0 : debt.amount,
-                    credit: isThu ? debt.amount : 0,
-                    note: `[CÔNG NỢ] ${isThu ? 'Thu' : 'Trả'} công nợ - ${debt.note || ''}`,
-                    created_by: currentUser.username
-                };
-                await supabase.from('transactions').insert([payload]);
-            }
+
 
             showToast(`Đã cập nhật trạng thái thành ${newStatus}!`);
             fetchData();

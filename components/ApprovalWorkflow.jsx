@@ -113,7 +113,7 @@ export default function ApprovalWorkflow({
     const [distributeOption, setDistributeOption] = useState('auto'); // 'auto' hoặc 'manual'
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
-    const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' });
+    const [hachToanThanhToanStatus, setHachToanThanhToanStatus] = useState('CHƯA XONG');
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
     const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
     const [activeQrIndex, setActiveQrIndex] = useState(null); // Index của người đang quét QR trong TTL
@@ -266,26 +266,16 @@ export default function ApprovalWorkflow({
                 message: "Tổng tiền phân bổ không khớp với tổng tiền phiếu. Bạn vẫn muốn tiếp tục?",
                 onConfirm: () => {
                     setConfirmModal({ isOpen: false, message: '', onConfirm: null });
-                    openDebtConfirm();
+                    handleDebtConfirm(hachToanThanhToanStatus);
                 }
             });
             return;
         }
 
-        openDebtConfirm();
-    };
-
-    const openDebtConfirm = () => {
-        setDebtConfirmModal({
-            isOpen: true,
-            data: { distributeItem, distributionData },
-            thanhToanStatus: 'CHƯA XONG'
-        });
+        handleDebtConfirm(hachToanThanhToanStatus);
     };
 
     const handleDebtConfirm = (status) => {
-        const { distributeItem, distributionData } = debtConfirmModal.data;
-        
         const payload = distributionData.map(d => ({
             project_name: distributeItem.project_name,
             code: d.code,
@@ -300,17 +290,19 @@ export default function ApprovalWorkflow({
         onAccountDNTT(distributeItem.id, payload);
 
         if (onAddDebt) {
+            const hasVatTu = distributionData.some(d => ['621', '623'].includes(d.code));
+            const categoryPrefix = hasVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
+            
             onAddDebt({
                 project_name: distributeItem.project_name,
                 partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
                 debt_type: 'CẦN TRẢ',
                 amount: distributeItem.total_amount,
-                status: status || debtConfirmModal.thanhToanStatus,
-                note: `Thanh toán chi phí - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
+                status: status || 'CHƯA XONG',
+                note: `${categoryPrefix}Thanh toán chi phí - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
             });
         }
 
-        setDebtConfirmModal({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' });
         setDistributeItem(null);
         setFilter('accounted'); // Chuyển sang tab hoàn tất sau khi xong
     };
@@ -985,9 +977,22 @@ export default function ApprovalWorkflow({
                         </div>
 
                         <footer className="p-4 sm:p-8 bg-white border-t-2 border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6">
-                            <div className="flex items-center gap-4 bg-amber-50 px-6 py-3 rounded-2xl border border-amber-100 w-full md:w-auto justify-between md:justify-start">
-                                <span className="text-amber-800 font-bold text-sm uppercase">Tổng phân bổ:</span>
-                                <span className="text-xl sm:text-2xl font-black text-amber-900">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
+                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
+                                <div className="flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200 w-full sm:w-auto">
+                                    <span className="text-slate-500 font-bold text-sm">Trạng thái thanh toán:</span>
+                                    <select 
+                                        value={hachToanThanhToanStatus}
+                                        onChange={e => setHachToanThanhToanStatus(e.target.value)}
+                                        className="bg-white border-2 border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors"
+                                    >
+                                        <option value="ĐÃ XONG">Đã thanh toán</option>
+                                        <option value="CHƯA XONG">Chưa thanh toán</option>
+                                    </select>
+                                </div>
+                                <div className="flex items-center gap-4 bg-amber-50 px-6 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto justify-between sm:justify-start">
+                                    <span className="text-amber-800 font-bold text-sm uppercase">Tổng phân bổ:</span>
+                                    <span className="text-xl sm:text-2xl font-black text-amber-900">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
+                                </div>
                             </div>
                             <div className="flex gap-3 w-full md:w-auto">
                                 <button 
@@ -1218,43 +1223,7 @@ export default function ApprovalWorkflow({
                 </div>
             )}
 
-            {debtConfirmModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex justify-center items-center p-4 font-sans">
-                    <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                        <div className="bg-indigo-600 p-6 text-center">
-                            <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <CheckCircle2 size={32} className="text-white" />
-                            </div>
-                            <h3 className="text-2xl font-black text-white uppercase tracking-wider">Xác Nhận Công Nợ</h3>
-                        </div>
-                        
-                        <div className="p-8">
-                            <p className="text-slate-600 text-center text-lg mb-8 font-medium">Chi phí này đã được thanh toán chưa?</p>
-                            
-                            <div className="space-y-4">
-                                <button 
-                                    onClick={() => handleDebtConfirm('ĐÃ XONG')}
-                                    className="w-full p-4 rounded-2xl font-bold bg-green-500 text-white shadow-lg shadow-green-500/30 hover:bg-green-600 transition-all hover:-translate-y-1"
-                                >
-                                    ĐÃ THANH TOÁN
-                                </button>
-                                <button 
-                                    onClick={() => handleDebtConfirm('CHƯA XONG')}
-                                    className="w-full p-4 rounded-2xl font-bold bg-amber-500 text-white shadow-lg shadow-amber-500/30 hover:bg-amber-600 transition-all hover:-translate-y-1"
-                                >
-                                    CHƯA THANH TOÁN
-                                </button>
-                                <button 
-                                    onClick={() => setDebtConfirmModal({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' })}
-                                    className="w-full p-4 rounded-2xl font-bold bg-slate-100 text-slate-600 hover:bg-slate-200 transition-all mt-4"
-                                >
-                                    HỦY BỎ
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
+
 
             <ConfirmModal 
                 isOpen={confirmModal.isOpen} 

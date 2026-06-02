@@ -35,12 +35,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
     const [errors, setErrors] = useState({});
     const [confirmSave, setConfirmSave] = useState(false);
     const [pendingSubmit, setPendingSubmit] = useState(null);
-    const [debtConfirmModal, setDebtConfirmModal] = useState({ 
-        isOpen: false, 
-        data: null, 
-        thuStatus: 'CHƯA XONG', 
-        thanhToanStatus: 'CHƯA XONG' 
-    });
+    const [thanhToanStatus, setThanhToanStatus] = useState('CHƯA XONG');
 
     useEffect(() => {
         if (editData) {
@@ -154,16 +149,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
             const isPayOnly = isMaterialOrEquipment || isPayable;
             const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
             
-            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
-                setDebtConfirmModal({ 
-                    isOpen: true, 
-                    data: formData,
-                    thuStatus: isBoth ? 'CHƯA XONG' : null,
-                    thanhToanStatus: 'CHƯA XONG',
-                    mode: isBoth ? 'BOTH' : 'PAY_ONLY'
-                });
-                return;
-            }
+
         }
 
         // Hiện confirm trước khi lưu
@@ -172,47 +158,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         setConfirmSave(true);
     };
 
-    const handleDebtConfirm = () => {
-        const data = debtConfirmModal.data;
-        const { thuStatus, thanhToanStatus, mode } = debtConfirmModal;
-        
-        setDebtConfirmModal({ isOpen: false, data: null, thuStatus: 'CHƯA XONG', thanhToanStatus: 'CHƯA XONG' });
-        
-        // 1. Submit normal transaction
-        onSubmit('EXPENSE', data, editData?.id);
-        
-        // 2 & 3. Submit debts
-        if (onAddDebt) {
-            const debts = [];
-            if (mode === 'BOTH') {
-                let partnerName = data.recipient || 'Đối tác/Nhà cung cấp';
-                let debtNote = `Thu lại - ${data.note || ''}`;
-                if (data.code === '6418') debtNote = `Thu lại (Bảo hiểm) - ${data.note || ''}`;
-                else if (data.code === '6413') debtNote = `Thu lại (Hồ sơ) - ${data.note || ''}`;
 
-                debts.push({
-                    project_name: data.project_name,
-                    partner_name: partnerName,
-                    debt_type: 'CẦN THU',
-                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                    status: thuStatus,
-                    note: debtNote
-                });
-            }
-            
-            debts.push({
-                project_name: data.project_name,
-                partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
-                debt_type: 'CẦN TRẢ',
-                amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                status: thanhToanStatus,
-                note: `Thanh toán chi phí - ${data.note || ''}`
-            });
-            onAddDebt(debts);
-        }
-        
-        resetForm();
-    };
 
     const resetForm = () => {
         setFormData(prev => ({
@@ -234,9 +180,51 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
     const doSubmit = () => {
         if (!pendingSubmit) return;
         setConfirmSave(false);
-        onSubmit(pendingSubmit.type, pendingSubmit.formData, pendingSubmit.editId);
-        setPendingSubmit(null);
+        const data = pendingSubmit.formData;
+        onSubmit(pendingSubmit.type, data, pendingSubmit.editId);
+        
+        if (pendingSubmit.type === 'EXPENSE' && onAddDebt) {
+            const isBothCode = ['6413', '6418'].includes(data.code);
+            const isAdvanceOrReceivable = ['131', '141'].some(acc => data.corresponding_account?.startsWith(acc));
+            const isPayable = ['331'].some(acc => data.corresponding_account?.startsWith(acc));
+            const isMaterialOrEquipment = ['621', '623'].includes(data.code);
+            const isPayOnly = isMaterialOrEquipment || isPayable;
+            const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
 
+            if ((isBoth || isPayOnly) && parseFloat(data.debit) > 0) {
+                const isVatTu = ['621', '623'].includes(data.code);
+                const categoryPrefix = isVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
+                
+                const debts = [];
+                if (isBoth) {
+                    let partnerName = data.recipient || 'Đối tác/Nhà cung cấp';
+                    let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
+                    if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
+                    else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
+
+                    debts.push({
+                        project_name: data.project_name,
+                        partner_name: partnerName,
+                        debt_type: 'CẦN THU',
+                        amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                        status: 'CHƯA XONG',
+                        note: debtNote
+                    });
+                }
+                
+                debts.push({
+                    project_name: data.project_name,
+                    partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
+                    debt_type: 'CẦN TRẢ',
+                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                    status: thanhToanStatus,
+                    note: `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`
+                });
+                onAddDebt(debts);
+            }
+        }
+
+        setPendingSubmit(null);
         if (!editData) resetForm();
     };
 
@@ -268,97 +256,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                 type={editData ? 'warning' : 'info'}
             />
 
-            {debtConfirmModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 border border-slate-100">
-                        <div className="p-8">
-                            <div className="flex items-center gap-3 text-amber-500 mb-6">
-                                <div className="p-3 bg-amber-50 rounded-2xl">
-                                    <AlertCircle size={28} />
-                                </div>
-                                <h3 className="text-xl font-black text-slate-800">Xác nhận Công Nợ</h3>
-                            </div>
-                            
-                            <p className="text-slate-600 mb-8 font-medium leading-relaxed">
-                                Chi phí này có mã <b>{debtConfirmModal.data?.code}</b>. Vui lòng xác nhận trạng thái để hệ thống tự động ghi nhận vào sổ công nợ.
-                            </p>
-                            
-                            <div className="space-y-6">
-                                {/* Khối Thu từ tổ đội */}
-                                {debtConfirmModal.mode === 'BOTH' && (
-                                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                                        <p className="font-bold text-slate-800 mb-3 text-sm">1. Đã thu lại tiền từ tổ đội/công nhân chưa?</p>
-                                        <div className="flex gap-3">
-                                            <button
-                                                onClick={() => setDebtConfirmModal(prev => ({...prev, thuStatus: 'ĐÃ XONG'}))}
-                                                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
-                                                    debtConfirmModal.thuStatus === 'ĐÃ XONG' 
-                                                        ? 'bg-emerald-50 text-emerald-700 border-emerald-500 shadow-sm' 
-                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
-                                                }`}
-                                            >
-                                                ĐÃ THU
-                                            </button>
-                                            <button
-                                                onClick={() => setDebtConfirmModal(prev => ({...prev, thuStatus: 'CHƯA XONG'}))}
-                                                className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
-                                                    debtConfirmModal.thuStatus === 'CHƯA XONG' 
-                                                        ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
-                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
-                                                }`}
-                                            >
-                                                CHƯA THU
-                                            </button>
-                                        </div>
-                                    </div>
-                                )}
 
-                                {/* Khối Thanh toán */}
-                                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
-                                    <p className="font-bold text-slate-800 mb-3 text-sm">{debtConfirmModal.mode === 'BOTH' ? '2. ' : ''}Đã thanh toán chi phí này chưa?</p>
-                                    <div className="flex gap-3">
-                                        <button
-                                            onClick={() => setDebtConfirmModal(prev => ({...prev, thanhToanStatus: 'ĐÃ XONG'}))}
-                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
-                                                debtConfirmModal.thanhToanStatus === 'ĐÃ XONG' 
-                                                    ? 'bg-blue-50 text-blue-700 border-blue-500 shadow-sm' 
-                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-blue-200 hover:bg-blue-50/50'
-                                            }`}
-                                        >
-                                            ĐÃ THANH TOÁN
-                                        </button>
-                                        <button
-                                            onClick={() => setDebtConfirmModal(prev => ({...prev, thanhToanStatus: 'CHƯA XONG'}))}
-                                            className={`flex-1 py-2.5 rounded-xl font-bold text-sm transition-all border-2 ${
-                                                debtConfirmModal.thanhToanStatus === 'CHƯA XONG' 
-                                                    ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
-                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
-                                            }`}
-                                        >
-                                            CHƯA THANH TOÁN
-                                        </button>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="flex flex-col gap-3 mt-8">
-                                <button
-                                    onClick={handleDebtConfirm}
-                                    className="w-full py-4 bg-indigo-600 text-white hover:bg-indigo-700 font-bold rounded-2xl transition shadow-lg shadow-indigo-600/20"
-                                >
-                                    LƯU DỮ LIỆU & CHUYỂN TỚI CÔNG NỢ
-                                </button>
-                                <button
-                                    onClick={() => setDebtConfirmModal({ isOpen: false, data: null, thuStatus: 'CHƯA XONG', thanhToanStatus: 'CHƯA XONG' })}
-                                    className="w-full py-3 text-slate-500 hover:bg-slate-100 font-bold rounded-2xl transition"
-                                >
-                                    Hủy bỏ
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            )}
 
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                 <div className="flex border-b">
@@ -703,6 +601,20 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
                             <AlertCircle size={16} className="flex-shrink-0" />
                             Vui lòng điền đầy đủ các trường bắt buộc (<span className="text-red-500">*</span>) trước khi lưu.
+                        </div>
+                    )}
+
+                    {type === 'EXPENSE' && (
+                        <div className="flex items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4 mb-4">
+                            <span className="font-bold text-slate-700 text-sm">Trạng thái thanh toán:</span>
+                            <select
+                                value={thanhToanStatus}
+                                onChange={(e) => setThanhToanStatus(e.target.value)}
+                                className="w-48 bg-white border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
+                            >
+                                <option value="ĐÃ XONG">Đã thanh toán</option>
+                                <option value="CHƯA XONG">Chưa thanh toán</option>
+                            </select>
                         </div>
                     )}
 

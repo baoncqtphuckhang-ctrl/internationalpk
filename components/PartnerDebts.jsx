@@ -17,6 +17,7 @@ export default function PartnerDebts({
 
     const [filterType, setFilterType] = useState('ALL'); // ALL, CẦN THU, CẦN TRẢ
     const [filterStatus, setFilterStatus] = useState('CHƯA XONG'); // ALL, CHƯA XONG, ĐÃ XONG
+    const [activeCategory, setActiveCategory] = useState('ALL'); // ALL, TO_DOI, VAT_TU
     const [searchTerm, setSearchTerm] = useState('');
     
     const [showAddForm, setShowAddForm] = useState(false);
@@ -71,6 +72,10 @@ export default function PartnerDebts({
             if (filterType !== 'ALL' && d.debt_type !== filterType) return false;
             if (filterStatus !== 'ALL' && d.status !== filterStatus) return false;
             
+            const isVatTu = d.note && d.note.includes('[VẬT TƯ]');
+            if (activeCategory === 'VAT_TU' && !isVatTu) return false;
+            if (activeCategory === 'TO_DOI' && isVatTu) return false; // Assume anything not VAT_TU is TO_DOI (including legacy)
+            
             if (searchTerm) {
                 const term = removeAccents(searchTerm.toLowerCase());
                 const pName = removeAccents((d.partner_name || '').toLowerCase());
@@ -85,7 +90,7 @@ export default function PartnerDebts({
             }
             return true;
         });
-    }, [debts, filterType, filterStatus, searchTerm]);
+    }, [debts, filterType, filterStatus, activeCategory, searchTerm]);
 
     const totalNeedToCollect = filteredDebts.filter(d => d.debt_type === 'CẦN THU' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
     const totalNeedToPay = filteredDebts.filter(d => d.debt_type === 'CẦN TRẢ' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
@@ -136,6 +141,39 @@ export default function PartnerDebts({
                     </div>
                 )}
             </header>
+
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2 no-scrollbar">
+                <button
+                    onClick={() => setActiveCategory('ALL')}
+                    className={`px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
+                        activeCategory === 'ALL'
+                            ? 'bg-slate-800 text-white shadow-lg'
+                            : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    TẤT CẢ SỔ CÔNG NỢ
+                </button>
+                <button
+                    onClick={() => setActiveCategory('TO_DOI')}
+                    className={`px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
+                        activeCategory === 'TO_DOI'
+                            ? 'bg-blue-600 text-white shadow-lg shadow-blue-600/30'
+                            : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    CÔNG NỢ TỔ ĐỘI / NHÂN CÔNG
+                </button>
+                <button
+                    onClick={() => setActiveCategory('VAT_TU')}
+                    className={`px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
+                        activeCategory === 'VAT_TU'
+                            ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/30'
+                            : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    CÔNG NỢ VẬT TƯ / THIẾT BỊ
+                </button>
+            </div>
 
             {showAddForm && (
                 <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-8 animate-in slide-in-from-top-4">
@@ -332,27 +370,11 @@ export default function PartnerDebts({
                             <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><CheckCircle className="text-emerald-500" /> Xác nhận công nợ</h3>
                             <p className="text-slate-600 mb-6 font-medium leading-relaxed">
                                 Bạn đang đánh dấu công nợ của <b>{confirmDebtModal.debt?.partner_name}</b> là <b>{confirmDebtModal.debt?.debt_type === 'CẦN THU' ? 'ĐÃ THU' : 'ĐÃ THANH TOÁN'}</b>.
-                                Vui lòng chọn tài khoản đối ứng (nếu có):
                             </p>
-                            <div className="mb-8">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Tài khoản đối ứng</label>
-                                <select 
-                                    value={debtAccount} 
-                                    onChange={(e) => setDebtAccount(e.target.value)}
-                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-3 font-bold focus:border-blue-500 outline-none"
-                                >
-                                    <option value="">-- Bỏ qua / Không ghi nhận giao dịch --</option>
-                                    <option value="111 - Tiền mặt">111 - Tiền mặt</option>
-                                    <option value="112 - Tiền gửi NH">112 - Tiền gửi NH</option>
-                                    <option value="131 - Công nợ phải thu">131 - Công nợ phải thu</option>
-                                    <option value="141 - Tạm ứng">141 - Tạm ứng</option>
-                                    <option value="331 - Phải trả người bán">331 - Phải trả người bán</option>
-                                </select>
-                            </div>
                             <div className="flex flex-col gap-3">
                                 <button
                                     onClick={() => {
-                                        onUpdateDebtStatus(confirmDebtModal.debt, 'ĐÃ XONG', debtAccount);
+                                        onUpdateDebtStatus(confirmDebtModal.debt, 'ĐÃ XONG');
                                         setConfirmDebtModal({ isOpen: false, debt: null });
                                     }}
                                     className="w-full py-4 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-2xl transition shadow-lg shadow-emerald-600/20 flex justify-center items-center gap-2"
