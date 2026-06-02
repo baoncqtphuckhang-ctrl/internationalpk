@@ -1164,6 +1164,7 @@ export default function Home() {
                         onUpdateStatus={handleUpdateApprovalStatus}
                         onAccountDNTT={handleAccountDNTT}
                         onDeleteApproval={handleDeleteApproval}
+                        onAddDebt={handleAddDebt}
                         isLoading={isLoading}
                         STATUSES={STATUSES}
                         ROLES={ROLES}

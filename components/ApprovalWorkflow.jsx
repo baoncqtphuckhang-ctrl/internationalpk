@@ -96,6 +96,7 @@ export default function ApprovalWorkflow({
     onUpdateStatus,
     onAccountDNTT,
     onDeleteApproval,
+    onAddDebt,
     isLoading,
     STATUSES,
     ROLES
@@ -112,6 +113,7 @@ export default function ApprovalWorkflow({
     const [distributeOption, setDistributeOption] = useState('auto'); // 'auto' hoặc 'manual'
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+    const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' });
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
     const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
     const [activeQrIndex, setActiveQrIndex] = useState(null); // Index của người đang quét QR trong TTL
@@ -250,23 +252,26 @@ export default function ApprovalWorkflow({
                 message: "Tổng tiền phân bổ không khớp với tổng tiền phiếu. Bạn vẫn muốn tiếp tục?",
                 onConfirm: () => {
                     setConfirmModal({ isOpen: false, message: '', onConfirm: null });
-                    onAccountDNTT(distributeItem.id, distributionData.map(d => ({
-                        project_name: distributeItem.project_name,
-                        code: d.code,
-                        debit: parseFloat(d.amount) || 0,
-                        note: `[${distributeItem.doc_type}] ${d.content}`,
-                        recipient: distributeItem.recipient,
-                        corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
-                        invoice_date: d.invoiceDate,
-                        invoice_no: d.invoiceNumber
-                    })));
-                    setDistributeItem(null);
-                    setFilter('accounted');
+                    openDebtConfirm();
                 }
             });
             return;
         }
 
+        openDebtConfirm();
+    };
+
+    const openDebtConfirm = () => {
+        setDebtConfirmModal({
+            isOpen: true,
+            data: { distributeItem, distributionData },
+            thanhToanStatus: 'CHƯA XONG'
+        });
+    };
+
+    const handleDebtConfirm = () => {
+        const { distributeItem, distributionData } = debtConfirmModal.data;
+        
         const payload = distributionData.map(d => ({
             project_name: distributeItem.project_name,
             code: d.code,
@@ -279,6 +284,19 @@ export default function ApprovalWorkflow({
         }));
 
         onAccountDNTT(distributeItem.id, payload);
+
+        if (onAddDebt) {
+            onAddDebt({
+                project_name: distributeItem.project_name,
+                partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
+                debt_type: 'CẦN TRẢ',
+                amount: distributeItem.total_amount,
+                status: debtConfirmModal.thanhToanStatus,
+                note: `Thanh toán chi phí - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
+            });
+        }
+
+        setDebtConfirmModal({ isOpen: false, data: null, thanhToanStatus: 'CHƯA XONG' });
         setDistributeItem(null);
         setFilter('accounted'); // Chuyển sang tab hoàn tất sau khi xong
     };
