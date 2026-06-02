@@ -221,7 +221,7 @@ export default function ApprovalWorkflow({
             note: it.note || '',
             invoiceDate: new Date().toISOString().split('T')[0],
             invoiceNumber: '',
-            correspondingAccount: paymentMethod === 'tien_mat' ? '1111' : '1121'
+            correspondingAccount: item.doc_type === 'Đơn Vật Tư' ? '331' : (paymentMethod === 'tien_mat' ? '1111' : '1121')
         })));
         setDistributeOption('auto');
     };
@@ -929,8 +929,7 @@ export default function ApprovalWorkflow({
                                             </div>
                                             <div className="flex-1">
                                                 <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Tài khoản đối ứng</p>
-                                                <input 
-                                                    type="text"
+                                                <select
                                                     value={d.correspondingAccount}
                                                     onChange={(e) => {
                                                         const newData = [...distributionData];
@@ -938,8 +937,14 @@ export default function ApprovalWorkflow({
                                                         setDistributionData(newData);
                                                     }}
                                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
-                                                    placeholder="Nhập tài khoản đối ứng..."
-                                                />
+                                                >
+                                                    <option value="331">331 - Phải trả cho người bán</option>
+                                                    <option value="1111">1111 - Tiền mặt</option>
+                                                    <option value="1121">1121 - Tiền gửi ngân hàng</option>
+                                                    <option value="141">141 - Tạm ứng</option>
+                                                    <option value="333">333 - Thuế và các khoản phải nộp</option>
+                                                    <option value="3388">3388 - Phải trả, phải nộp khác</option>
+                                                </select>
                                             </div>
                                         </div>
                                     </div>
