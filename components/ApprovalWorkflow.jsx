@@ -221,15 +221,17 @@ export default function ApprovalWorkflow({
     const openDistributeModal = (item) => {
         let items = [];
         let paymentMethod = 'tien_mat';
+        let orderPhase = null;
         try {
             const parsed = JSON.parse(item.reason);
             items = parsed.items || [];
             paymentMethod = parsed.paymentMethod || 'tien_mat';
+            orderPhase = parsed.orderPhase || parsed.phase || null;
         } catch(e) {
             items = [{ content: item.reason, amount: item.total_amount }];
         }
         
-        setDistributeItem({ ...item, paymentMethod });
+        setDistributeItem({ ...item, paymentMethod, orderPhase });
         setDistributionData(items.map(it => ({
             content: it.content,
             amount: parseFloat(it.amount),
@@ -280,7 +282,7 @@ export default function ApprovalWorkflow({
             project_name: distributeItem.project_name,
             code: d.code,
             debit: parseFloat(d.amount) || 0,
-            note: `[Đợt ${distributeItem.phase || 1}] [${distributeItem.doc_type}] ${d.content}`,
+            note: `[${distributeItem.orderPhase ? distributeItem.orderPhase : `Đợt ${distributeItem.phase || 1}`}] [${distributeItem.doc_type}] ${d.content}`,
             recipient: distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate,
