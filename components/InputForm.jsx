@@ -147,9 +147,12 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
 
         if (type === 'EXPENSE') {
             const isBothCode = ['6413', '6418'].includes(formData.code);
-            const isDebtAccount = ['131', '141', '331'].some(acc => formData.corresponding_account?.startsWith(acc));
-            const isBoth = isBothCode || isDebtAccount;
-            const isPayOnly = ['621', '623'].includes(formData.code);
+            const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
+            const isPayable = ['331'].some(acc => formData.corresponding_account?.startsWith(acc));
+            const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
+            
+            const isPayOnly = isMaterialOrEquipment || isPayable;
+            const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
             
             if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
                 setDebtConfirmModal({ 
