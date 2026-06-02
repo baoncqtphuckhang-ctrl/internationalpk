@@ -604,20 +604,6 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         </div>
                     )}
 
-                    {type === 'EXPENSE' && (
-                        <div className="flex items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4 mb-4">
-                            <span className="font-bold text-slate-700 text-sm">Trạng thái thanh toán:</span>
-                            <select
-                                value={thanhToanStatus}
-                                onChange={(e) => setThanhToanStatus(e.target.value)}
-                                className="w-48 bg-white border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                            >
-                                <option value="ĐÃ XONG">Đã thanh toán</option>
-                                <option value="CHƯA XONG">Chưa thanh toán</option>
-                            </select>
-                        </div>
-                    )}
-
                     <div className="flex gap-4">
                         {onCancel ? (
                             <button

@@ -356,8 +356,8 @@ export default function HistoryTable({
                                     <td className="p-3 border-r border-slate-100 whitespace-nowrap">{formatDateVN(t.accounting_date)}</td>
                                     <td className="p-3 border-r border-slate-100 whitespace-nowrap">{formatDateVN(t.invoice_date)}</td>
                                     <td className="p-3 border-r border-slate-100 font-mono">{t.invoice_no || '-'}</td>
-                                    <td className="p-3 border-r border-slate-100 min-w-[200px] max-w-[300px]" title={t.note}>
-                                        <div className="line-clamp-3 break-words whitespace-normal leading-relaxed">{t.note}</div>
+                                    <td className="p-3 border-r border-slate-100 min-w-[200px] max-w-[300px]" title={t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '')}>
+                                        <div className="line-clamp-3 break-words whitespace-normal leading-relaxed">{t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '')}</div>
                                     </td>
                                     <td className="p-3 border-r border-slate-100 font-bold text-blue-700">{t.code}</td>
                                     <td className="p-3 border-r border-slate-100 font-bold text-slate-600">{t.corresponding_account || '-'}</td>

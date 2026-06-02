@@ -280,7 +280,7 @@ export default function ApprovalWorkflow({
             project_name: distributeItem.project_name,
             code: d.code,
             debit: parseFloat(d.amount) || 0,
-            note: `[${distributeItem.doc_type}] ${d.content}`,
+            note: `[Đợt ${distributeItem.phase || 1}] [${distributeItem.doc_type}] ${d.content}`,
             recipient: distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate,
