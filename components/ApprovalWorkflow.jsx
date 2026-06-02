@@ -141,6 +141,20 @@ export default function ApprovalWorkflow({
     const handleDnttItemChange = (index, field, value) => { 
         const newItems = [...dnttData.items]; 
         newItems[index][field] = value; 
+        
+        // Auto-recalculate amount based on SL and ĐG in content if changed manually
+        if (field === 'content' && typeof value === 'string') {
+            const slMatch = value.match(/- SL:\s*([0-9.,]+)/i);
+            const dgMatch = value.match(/-(?:\s*Đơn giá|\s*ĐG):\s*([0-9.,]+)/i);
+            if (slMatch && dgMatch) {
+                const sl = parseVietnameseNumber(slMatch[1]);
+                const dg = parseVietnameseNumber(dgMatch[1]);
+                if (sl > 0 && dg > 0) {
+                    newItems[index].amount = sl * dg;
+                }
+            }
+        }
+        
         setDnttData({ ...dnttData, items: newItems }); 
     };
     

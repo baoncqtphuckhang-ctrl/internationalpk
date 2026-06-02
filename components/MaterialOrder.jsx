@@ -10,6 +10,7 @@ import {
 import { formatCurrency, formatDateVN, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
+import CurrencyInput from './CurrencyInput';
 
 const DEFAULT_CATEGORIES = [
     {
@@ -1037,12 +1038,11 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                         placeholder="ĐVT"
                                                         className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-medium outline-none focus:border-blue-500"
                                                     />
-                                                    <input 
-                                                        type="text" 
-                                                        value={item.price ? formatCurrency(item.price) : ''}
-                                                        onChange={(e) => {
+                                                    <CurrencyInput 
+                                                        value={item.price || 0}
+                                                        onChange={(val) => {
                                                             const updated = [...configCategories];
-                                                            updated[catIdx].items[itemIdx].price = parseVietnameseNumber(e.target.value);
+                                                            updated[catIdx].items[itemIdx].price = val;
                                                             setConfigCategories(updated);
                                                         }}
                                                         placeholder="Đơn giá"
@@ -1423,10 +1423,9 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                             />
                                                         </td>
                                                         <td className="border border-black p-2">
-                                                            <input 
-                                                                type="text" 
-                                                                value={item.price ? formatCurrency(item.price) : ''}
-                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'price', parseVietnameseNumber(e.target.value))}
+                                                            <CurrencyInput 
+                                                                value={item.price || 0}
+                                                                onChange={(val) => handleItemChange(catIdx, itemIdx, 'price', val)}
                                                                 placeholder="Đơn giá"
                                                                 className="w-full outline-none text-right font-medium bg-transparent text-slate-900"
                                                             />
