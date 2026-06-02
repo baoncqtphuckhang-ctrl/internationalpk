@@ -226,7 +226,7 @@ export default function ApprovalWorkflow({
             const parsed = JSON.parse(item.reason);
             items = parsed.items || [];
             paymentMethod = parsed.paymentMethod || 'tien_mat';
-            orderPhase = parsed.orderPhase || parsed.phase || null;
+            orderPhase = parsed.orderPhase || (parsed.items && parsed.items[0] && parsed.items[0].note ? parsed.items[0].note.split(' | ')[1] : null) || parsed.phase || null;
         } catch(e) {
             items = [{ content: item.reason, amount: item.total_amount }];
         }
