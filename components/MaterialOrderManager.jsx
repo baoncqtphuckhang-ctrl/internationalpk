@@ -266,20 +266,24 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
             if (!catHasQuantity) return;
 
             rowsHtml += `
-                <tr>
-                    <td colspan="4" style="border: 1px solid #000; font-weight: bold; text-align: center; background-color: #f2f2f2; font-family: 'Times New Roman'; font-size: 13pt; height: 28px;">${cat.name}</td>
+                <tr style="height: 40px;">
+                    <td colspan="7" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; background-color: #f2f2f2; font-family: 'Times New Roman'; font-size: 13pt;">${cat.name}</td>
                 </tr>
             `;
             cat.items.forEach(it => {
                 const qty = parseFloat(it.quantity);
+                const price = parseFloat(it.price) || 0;
                 if (isNaN(qty) || qty <= 0) return;
 
                 rowsHtml += `
-                    <tr style="height: 24px;">
-                        <td style="border: 1px solid #000; text-align: center; font-family: 'Times New Roman'; font-size: 12pt;">${it.stt}</td>
-                        <td style="border: 1px solid #000; font-family: 'Times New Roman'; font-size: 12pt; padding-left: 5px;">${it.name}</td>
-                        <td style="border: 1px solid #000; text-align: center; font-family: 'Times New Roman'; font-size: 12pt;">${it.unit}</td>
-                        <td style="border: 1px solid #000; text-align: right; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${qty}</td>
+                    <tr style="height: 35px;">
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.stt}</td>
+                        <td style="border: 1px solid #000; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-left: 5px;">${it.name}</td>
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.colorCode || ''}</td>
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.unit}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${qty}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price ? formatCurrency(price) : ''}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price && qty ? formatCurrency(price * qty) : ''}</td>
                     </tr>
                 `;
             });
@@ -311,74 +315,99 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                 <table style="border-collapse: collapse; font-family: 'Times New Roman';">
                     <colgroup>
                         <col width="60" style="width: 60pt;" />
-                        <col width="380" style="width: 380pt;" />
-                        <col width="120" style="width: 120pt;" />
+                        <col width="300" style="width: 300pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
                         <col width="120" style="width: 120pt;" />
                     </colgroup>
                     
                     <!-- TITLE -->
-                    <tr>
-                        <td colspan="4" style="text-align: center; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman'; height: 45px;">
+                    <tr style="height: 55px;">
+                        <td colspan="7" style="text-align: center; vertical-align: middle; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman';">
                             ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC ${orderData.order_phase.toUpperCase()}
                         </td>
                     </tr>
                     
                     <!-- METADATA (MERGED AND SPACED FOR ABSOLUTE VISUAL BEAUTY, NO CUTS) -->
-                    <tr style="height: 26px;">
-                        <td colspan="4" style="font-family: 'Times New Roman'; font-size: 12pt;">
-                            <b>DỰ ÁN :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${orderData.project_name.toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            DỰ ÁN :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #1d4ed8; vertical-align: middle;">
+                            ${orderData.project_name.toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="4" style="font-family: 'Times New Roman'; font-size: 12pt;">
-                            <b>ĐỊA CHỈ :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${(orderData.address || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            ĐỊA CHỈ :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; vertical-align: middle;">
+                            ${(orderData.address || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="4" style="font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; background-color: #ffff00;">
-                            HẠNG MỤC : &nbsp;&nbsp;&nbsp;${(orderData.category || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                            HẠNG MỤC :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                            ${(orderData.category || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="4" style="font-family: 'Times New Roman'; font-size: 12pt;">
+                    <tr style="height: 35px;">
+                        <td colspan="7" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #334155; vertical-align: middle;">
                             ${(orderData.company || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="4" style="font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
-                            NGƯỜI NHẬN HÀNG : ${(orderData.recipient || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            NGƯỜI NHẬN HÀNG :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #0f172a; vertical-align: middle;">
+                            ${(orderData.recipient || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 15px;"><td colspan="4"></td></tr>
+                    <tr style="height: 20px;"><td colspan="7"></td></tr>
                     
                     <!-- TABLE HEADERS -->
-                    <tr style="background-color: #e6e6e6; height: 32px;">
-                        <th width="60" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">STT</th>
-                        <th width="380" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Chủng loại vật tư</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">DVT</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Số lượng</th>
+                    <tr style="background-color: #e6e6e6; height: 45px;">
+                        <th width="60" style="border: 1px solid #000; vertical-align: middle; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">STT</th>
+                        <th width="300" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Chủng loại vật tư</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Mã màu</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">DVT</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Số lượng</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Đơn giá</th>
+                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Thành tiền</th>
                     </tr>
                     
                     ${rowsHtml}
                     
-                    <tr style="height: 30px;"><td colspan="4"></td></tr>
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                            ${formatCurrency(orderItems.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
+                        </td>
+                    </tr>
+                    
+                    <tr style="height: 30px;"><td colspan="7"></td></tr>
                     
                     <!-- SIGNATURE BLOCK -->
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-style: italic; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-style: italic; font-family: 'Times New Roman'; font-size: 12pt;">
                             NGÀY ${dateComp.day} THÁNG ${dateComp.month} NĂM ${dateComp.year}
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
                             NGƯỜI LẬP
                         </td>
                     </tr>
                     <tr style="height: 60px;">
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; vertical-align: middle;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; vertical-align: middle;">
                             ${orderData.show_signature ? `
                             <span style="font-family: 'Brush Script MT', cursive, sans-serif; font-size: 24pt; color: #1e3a8a;">
                                 ${getSignatureName(getCommanderName(orderData.recipient))}
@@ -386,8 +415,8 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
                             ${getCommanderName(orderData.recipient)}
                         </td>
                     </tr>
@@ -781,17 +810,18 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                             <table className="w-full border-collapse border border-black text-left text-sm text-black min-w-[700px] print:min-w-0">
                                 <thead>
                                     <tr className="font-bold border-b border-black">
-                                        <th className="px-4 py-3 border-r border-black text-center w-12">STT</th>
-                                        <th className="px-4 py-3 border-r border-black w-2/5">Chủng loại vật tư sơn nước</th>
-                                        <th className="px-4 py-3 border-r border-black text-center w-16">DVT</th>
-                                        <th className="px-4 py-3 border-r border-black text-center w-24">Số lượng đặt</th>
+                                        <th className="px-3 py-3 border-r border-black text-center w-10">STT</th>
+                                        <th className="px-3 py-3 border-r border-black w-[28%]">Chủng loại vật tư sơn nước</th>
+                                        <th className="px-3 py-3 border-r border-black text-center w-20">Mã màu</th>
+                                        <th className="px-3 py-3 border-r border-black text-center w-16">DVT</th>
+                                        <th className="px-3 py-3 border-r border-black text-center w-16">Số lượng</th>
                                         {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
                                             <>
-                                                <th className="px-4 py-3 border-r border-black text-right w-32">Đơn giá hạch toán</th>
-                                                <th className="px-4 py-3 border-r border-black text-right w-32">Thành tiền</th>
+                                                <th className="px-3 py-3 border-r border-black text-right w-24">Đơn giá</th>
+                                                <th className="px-3 py-3 border-r border-black text-right w-28">Thành tiền</th>
                                             </>
                                         )}
-                                        <th className="px-4 py-3">Ghi chú</th>
+                                        <th className="px-3 py-3 w-[16%]">Ghi chú</th>
                                     </tr>
                                 </thead>
                                 <tbody className="divide-y divide-slate-900 font-medium">
@@ -816,7 +846,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                 <React.Fragment key={cat.id || cat.name || catIdx}>
                                                     {/* Category Header Row */}
                                                     <tr className="font-bold border-b border-black">
-                                                        <td colSpan={matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) ? "7" : "5"} className="px-4 py-2 border-r border-black">
+                                                        <td colSpan={matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) ? "8" : "6"} className="px-4 py-2 border-r border-black">
                                                             {cat.name}
                                                         </td>
                                                     </tr>
@@ -840,6 +870,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                             <tr key={it.stt || itemIdx} className="border-b border-black">
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-bold">{globalStt++}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black font-bold">{it.name}</td>
+                                                                <td className="px-4 py-2.5 border-r border-black text-center font-medium">{it.colorCode || '-'}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center">{it.unit}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-bold">{qty}</td>
                                                                 {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
@@ -847,12 +878,12 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                                         <td className="px-4 py-2.5 border-r border-black text-right">
                                                                             {formatCurrency(unitPrice)}
                                                                         </td>
-                                                                        <td className="px-4 py-2.5 border-r border-black text-right font-bold">
+                                                                        <td className="px-4 py-2.5 border-r border-black text-right font-bold text-blue-800">
                                                                             {formatCurrency(allocatedAmount)}
                                                                         </td>
                                                                     </>
                                                                 )}
-                                                                <td className="px-4 py-2.5 text-xs italic">{note}</td>
+                                                                <td className="px-4 py-2.5 text-xs text-slate-500">{note}</td>
                                                             </tr>
                                                         );
                                                     })}
@@ -864,7 +895,7 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                     {/* Grand Total Row (Only if Accounted) */}
                                     {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
                                         <tr className="font-bold border-t-2 border-black text-base">
-                                            <td colSpan="5" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng hạch toán thực tế:</td>
+                                            <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng hạch toán thực tế:</td>
                                             <td className="px-4 py-3 border-r border-black text-right font-bold text-lg">
                                                 {formatCurrency(matchedRequest.total_amount)}
                                             </td>

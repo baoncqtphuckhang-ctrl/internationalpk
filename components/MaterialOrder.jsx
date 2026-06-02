@@ -15,13 +15,13 @@ const DEFAULT_CATEGORIES = [
     {
         name: "Hệ nội thất",
         items: [
-            { stt: 1, name: "", unit: "Thùng/18lit", quantity: "", price: "" }
+            { stt: 1, name: "", unit: "Thùng/18lit", quantity: "", price: "", colorCode: "" }
         ]
     },
     {
         name: "Hệ ngoại thất",
         items: [
-            { stt: 1, name: "", unit: "Thùng/18lit", quantity: "", price: "" }
+            { stt: 1, name: "", unit: "Thùng/18lit", quantity: "", price: "", colorCode: "" }
         ]
     }
 ];
@@ -267,6 +267,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                         stt: it.stt,
                         name: it.name,
                         unit: it.unit,
+                        colorCode: it.colorCode || "",
                         quantity: "", // template has blank quantity
                         price: it.price || ""
                     }))
@@ -321,7 +322,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                         if (it.quantity && parseFloat(it.quantity) > 0) {
                             itemsList.push({
                                 id: it.stt + '_' + Math.random(),
-                                content: `${it.name} (${it.unit}) - SL: ${it.quantity} - ĐG: ${formatCurrency(it.price || 0)}`,
+                                content: `- Tên vật tư: ${it.name}${it.colorCode ? `\n- Mã màu: ${it.colorCode}` : ''}\n- Đơn vị: ${it.unit}\n- SL: ${it.quantity}\n- Đơn giá: ${formatCurrency(it.price || 0)}`,
                                 amount: ((parseFloat(it.quantity) || 0) * (parseFloat(it.price) || 0)),
                                 note: `${cat.name} | ${formData.order_phase}`
                             });
@@ -515,7 +516,8 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             stt: nextStt,
             name: '',
             unit: 'Thùng/18lit',
-            quantity: ''
+            quantity: '',
+            colorCode: ''
         });
         setFormData({ ...formData, categories: updated });
     };
@@ -535,7 +537,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
         updated.push({
             name: 'Hệ vật tư mới',
             items: [
-                { stt: 1, name: '', unit: 'Thùng/18lit', quantity: '' }
+                { stt: 1, name: '', unit: 'Thùng/18lit', quantity: '', colorCode: '' }
             ]
         });
         setFormData({ ...formData, categories: updated });
@@ -581,8 +583,8 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             if (!catHasQuantity) return;
 
             rowsHtml += `
-                <tr>
-                    <td colspan="6" style="border: 1px solid #000; font-weight: bold; text-align: center; background-color: #f2f2f2; font-family: 'Times New Roman'; font-size: 13pt; height: 28px;">${cat.name}</td>
+                <tr style="height: 40px;">
+                    <td colspan="7" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; background-color: #f2f2f2; font-family: 'Times New Roman'; font-size: 13pt;">${cat.name}</td>
                 </tr>
             `;
             cat.items.forEach(it => {
@@ -591,13 +593,14 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                 if (isNaN(qty) || qty <= 0) return;
 
                 rowsHtml += `
-                    <tr style="height: 24px;">
-                        <td style="border: 1px solid #000; text-align: center; font-family: 'Times New Roman'; font-size: 12pt;">${it.stt}</td>
-                        <td style="border: 1px solid #000; font-family: 'Times New Roman'; font-size: 12pt; padding-left: 5px;">${it.name}</td>
-                        <td style="border: 1px solid #000; text-align: center; font-family: 'Times New Roman'; font-size: 12pt;">${it.unit}</td>
-                        <td style="border: 1px solid #000; text-align: right; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${qty}</td>
-                        <td style="border: 1px solid #000; text-align: right; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price ? formatCurrency(price) : ''}</td>
-                        <td style="border: 1px solid #000; text-align: right; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price && qty ? formatCurrency(price * qty) : ''}</td>
+                    <tr style="height: 35px;">
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.stt}</td>
+                        <td style="border: 1px solid #000; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-left: 5px;">${it.name}</td>
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.colorCode || ''}</td>
+                        <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.unit}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${qty}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price ? formatCurrency(price) : ''}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price && qty ? formatCurrency(price * qty) : ''}</td>
                     </tr>
                 `;
             });
@@ -629,85 +632,99 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                 <table style="border-collapse: collapse; font-family: 'Times New Roman';">
                     <colgroup>
                         <col width="60" style="width: 60pt;" />
-                        <col width="380" style="width: 380pt;" />
-                        <col width="120" style="width: 120pt;" />
-                        <col width="120" style="width: 120pt;" />
-                        <col width="120" style="width: 120pt;" />
+                        <col width="300" style="width: 300pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
+                        <col width="100" style="width: 100pt;" />
                         <col width="120" style="width: 120pt;" />
                     </colgroup>
                     
                     <!-- TITLE -->
-                    <tr>
-                        <td colspan="6" style="text-align: center; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman'; height: 45px;">
+                    <tr style="height: 55px;">
+                        <td colspan="7" style="text-align: center; vertical-align: middle; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman';">
                             ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC ${orderData.order_phase.toUpperCase()}
                         </td>
                     </tr>
                     
                     <!-- METADATA (MERGED AND SPACED FOR ABSOLUTE VISUAL BEAUTY, NO CUTS) -->
-                    <tr style="height: 26px;">
-                        <td colspan="6" style="font-family: 'Times New Roman'; font-size: 12pt;">
-                            <b>DỰ ÁN :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${orderData.project_name.toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            DỰ ÁN :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #1d4ed8; vertical-align: middle;">
+                            ${orderData.project_name.toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="6" style="font-family: 'Times New Roman'; font-size: 12pt;">
-                            <b>ĐỊA CHỈ :</b> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;${(orderData.address || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            ĐỊA CHỈ :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; vertical-align: middle;">
+                            ${(orderData.address || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="6" style="font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; background-color: #ffff00;">
-                            HẠNG MỤC : &nbsp;&nbsp;&nbsp;${(orderData.category || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                            HẠNG MỤC :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                            ${(orderData.category || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="6" style="font-family: 'Times New Roman'; font-size: 12pt;">
+                    <tr style="height: 35px;">
+                        <td colspan="7" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #334155; vertical-align: middle;">
                             ${(orderData.company || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 26px;">
-                        <td colspan="6" style="font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
-                            NGƯỜI NHẬN HÀNG : ${(orderData.recipient || '').toUpperCase()}
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            NGƯỜI NHẬN HÀNG :
+                        </td>
+                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #0f172a; vertical-align: middle;">
+                            ${(orderData.recipient || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 15px;"><td colspan="6"></td></tr>
+                    <tr style="height: 20px;"><td colspan="7"></td></tr>
                     
                     <!-- TABLE HEADERS -->
-                    <tr style="background-color: #e6e6e6; height: 32px;">
-                        <th width="60" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">STT</th>
-                        <th width="380" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Chủng loại vật tư</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">DVT</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Số lượng</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Đơn giá</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">Thành tiền</th>
+                    <tr style="background-color: #e6e6e6; height: 45px;">
+                        <th width="60" style="border: 1px solid #000; vertical-align: middle; font-weight: bold; text-align: center; font-size: 13pt; font-family: 'Times New Roman';">STT</th>
+                        <th width="300" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Chủng loại vật tư</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Mã màu</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">DVT</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Số lượng</th>
+                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Đơn giá</th>
+                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Thành tiền</th>
                     </tr>
                     
                     ${rowsHtml}
                     
-                    <tr>
-                        <td colspan="5" style="border: 1px solid #000; text-align: right; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px; height: 28px;">Tổng cộng:</td>
-                        <td style="border: 1px solid #000; text-align: right; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
                             ${formatCurrency(orderItems.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
                         </td>
                     </tr>
                     
-                    <tr style="height: 30px;"><td colspan="4"></td></tr>
+                    <tr style="height: 30px;"><td colspan="7"></td></tr>
                     
                     <!-- SIGNATURE BLOCK -->
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-style: italic; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-style: italic; font-family: 'Times New Roman'; font-size: 12pt;">
                             NGÀY ${dateComp.day} THÁNG ${dateComp.month} NĂM ${dateComp.year}
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
                             NGƯỜI LẬP
                         </td>
                     </tr>
                     <tr style="height: 60px;">
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; vertical-align: middle;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; vertical-align: middle;">
                             ${orderData.show_signature ? `
                             <span style="font-family: 'Brush Script MT', cursive, sans-serif; font-size: 24pt; color: #1e3a8a;">
                                 ${getSignatureName(getCommanderName(orderData.recipient))}
@@ -715,8 +732,8 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                         </td>
                     </tr>
                     <tr>
-                        <td colspan="2"></td>
-                        <td colspan="2" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
+                        <td colspan="4"></td>
+                        <td colspan="3" style="text-align: center; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt;">
                             ${getCommanderName(orderData.recipient)}
                         </td>
                     </tr>
@@ -1000,6 +1017,17 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                     />
                                                     <input 
                                                         type="text" 
+                                                        value={item.colorCode || ''}
+                                                        onChange={(e) => {
+                                                            const updated = [...configCategories];
+                                                            updated[catIdx].items[itemIdx].colorCode = e.target.value;
+                                                            setConfigCategories(updated);
+                                                        }}
+                                                        placeholder="Mã màu"
+                                                        className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-medium outline-none focus:border-blue-500"
+                                                    />
+                                                    <input 
+                                                        type="text" 
                                                         value={item.unit}
                                                         onChange={(e) => {
                                                             const updated = [...configCategories];
@@ -1039,7 +1067,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                             type="button" 
                                             onClick={() => {
                                                 const updated = [...configCategories];
-                                                updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', price: '' });
+                                                updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', price: '', colorCode: '' });
                                                 setConfigCategories(updated);
                                             }}
                                             className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
@@ -1056,7 +1084,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 type="button" 
                                 onClick={() => {
                                     const updated = [...configCategories];
-                                    updated.push({ name: 'Hạng mục mới', items: [{ stt: 1, name: '', unit: '', quantity: '', price: '' }] });
+                                    updated.push({ name: 'Hạng mục mới', items: [{ stt: 1, name: '', unit: '', quantity: '', price: '', colorCode: '' }] });
                                     setConfigCategories(updated);
                                 }}
                                 className="text-sm font-bold text-slate-600 hover:text-slate-800 border-2 border-dashed border-slate-300 w-full py-3 rounded-xl hover:border-slate-400 transition flex items-center justify-center gap-2"
@@ -1329,6 +1357,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                         <tr className="bg-slate-100">
                                             <th className="border border-black p-2 text-center w-16">STT</th>
                                             <th className="border border-black p-2 text-left">Chủng loại vật tư</th>
+                                            <th className="border border-black p-2 text-center w-28">Mã màu</th>
                                             <th className="border border-black p-2 text-center w-28">DVT</th>
                                             <th className="border border-black p-2 text-center w-28">Số lượng</th>
                                             <th className="border border-black p-2 text-center w-36">Đơn giá</th>
@@ -1341,7 +1370,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                             <React.Fragment key={catIdx}>
                                                 {/* CATEGORY HEADER ROW */}
                                                 <tr className="bg-slate-50">
-                                                    <td colSpan="6" className="border border-black p-2 text-center font-bold text-base uppercase text-slate-800">
+                                                    <td colSpan="7" className="border border-black p-2 text-center font-bold text-base uppercase text-slate-800">
                                                         {cat.name}
                                                     </td>
                                                     <td className="border-none"></td>
@@ -1359,6 +1388,15 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                                 placeholder="Nhập tên vật tư..."
                                                                 className="w-full outline-none bg-transparent"
                                                                 required
+                                                            />
+                                                        </td>
+                                                        <td className="border border-black p-2">
+                                                            <input 
+                                                                type="text"
+                                                                value={item.colorCode || ''}
+                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'colorCode', e.target.value)}
+                                                                className="w-full outline-none bg-transparent text-center"
+                                                                placeholder="Mã màu..."
                                                             />
                                                         </td>
                                                         <td className="border border-black p-2">
@@ -1411,7 +1449,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
 
                                                 {/* ADD ROW BUTTON */}
                                                 <tr>
-                                                    <td colSpan="6" className="border border-black p-1 text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer text-blue-600 transition font-sans text-xs font-bold" onClick={() => addItem(catIdx)}>
+                                                    <td colSpan="7" className="border border-black p-1 text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer text-blue-600 transition font-sans text-xs font-bold" onClick={() => addItem(catIdx)}>
                                                         + Thêm dòng vật tư vào &quot;{cat.name}&quot;
                                                     </td>
                                                     <td className="border-none"></td>
@@ -1419,7 +1457,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                             </React.Fragment>
                                         ))}
                                         <tr>
-                                            <td colSpan="5" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
+                                            <td colSpan="6" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
                                                 Tổng cộng:
                                             </td>
                                             <td className="border border-black p-3 text-right font-black text-red-600 text-[17px] bg-slate-100">
@@ -1554,12 +1592,13 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             <div className="overflow-x-auto print:overflow-visible">
                                 <table className="w-full border-collapse border border-black min-w-[600px] print:min-w-0">
                                     <thead>
-                                        <tr className="text-black">
+                                        <tr className="text-black bg-slate-100">
                                             <th className="border border-black p-2.5 text-center w-16 font-bold text-[15px]">STT</th>
                                             <th className="border border-black p-2.5 text-left font-bold text-[15px]">Chủng loại vật tư</th>
-                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">DVT</th>
-                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">Số lượng</th>
-                                            <th className="border border-black p-2.5 text-center w-36 font-bold text-[15px]">Đơn giá</th>
+                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">Mã màu</th>
+                                            <th className="border border-black p-2.5 text-center w-20 font-bold text-[15px]">DVT</th>
+                                            <th className="border border-black p-2.5 text-center w-24 font-bold text-[15px]">Số lượng</th>
+                                            <th className="border border-black p-2.5 text-center w-32 font-bold text-[15px]">Đơn giá</th>
                                             <th className="border border-black p-2.5 text-right w-36 font-bold text-[15px]">Thành tiền</th>
                                         </tr>
                                     </thead>
@@ -1568,7 +1607,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                             <React.Fragment key={catIdx}>
                                                 {/* CATEGORY HEADER ROW */}
                                                 <tr>
-                                                    <td colSpan="6" className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black">
+                                                    <td colSpan="7" className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black bg-slate-50">
                                                         {cat.name}
                                                     </td>
                                                 </tr>
@@ -1578,14 +1617,15 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                     <tr key={itemIdx}>
                                                         <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
                                                         <td className="border border-black p-2 pl-4">{item.name}</td>
+                                                        <td className="border border-black p-2 text-center">{item.colorCode || ''}</td>
                                                         <td className="border border-black p-2 text-center">{item.unit}</td>
-                                                        <td className="border border-black p-2 text-center">
+                                                        <td className="border border-black p-2 text-center font-bold">
                                                             {item.quantity || '-'}
                                                         </td>
-                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-black">
+                                                        <td className="border border-black p-2 text-right pr-4">
                                                             {item.price ? formatCurrency(item.price) : '-'}
                                                         </td>
-                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-black">
+                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-blue-800">
                                                             {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
                                                         </td>
                                                     </tr>
@@ -1593,10 +1633,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                             </React.Fragment>
                                         ))}
                                         <tr>
-                                            <td colSpan="5" className="border border-black p-3 text-right font-bold uppercase text-black">
+                                            <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
                                                 Tổng cộng:
                                             </td>
-                                            <td className="border border-black p-3 text-right font-bold text-black text-[17px]">
+                                            <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
                                                 {formatCurrency((Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
                                             </td>
                                         </tr>
@@ -1615,7 +1655,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 
                                 <div className="h-20 flex items-center justify-center">
                                     {selectedOrder.show_signature && (
-                                        <div className="print-signature font-serif italic text-2xl text-black select-none font-bold">
+                                        <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none">
                                             {getSignatureName(getCommanderName(selectedOrder.recipient))}
                                         </div>
                                     )}
