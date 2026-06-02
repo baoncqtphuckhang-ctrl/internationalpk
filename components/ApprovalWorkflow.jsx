@@ -976,34 +976,34 @@ export default function ApprovalWorkflow({
                             </div>
                         </div>
 
-                        <footer className="p-4 sm:p-8 bg-white border-t-2 border-slate-100 flex flex-col md:flex-row justify-between items-center gap-4 sm:gap-6">
-                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                                <div className="flex items-center gap-3 bg-slate-50 px-5 py-3 rounded-2xl border border-slate-200 w-full sm:w-auto">
-                                    <span className="text-slate-500 font-bold text-sm">Trạng thái thanh toán:</span>
+                        <footer className="p-4 sm:p-6 bg-white border-t-2 border-slate-100 flex flex-col lg:flex-row justify-between items-center gap-4 sm:gap-6">
+                            <div className="flex flex-col sm:flex-row items-center gap-4 w-full lg:w-auto">
+                                <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 w-full sm:w-auto flex-1">
+                                    <span className="text-slate-500 font-bold text-sm whitespace-nowrap">Trạng thái thanh toán:</span>
                                     <select 
                                         value={hachToanThanhToanStatus}
                                         onChange={e => setHachToanThanhToanStatus(e.target.value)}
-                                        className="bg-white border-2 border-slate-200 rounded-xl px-3 py-1.5 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors"
+                                        className="bg-white border-2 border-slate-200 rounded-xl px-2 py-1.5 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors w-full sm:w-auto min-w-[140px]"
                                     >
                                         <option value="ĐÃ XONG">Đã thanh toán</option>
                                         <option value="CHƯA XONG">Chưa thanh toán</option>
                                     </select>
                                 </div>
-                                <div className="flex items-center gap-4 bg-amber-50 px-6 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto justify-between sm:justify-start">
-                                    <span className="text-amber-800 font-bold text-sm uppercase">Tổng phân bổ:</span>
-                                    <span className="text-xl sm:text-2xl font-black text-amber-900">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
+                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto flex-1">
+                                    <span className="text-amber-800 font-bold text-sm uppercase whitespace-nowrap">Tổng phân bổ:</span>
+                                    <span className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
                                 </div>
                             </div>
-                            <div className="flex gap-3 w-full md:w-auto">
+                            <div className="flex gap-3 w-full lg:w-auto mt-2 lg:mt-0">
                                 <button 
                                     onClick={() => setDistributeItem(null)}
-                                    className="flex-1 md:flex-none px-6 sm:px-8 py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm sm:text-base"
+                                    className="px-6 py-3 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm whitespace-nowrap flex-1 lg:flex-none text-center"
                                 >
                                     Để sau
                                 </button>
                                 <button 
                                     onClick={handleSaveDistribution}
-                                    className="flex-1 md:flex-none px-8 sm:px-12 py-3 rounded-2xl font-black bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200 text-sm sm:text-base"
+                                    className="px-8 py-3 rounded-2xl font-black bg-indigo-600 text-white shadow-xl shadow-indigo-600/30 hover:bg-indigo-700 hover:-translate-y-0.5 transition-all duration-200 text-sm whitespace-nowrap flex-[2] lg:flex-none text-center"
                                 >
                                     HOÀN TẤT HẠCH TOÁN
                                 </button>
