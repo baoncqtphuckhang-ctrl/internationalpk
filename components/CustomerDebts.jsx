@@ -212,7 +212,7 @@ export default function CustomerDebts({ incomes, projects }) {
                                         <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(debt.receivedAmount)}</td>
                                         <td className="p-4 text-right font-black">
                                             {debt.remainingAmount <= 0 ? (
-                                                <span className="text-[11px] bg-green-100 text-green-700 px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap">Đã thanh toán</span>
+                                                <span className="text-[11px] bg-green-100 text-green-700 px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap">HT</span>
                                             ) : (
                                                 <span className="text-red-600">{formatCurrency(debt.remainingAmount)}</span>
                                             )}

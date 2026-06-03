@@ -168,7 +168,7 @@ export default function Dashboard({
                     <table id="dashboard-table" className="w-full text-left text-[11px] md:text-sm border-separate border-spacing-0 min-w-[1200px] lg:min-w-[1500px]">
                         <thead className="sticky top-0 z-30 bg-slate-100">
                             <tr className="text-slate-700 uppercase tracking-wider">
-                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-40 min-w-[100px] max-w-[110px] lg:min-w-[150px] lg:max-w-[250px] whitespace-normal break-words align-middle" rowSpan="2">
+                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-40 min-w-[150px] max-w-[200px] lg:min-w-[200px] lg:max-w-[300px] whitespace-nowrap overflow-hidden text-ellipsis align-middle shadow-[1px_0_0_0_#e2e8f0]" rowSpan="2" title="Công trình">
                                     Công trình
                                 </th>
                                 {!hiddenCols.includes('totalContractAndPlhd') && <th className="p-3 border-b border-r border-slate-200 font-bold text-right align-top bg-slate-100 min-w-[120px] group relative" rowSpan="2">
@@ -230,9 +230,9 @@ export default function Dashboard({
                             {filteredData.map((row, idx) => (
                                 <tr key={row.project} className={`hover:bg-slate-100 transition ${idx % 2 === 0 ? 'bg-white' : 'bg-slate-50'}`}>
                                     <td 
-                                        className="p-3 font-bold text-slate-800 border-b border-r border-slate-100 sticky left-0 bg-inherit z-10 max-w-[110px] lg:max-w-[250px] whitespace-normal break-words cursor-pointer hover:text-indigo-700 hover:underline transition-colors"
+                                        className="p-3 font-bold text-slate-800 border-b border-r border-slate-100 sticky left-0 bg-inherit z-10 min-w-[150px] max-w-[200px] lg:max-w-[300px] whitespace-nowrap overflow-hidden text-ellipsis cursor-pointer hover:text-indigo-700 hover:underline transition-colors shadow-[1px_0_0_0_#f1f5f9]"
                                         onDoubleClick={() => onProjectDoubleClick && onProjectDoubleClick(row.project)}
-                                        title="Nhấp đúp để xem chi tiết công trình"
+                                        title={`${row.project} - Nhấp đúp để xem chi tiết`}
                                     >{row.project}</td>
                                     {!hiddenCols.includes('totalContractAndPlhd') && <td className="p-3 text-right font-medium border-b border-r border-slate-100 text-[13px] tabular-nums" title={`Hợp đồng: ${formatCurrency(row.contractValueAfterTax || 0)}`}>{formatCurrency(row.totalContractAndPlhd)}</td>}
                                     {!hiddenCols.includes('debtToCollect') && <td className="p-3 text-right font-black border-b border-r border-slate-100 text-[14px] text-orange-600 bg-orange-50/30 tabular-nums">{formatCurrency(row.debtToCollect)}</td>}
