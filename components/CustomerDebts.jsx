@@ -194,8 +194,8 @@ export default function CustomerDebts({ incomes, projects }) {
                             ) : (
                                 filteredDebtData.map(debt => (
                                     <tr key={debt.id} className="hover:bg-slate-50/80 transition group">
-                                        <td className="p-4">
-                                            <span className={`text-xs font-black px-2.5 py-1 rounded-md border shadow-sm ${projectColors[debt.project_name] || 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                                        <td className="p-4 align-top">
+                                            <span className={`inline-block text-xs font-black px-2.5 py-1.5 rounded-md border shadow-sm leading-snug break-words max-w-full ${projectColors[debt.project_name] || 'bg-slate-50 text-slate-700 border-slate-200'}`}>
                                                 {debt.project_name}
                                             </span>
                                         </td>
