@@ -412,26 +412,50 @@ export default function Home() {
         setIsLoading(true);
         try {
             if (isEdit) {
-                const { error } = await supabase.from('projects').update({
-                    name: data.name,
-                    contract_no: data.contract_no,
-                    contract_value_after_tax: data.contract_value_after_tax,
-                    advance_value: data.advance_value,
-                    debt_to_collect: data.debt_to_collect,
-                    plhds: data.plhd_list || [],
-                    address: data.address,
-                    cht_name: data.cht_name,
-                    cht_phone: data.cht_phone
-                }).eq('name', data.original_name || data.name);
-                if (error) throw error;
-                
                 if (data.original_name && data.name !== data.original_name) {
+                    // Changing name requires INSERT new, UPDATE relations, DELETE old because of foreign key constraints
+                    const { error: insertError } = await supabase.from('projects').insert([{
+                        name: data.name,
+                        contract_no: data.contract_no,
+                        contract_value_after_tax: data.contract_value_after_tax,
+                        advance_value: data.advance_value,
+                        debt_to_collect: data.debt_to_collect,
+                        plhds: data.plhd_list || [],
+                        address: data.address,
+                        cht_name: data.cht_name,
+                        cht_phone: data.cht_phone
+                    }]);
+                    if (insertError) {
+                        console.error('Insert error during rename:', insertError);
+                        throw new Error('Tên công trình mới đã tồn tại hoặc lỗi dữ liệu.');
+                    }
+
                     await Promise.all([
                         supabase.from('transactions').update({ project_name: data.name }).eq('project_name', data.original_name),
                         supabase.from('incomes').update({ project_name: data.name }).eq('project_name', data.original_name),
                         supabase.from('approval_requests').update({ project_name: data.name }).eq('project_name', data.original_name),
-                        supabase.from('partner_debts').update({ project_name: data.name }).eq('project_name', data.original_name)
+                        supabase.from('partner_debts').update({ project_name: data.name }).eq('project_name', data.original_name),
+                        supabase.from('material_orders').update({ project_name: data.name }).eq('project_name', data.original_name)
                     ]);
+
+                    const { error: deleteError } = await supabase.from('projects').delete().eq('name', data.original_name);
+                    if (deleteError) {
+                        console.error('Delete old project error:', deleteError);
+                        throw deleteError;
+                    }
+                } else {
+                    const { error } = await supabase.from('projects').update({
+                        name: data.name,
+                        contract_no: data.contract_no,
+                        contract_value_after_tax: data.contract_value_after_tax,
+                        advance_value: data.advance_value,
+                        debt_to_collect: data.debt_to_collect,
+                        plhds: data.plhd_list || [],
+                        address: data.address,
+                        cht_name: data.cht_name,
+                        cht_phone: data.cht_phone
+                    }).eq('name', data.original_name || data.name);
+                    if (error) throw error;
                 }
             } else {
                 const { error } = await supabase.from('projects').insert([{
@@ -452,7 +476,7 @@ export default function Home() {
             fetchData();
         } catch (error) {
             console.error('Error saving project:', error);
-            showToast('Lỗi khi lưu công trình!', 'error');
+            showToast('Lỗi khi lưu công trình! ' + (error.message || ''), 'error');
         } finally {
             setIsLoading(false);
         }
@@ -461,9 +485,13 @@ export default function Home() {
         setIsLoading(true);
         try {
             // Xóa dữ liệu ở các bảng liên quan (nếu có)
-            await supabase.from('transactions').delete().eq('project_name', name);
-            await supabase.from('incomes').delete().eq('project_name', name);
-            await supabase.from('approval_requests').delete().eq('project_name', name);
+            await Promise.all([
+                supabase.from('transactions').delete().eq('project_name', name),
+                supabase.from('incomes').delete().eq('project_name', name),
+                supabase.from('approval_requests').delete().eq('project_name', name),
+                supabase.from('partner_debts').delete().eq('project_name', name),
+                supabase.from('material_orders').delete().eq('project_name', name)
+            ]);
 
             // Xóa công trình chính
             const { error } = await supabase.from('projects').delete().eq('name', name);
