@@ -1,8 +1,10 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
-import { FileText, Save } from 'lucide-react';
+import { FileText, Save, Search } from 'lucide-react';
 
 export default function CustomerDebts({ incomes, projects }) {
+    const [searchTerm, setSearchTerm] = useState('');
+
     const debtData = useMemo(() => {
         if (!incomes) return [];
         const grouped = {};
@@ -36,10 +38,22 @@ export default function CustomerDebts({ incomes, projects }) {
         return Object.values(grouped).map(g => ({
             ...g,
             remainingAmount: g.invoiceAmount - g.receivedAmount
-        })).filter(g => g.remainingAmount > 0);
+        })).filter(g => g.remainingAmount > 0).sort((a, b) => {
+            if (a.project_name !== b.project_name) return a.project_name.localeCompare(b.project_name);
+            const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
+            const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
+            return numA - numB;
+        });
     }, [incomes]);
 
-    const totalRemaining = debtData.reduce((sum, d) => sum + d.remainingAmount, 0);
+    const filteredDebtData = useMemo(() => {
+        return debtData.filter(d => 
+            d.project_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+            d.phase.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+    }, [debtData, searchTerm]);
+
+    const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
 
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
@@ -78,10 +92,23 @@ export default function CustomerDebts({ incomes, projects }) {
                 </div>
             </header>
 
-            <div className="grid grid-cols-1 md:grid-cols-1 gap-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+                <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-center">
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-2">Tìm kiếm</p>
+                    <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
+                        <input 
+                            type="text" 
+                            placeholder="Lọc theo tên công trình hoặc đợt..." 
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-10 pr-4 py-2 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                        />
+                    </div>
+                </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Tổng Công Nợ Khách Hàng</p>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Tổng Công Nợ {searchTerm ? '(Đã lọc)' : 'Khách Hàng'}</p>
                         <p className="text-2xl font-black text-red-600">{formatCurrency(totalRemaining)}</p>
                     </div>
                 </div>
@@ -101,12 +128,12 @@ export default function CustomerDebts({ incomes, projects }) {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {debtData.length === 0 ? (
+                            {filteredDebtData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="p-8 text-center text-slate-400 font-bold">Không có công nợ khách hàng nào cần thu.</td>
+                                    <td colSpan="5" className="p-8 text-center text-slate-400 font-bold">Không có công nợ khách hàng nào cần thu phù hợp với tìm kiếm.</td>
                                 </tr>
                             ) : (
-                                debtData.map(debt => (
+                                filteredDebtData.map(debt => (
                                     <tr key={debt.id} className="hover:bg-slate-50/80 transition group">
                                         <td className="p-4 text-sm font-bold text-slate-700">{debt.project_name}</td>
                                         <td className="p-4 text-center">
