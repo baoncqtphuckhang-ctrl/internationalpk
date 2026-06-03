@@ -124,18 +124,25 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         const phaseIncs = incomes.filter(i => i.project_name === formData.project_name && i.phase === formData.phase);
         if (phaseIncs.length === 0) return null;
 
-        const expected = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0).reduce((sum, i) => {
-            let exp = i.post_tax_amount || i.amount || 0;
-            if (i.note) {
+        // Bug 2 fix: HSTT là giá trị duy nhất cho mỗi đợt (lấy bản ghi mới nhất, không cộng dồn)
+        const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+        let expected = 0;
+        const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+        for (const inv of sortedInvoices) {
+            if (inv.note) {
                 try {
-                    const parsed = JSON.parse(i.note);
+                    const parsed = JSON.parse(inv.note);
                     if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                        exp = Number(parsed.actual_received_amount) || 0;
+                        expected = Number(parsed.actual_received_amount) || 0;
+                        break; // Chỉ lấy giá trị mới nhất
                     }
                 } catch(e) {}
             }
-            return sum + exp;
-        }, 0);
+        }
+        // Nếu không có HSTT, dùng tổng post_tax_amount
+        if (expected === 0) {
+            expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+        }
         
         const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
             let actual = 0;
@@ -152,6 +159,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         
         return { expected, received };
     }, [type, formData.project_name, formData.phase, incomes]);
+
 
 
     useEffect(() => {

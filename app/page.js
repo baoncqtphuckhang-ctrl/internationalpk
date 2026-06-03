@@ -1052,18 +1052,29 @@ export default function Home() {
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
                 
-                const pExpected = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0).reduce((sum, i) => {
-                    let expected = i.post_tax_amount || i.amount || 0;
-                    if (i.note) {
+                // Bug 2 fix: actual_received_amount (HSTT) là giá trị duy nhất cho mỗi đợt,
+                // lấy giá trị mới nhất (không cộng dồn)
+                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                
+                // Lấy giá trị HSTT duy nhất cho đợt này (từ bản ghi mới nhất có actual_received_amount)
+                let phaseHstt = 0;
+                const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                for (const inv of sortedInvoices) {
+                    if (inv.note) {
                         try {
-                            const parsed = JSON.parse(i.note);
+                            const parsed = JSON.parse(inv.note);
                             if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                expected = Number(parsed.actual_received_amount) || 0;
+                                phaseHstt = Number(parsed.actual_received_amount) || 0;
+                                break; // Chỉ lấy giá trị mới nhất
                             }
                         } catch(e) {}
                     }
-                    return sum + expected;
-                }, 0);
+                }
+                
+                // pExpected = HSTT nếu có, nếu không dùng tổng post_tax_amount
+                const pExpected = phaseHstt > 0 
+                    ? phaseHstt 
+                    : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
 
                 const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
                     let actual = 0;
@@ -1331,8 +1342,18 @@ export default function Home() {
                                             </thead>
                                             <tbody>
                                                 {(() => {
-                                                    const projectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject && (i.post_tax_amount > 0 || i.amount > 0));
-                                                    if (projectIncomes.length === 0) {
+                                                    // Bug 1 fix: Hiển thị tất cả đợt, bao gồm cả đợt chỉ có INCOME_REAL
+                                                    const allProjectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject);
+                                                    const invoiceRecords = allProjectIncomes.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                                                    
+                                                    // Lấy tất cả unique phases cho project này
+                                                    const uniquePhases = [...new Set(allProjectIncomes.map(i => i.phase))].sort((a, b) => {
+                                                        const numA = parseInt(a.match(/\d+/) || [0], 10);
+                                                        const numB = parseInt(b.match(/\d+/) || [0], 10);
+                                                        return numA - numB;
+                                                    });
+
+                                                    if (uniquePhases.length === 0) {
                                                         return (
                                                             <tr>
                                                                 <td colSpan={canManageSystem || role === 'ADMIN' ? 9 : 8} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
@@ -1340,24 +1361,53 @@ export default function Home() {
                                                         );
                                                     }
 
-                                                    const totalTruocThue = projectIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
-                                                    const totalVat = projectIncomes.reduce((sum, i) => sum + (i.vat_amount || 0), 0);
-                                                    const totalSauThue = projectIncomes.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
-                                                    const totalHstt = projectIncomes.reduce((sum, i) => {
-                                                        let hstt = 0;
-                                                        if (i.note) {
-                                                            try {
-                                                                const parsed = JSON.parse(i.note);
-                                                                if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                    hstt = Number(parsed.actual_received_amount);
-                                                                }
-                                                            } catch(e) {}
+                                                    // Gom nhóm invoice records theo phase (1 dòng / đợt)
+                                                    const phaseRows = uniquePhases.map(phase => {
+                                                        const phaseInvoices = invoiceRecords.filter(i => i.phase === phase);
+                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && i.post_tax_amount === 0 && i.amount === 0);
+                                                        
+                                                        if (phaseInvoices.length > 0) {
+                                                            // Đợt có INCOME_INVOICE - hiển thị từng invoice record
+                                                            return phaseInvoices.map(inv => ({ ...inv, _phaseReals: phaseReals, _allPhaseInvoices: phaseInvoices }));
+                                                        } else {
+                                                            // Đợt chỉ có INCOME_REAL - tạo dòng đại diện
+                                                            const latestReal = phaseReals.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
+                                                            if (latestReal) {
+                                                                return [{ 
+                                                                    ...latestReal, 
+                                                                    _isRealOnly: true, 
+                                                                    _phaseReals: phaseReals,
+                                                                    _allPhaseInvoices: []
+                                                                }];
+                                                            }
+                                                            return [];
                                                         }
-                                                        return sum + hstt;
+                                                    }).flat();
+
+                                                    const totalTruocThue = invoiceRecords.reduce((sum, i) => sum + (i.amount || 0), 0);
+                                                    const totalVat = invoiceRecords.reduce((sum, i) => sum + (i.vat_amount || 0), 0);
+                                                    const totalSauThue = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                                                    
+                                                    // Bug 2 fix: HSTT là giá trị duy nhất cho mỗi đợt (không cộng dồn)
+                                                    const totalHstt = uniquePhases.reduce((sum, phase) => {
+                                                        const phaseInvs = invoiceRecords.filter(i => i.phase === phase);
+                                                        // Lấy giá trị HSTT mới nhất cho đợt này
+                                                        const sorted = [...phaseInvs].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                                                        for (const inv of sorted) {
+                                                            if (inv.note) {
+                                                                try {
+                                                                    const parsed = JSON.parse(inv.note);
+                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                        return sum + Number(parsed.actual_received_amount);
+                                                                    }
+                                                                } catch(e) {}
+                                                            }
+                                                        }
+                                                        return sum;
                                                     }, 0);
                                                     
-                                                    const totalReal = projectIncomes.reduce((sum, i) => {
-                                                        const realRows = allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                    const totalReal = uniquePhases.reduce((sum, phase) => {
+                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && inc.post_tax_amount === 0 && inc.amount === 0);
                                                         const realSum = realRows.reduce((s, inc) => {
                                                             let val = 0;
                                                             if (inc.note) {
@@ -1373,17 +1423,16 @@ export default function Home() {
                                                         return sum + realSum;
                                                     }, 0);
 
+                                                    const totalCount = invoiceRecords.length;
+
                                                     return (
                                                         <>
-                                                            {projectIncomes.sort((a, b) => {
-                                                                const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
-                                                                const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
-                                                                return numA - numB;
-                                                            }).map(i => (
-                                                                <tr key={i.id} className="border-b hover:bg-slate-50">
+                                                            {phaseRows.map(i => (
+                                                                <tr key={i.id} className={`border-b hover:bg-slate-50 ${i._isRealOnly ? 'bg-amber-50/50' : ''}`}>
                                                                     <td className="p-3">{formatDateVN(i.date)}</td>
                                                                     <td className="p-3 font-bold text-slate-700">{i.phase}</td>
                                                                     <td className="p-3 font-bold text-slate-600">{(() => {
+                                                                        if (i._isRealOnly) return '-';
                                                                         if (i.note) {
                                                                             try {
                                                                                 const parsed = JSON.parse(i.note);
@@ -1392,11 +1441,12 @@ export default function Home() {
                                                                         }
                                                                         return '-';
                                                                     })()}</td>
-                                                                    <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
-                                                                    <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
-                                                                    <td className="p-3 text-right font-black text-blue-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
+                                                                    <td className="p-3 text-right font-black text-slate-600">{i._isRealOnly ? '-' : formatCurrency(i.amount)}</td>
+                                                                    <td className="p-3 text-right font-black text-slate-500">{i._isRealOnly ? '-' : formatCurrency(i.vat_amount || 0)}</td>
+                                                                    <td className="p-3 text-right font-black text-blue-600">{i._isRealOnly ? '-' : formatCurrency(i.post_tax_amount || i.amount)}</td>
                                                                     <td className="p-3 text-right font-black text-emerald-600">
                                                                         {(() => {
+                                                                            if (i._isRealOnly) return '-';
                                                                             let hstt = 0;
                                                                             if (i.note) {
                                                                                 try {
@@ -1411,17 +1461,23 @@ export default function Home() {
                                                                     </td>
                                                                     <td className="p-3 text-center">
                                                                         {(() => {
+                                                                            // Bug 2 fix: Lấy HSTT duy nhất cho đợt này
                                                                             let expected = 0;
-                                                                            if (i.note) {
-                                                                                try {
-                                                                                    const parsed = JSON.parse(i.note);
-                                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                                        expected = Number(parsed.actual_received_amount);
-                                                                                    }
-                                                                                } catch(e) {}
+                                                                            const phaseInvoices = i._allPhaseInvoices || [i];
+                                                                            const sortedInvs = [...phaseInvoices].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                                                                            for (const inv of sortedInvs) {
+                                                                                if (inv.note) {
+                                                                                    try {
+                                                                                        const parsed = JSON.parse(inv.note);
+                                                                                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                                            expected = Number(parsed.actual_received_amount);
+                                                                                            break;
+                                                                                        }
+                                                                                    } catch(e) {}
+                                                                                }
                                                                             }
                                                                             
-                                                                            const realRows = allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
                                                                             const actual = realRows.reduce((sum, inc) => {
                                                                                 let val = 0;
                                                                                 if (inc.note) {
