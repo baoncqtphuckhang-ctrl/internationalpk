@@ -246,24 +246,21 @@ export default function Dashboard({
                                         const pPaid = row.phases[phase]?.paid || 0;
                                         const pActual = row.phases[phase]?.actual_received || 0;
                                         const pExpected = row.phases[phase]?.expected_amount || 0;
-                                        const isFullyPaid = pTotal > 0 && pPaid === pTotal;
-                                        const displayAmount = pActual;
+                                        const percentage = pExpected > 0 ? Math.min(100, Math.max(0, (pActual / pExpected) * 100)) : 0;
+                                        
                                         return (
-                                            <td key={phase} className="p-2 border-b border-r border-slate-100 text-right">
-                                                {pTotal > 0 ? (
-                                                    <div className="flex items-center justify-end gap-2">
-                                                        <button
-                                                            onClick={() => handleTogglePhasePaid(row.project, phase, isFullyPaid)}
-                                                            className={`w-5 h-5 min-w-[20px] rounded-md flex items-center justify-center transition-all duration-300 ease-spring ${isFullyPaid ? 'bg-green-600 text-white shadow-[0_0_10px_rgba(22,163,74,0.4)] scale-110' : 'bg-slate-200 text-transparent hover:bg-slate-300 shadow-inner'}`}
-                                                            title={isFullyPaid ? 'Đã thu - Nhấn để hủy' : 'Chưa thu - Nhấn để xác nhận thu'}
-                                                        >
-                                                            <Check size={14} strokeWidth={4} />
-                                                        </button>
-                                                        <span className={`font-bold text-[13px] tabular-nums transition-colors duration-300 ${isFullyPaid ? 'text-green-700' : 'text-slate-600'}`}>
-                                                            {formatCurrency(displayAmount)}
+                                            <td key={phase} className="p-0 border-b border-r border-slate-100 text-center align-middle">
+                                                {pExpected > 0 || pActual > 0 ? (
+                                                    <div className="w-full h-full min-h-[48px] bg-slate-200 overflow-hidden flex items-center justify-center relative shadow-inner min-w-[140px]">
+                                                        <div 
+                                                            className={`absolute left-0 top-0 bottom-0 transition-all duration-700 ease-out ${percentage >= 100 ? 'bg-blue-600' : 'bg-blue-500'}`}
+                                                            style={{ width: `${percentage}%` }}
+                                                        ></div>
+                                                        <span className={`relative z-10 font-black text-xs xl:text-sm whitespace-nowrap px-2 tracking-tight ${percentage > 55 ? 'text-white drop-shadow-md' : 'text-slate-800'}`}>
+                                                            {formatCurrency(pActual)} / {formatCurrency(pExpected)}
                                                         </span>
                                                     </div>
-                                                ) : '-'}
+                                                ) : <div className="min-h-[48px] flex items-center justify-center text-slate-400">-</div>}
                                             </td>
                                         );
                                     })}

@@ -378,25 +378,23 @@ export default function ApprovalWorkflow({
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                        <FileSignature className="text-blue-600" /> {activeTab === 'dntt' ? 'Lập Phiếu Đề Nghị' : 'Quản Lý Phê Duyệt'}
+                        <FileSignature className="text-blue-600" /> Lập DNTT & Phê Duyệt
                     </h2>
-                    <p className="text-slate-500 text-sm mt-1">{activeTab === 'dntt' ? 'Tạo đề nghị thanh toán/tạm ứng mới.' : 'Theo dõi và phê duyệt các đề nghị thanh toán/tạm ứng.'}</p>
+                    <p className="text-slate-500 text-sm mt-1">Tạo, theo dõi và phê duyệt các đề nghị thanh toán/tạm ứng.</p>
                 </div>
                 <div className="flex flex-wrap gap-2 w-full sm:w-auto justify-start sm:justify-end">
                     <button 
                         onClick={() => setView('list')}
                         className={`px-4 py-2 rounded-lg font-bold transition ${view === 'list' ? 'bg-slate-800 text-white shadow-lg' : 'bg-white border text-slate-600 hover:bg-slate-50'}`}
                     >
-                        {activeTab === 'dntt' ? 'Phiếu đã tạo' : 'Danh sách phiếu'}
+                        Danh sách phiếu
                     </button>
-                    {activeTab === 'dntt' && (
-                        <button 
-                            onClick={() => setView('create')}
-                            className={`px-4 py-2 rounded-lg font-bold transition ${view === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-blue-600 hover:bg-blue-50'}`}
-                        >
-                            Tạo phiếu mới
-                        </button>
-                    )}
+                    <button 
+                        onClick={() => setView('create')}
+                        className={`px-4 py-2 rounded-lg font-bold transition ${view === 'create' ? 'bg-blue-600 text-white shadow-lg' : 'bg-white border text-blue-600 hover:bg-blue-50'}`}
+                    >
+                        Tạo phiếu mới
+                    </button>
                 </div>
             </header>
 

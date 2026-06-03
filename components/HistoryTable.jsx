@@ -43,7 +43,13 @@ function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAl
 
                         {/* Search and Filter */}
                         <div className="p-3 bg-slate-50 border-b border-slate-200">
-                            <p className="text-[10px] font-bold text-slate-400 uppercase mb-2 tracking-tight">Lọc dữ liệu: {title}</p>
+                            <div className="flex justify-between items-center mb-2">
+                                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-tight">Lọc dữ liệu: {title}</p>
+                                <div className="flex gap-2">
+                                    <button onClick={onClear} className="px-2 py-1 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition bg-white border border-slate-200 rounded">Xóa bộ lọc</button>
+                                    <button onClick={() => setIsOpen(false)} className="px-3 py-1 bg-blue-600 text-white text-[10px] font-bold rounded hover:bg-blue-700 shadow-sm transition">OK</button>
+                                </div>
+                            </div>
                             <div className="relative">
                                 <Search className="absolute left-2.5 top-2.5 text-slate-400" size={14} />
                                 <input 
@@ -84,11 +90,6 @@ function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAl
                                     </button>
                                 </label>
                             ))}
-                        </div>
-
-                        <div className="p-2 border-t border-slate-200 flex justify-end gap-2 bg-slate-50">
-                            <button onClick={onClear} className="px-3 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 transition">Xóa bộ lọc</button>
-                            <button onClick={() => setIsOpen(false)} className="px-5 py-1.5 bg-blue-600 text-white text-[11px] font-bold rounded hover:bg-blue-700 shadow-sm transition">OK</button>
                         </div>
                     </div>
                 </>

@@ -2,12 +2,14 @@ import React, { useState, useEffect } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
+import ConfirmModal from '@/components/ConfirmModal';
 export default function ExpectedInvoices({ projects, projectDetails, currentUser }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -169,21 +171,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     };
 
     const handleDelete = async (id) => {
-        if (window.confirm('Bạn có chắc chắn muốn xóa mục này?')) {
-            try {
-                const { error } = await supabase
-                    .from('expected_invoices')
-                    .delete()
-                    .eq('id', id);
-                
-                if (error) {
-                    console.warn('Supabase delete failed, deleting locally', error);
-                }
-                setInvoices(prev => prev.filter(inv => inv.id !== id));
-            } catch (error) {
-                console.error('Error in handleDelete:', error);
+        setConfirmDeleteId(id);
+    };
+
+    const confirmDelete = async () => {
+        if (!confirmDeleteId) return;
+        try {
+            const { error } = await supabase
+                .from('expected_invoices')
+                .delete()
+                .eq('id', confirmDeleteId);
+            
+            if (error) {
+                console.warn('Supabase delete failed, deleting locally', error);
             }
+            setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
+        } catch (error) {
+            console.error('Error in handleDelete:', error);
         }
+        setConfirmDeleteId(null);
     };
 
     const filteredInvoices = invoices.filter(inv => {
@@ -381,6 +387,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     </table>
                 </div>
             </div>
+            
+            <ConfirmModal
+                isOpen={!!confirmDeleteId}
+                title="Xóa Hóa đơn dự kiến"
+                message="Bạn có chắc chắn muốn xóa mục này? Thao tác này không thể hoàn tác."
+                onConfirm={confirmDelete}
+                onCancel={() => setConfirmDeleteId(null)}
+            />
         </div>
     );
 }

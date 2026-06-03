@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Check, AlertCircle, Info, Table as TableIcon, Trash2, Clipboard } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import ConfirmModal from '@/components/ConfirmModal';
 
 export default function ExcelImportModal({ 
     isOpen, 
@@ -15,6 +16,7 @@ export default function ExcelImportModal({
 }) {
     const [gridData, setGridData] = useState([]);
     const [errors, setErrors] = useState([]);
+    const [confirmClear, setConfirmClear] = useState(false);
     const tableRef = useRef(null);
 
     const headers = [
@@ -255,12 +257,7 @@ export default function ExcelImportModal({
                     <div className="flex gap-4 w-full md:w-auto">
                         <button 
                             type="button"
-                            onClick={() => {
-                                if (window.confirm('Bạn có chắc chắn muốn xóa toàn bộ dữ liệu đang có trong bảng để nhập lại?')) {
-                                    setGridData(Array(10).fill(Array(headers.length).fill('')));
-                                    setErrors([]);
-                                }
-                            }}
+                            onClick={() => setConfirmClear(true)}
                             className="flex-1 md:flex-none px-6 py-3 rounded-2xl font-bold text-red-600 hover:bg-red-50 hover:text-red-700 border border-red-200 transition flex items-center justify-center gap-2"
                         >
                             <Trash2 size={18} /> Xóa toàn bộ
@@ -280,6 +277,18 @@ export default function ExcelImportModal({
                     </div>
                 </footer>
             </div>
+            
+            <ConfirmModal
+                isOpen={confirmClear}
+                title="Xóa dữ liệu đang nhập"
+                message="Bạn có chắc chắn muốn xóa toàn bộ dữ liệu đang có trong bảng để nhập lại?"
+                onConfirm={() => {
+                    setGridData(Array(10).fill(Array(headers.length).fill('')));
+                    setErrors([]);
+                    setConfirmClear(false);
+                }}
+                onCancel={() => setConfirmClear(false)}
+            />
         </div>
     );
 }

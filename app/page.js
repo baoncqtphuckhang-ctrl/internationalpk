@@ -12,6 +12,7 @@ import ApprovalWorkflow from '@/components/ApprovalWorkflow';
 import ProjectManager from '@/components/ProjectManager';
 import ExpenseSummary from '@/components/ExpenseSummary';
 import PartnerDebts from '@/components/PartnerDebts';
+import CustomerDebts from '@/components/CustomerDebts';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
@@ -119,6 +120,7 @@ export default function Home() {
     const [partnerDebts, setPartnerDebts] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
+    const [materialSubTab, setMaterialSubTab] = useState('order');
     
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
@@ -302,17 +304,21 @@ export default function Home() {
     const handleAddData = async (type, data, editId = null) => {
         setIsLoading(true);
         try {
-            if (type === 'EXPENSE') {
+            if (type === 'EXPENSE' || type === 'OFFICE_INCOME') {
                 const payload = {
                     project_name: data.project_name,
                     accounting_date: data.accounting_date,
                     invoice_date: data.invoice_date || null,
                     invoice_no: data.invoice_no || '',
                     recipient: data.recipient || '',
-                    corresponding_account: data.corresponding_account || '',
-                    code: data.code,
-                    debit: data.debit,
-                    note: data.note,
+                    corresponding_account: type === 'OFFICE_INCOME' 
+                        ? (data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) 
+                        : (data.corresponding_account || ''),
+                    code: type === 'OFFICE_INCOME' 
+                        ? (data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) 
+                        : data.code,
+                    debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit,
+                    note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''),
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
@@ -334,15 +340,16 @@ export default function Home() {
                     }
                 }
             } else {
+                const isReal = type === 'INCOME_REAL';
                 const payload = {
                     project_name: data.project_name,
                     date: data.accounting_date,
                     phase: data.phase,
-                    amount: data.amount,
-                    vat_amount: data.vat_amount || 0,
-                    post_tax_amount: data.post_tax_amount || data.amount,
-                    is_paid: true,
-                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0 }),
+                    amount: isReal ? 0 : (data.amount || 0),
+                    vat_amount: isReal ? 0 : (data.vat_amount || 0),
+                    post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0),
+                    is_paid: isReal ? true : false,
+                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, invoice_no: data.invoice_no || '' }),
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
@@ -354,9 +361,9 @@ export default function Home() {
                 }
             }
             showToast('Đã lưu dữ liệu thành công!');
-            logActivity(editId ? 'Cập nhật' : 'Thêm', type === 'EXPENSE' ? 'Chi phí' : 'Thu tiền', type === 'EXPENSE' ? `Chi phí: ${data.debit} - ${data.note}` : `Thu đợt ${data.phase}: ${data.amount}`, data.project_name);
+            logActivity(editId ? 'Cập nhật' : 'Thêm', type === 'EXPENSE' ? 'Chi phí' : (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : 'Thu tiền'), type === 'EXPENSE' ? `Chi phí: ${data.debit} - ${data.note}` : (type === 'OFFICE_INCOME' ? `Thu VP: ${data.office_amount}` : `Thu đợt ${data.phase}: ${data.amount || data.actual_received_amount}`), data.project_name);
             setEditTransaction(null);
-            if (previousTab) {
+            if (previousTab && type !== 'INCOME_REAL') {
                 setActiveTab(previousTab);
                 setPreviousTab(null);
             }
@@ -1002,8 +1009,6 @@ export default function Home() {
             const projIncomes = allowedIncomes.filter(i => i.project_name === name);
             const totalSanLuong = projIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
             const actInc = Math.round(totalSanLuong);
-            const totalPhaseReceived = projIncomes.reduce((sum, i) => sum + getActualReceived(i), 0);
-            const calculatedDebtToCollect = projIncomes.filter(i => !i.is_paid).reduce((sum, i) => sum + getActualReceived(i), 0);
             const remainingCostRow = expectedCosts.find(t => t.project_name === name);
             const remainingCost = remainingCostRow ? remainingCostRow.debit : 0;
             const recoveredAdvanceRow = recoveredAdvances.find(t => t.project_name === name);
@@ -1011,20 +1016,56 @@ export default function Home() {
             const utilityValueRow = utilityValues.find(t => t.project_name === name);
             const utilityValue = utilityValueRow ? utilityValueRow.debit : 0;
             const advanceValue = details.advanceValue || 0;
-            const totalReceivedAmount = totalPhaseReceived + advanceValue;
-            const totalExp = exp + remainingCost;
-            const profit = totalReceivedAmount - totalExp;
+            
+            let calculatedDebtToCollect = 0;
+            let totalPhaseReceived = 0;
             
             const phaseData = {};
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
+                
+                const pExpected = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0).reduce((sum, i) => {
+                    let expected = i.post_tax_amount || i.amount || 0;
+                    if (i.note) {
+                        try {
+                            const parsed = JSON.parse(i.note);
+                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                expected = Number(parsed.actual_received_amount) || 0;
+                            }
+                        } catch(e) {}
+                    }
+                    return sum + expected;
+                }, 0);
+
+                const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+                    let actual = 0;
+                    if (i.note) {
+                        try {
+                            const parsed = JSON.parse(i.note);
+                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                actual = Number(parsed.actual_received_amount) || 0;
+                            }
+                        } catch(e) {}
+                    }
+                    return sum + actual;
+                }, 0);
+
+                totalPhaseReceived += pActual;
+                calculatedDebtToCollect += (pExpected - pActual);
+
                 phaseData[phase] = {
                     total: phaseIncs.reduce((sum, i) => sum + i.amount, 0),
                     paid: phaseIncs.filter(i => i.is_paid).reduce((sum, i) => sum + i.amount, 0),
-                    actual_received: phaseIncs.reduce((sum, i) => sum + getActualReceived(i), 0),
-                    expected_amount: phaseIncs.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0)
+                    actual_received: pActual,
+                    expected_amount: pExpected
                 };
             });
+
+            if (calculatedDebtToCollect < 0) calculatedDebtToCollect = 0;
+
+            const totalReceivedAmount = totalPhaseReceived + advanceValue;
+            const totalExp = exp + remainingCost;
+            const profit = totalReceivedAmount - totalExp;
 
             return {
                 project: name,
@@ -1138,9 +1179,11 @@ export default function Home() {
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
-                {(activeTab === 'dntt' || activeTab === 'approvals') && (
+                {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} />}
+                
+                {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 
-                        activeTab={activeTab}
+                        activeTab={activeTab === 'dntt-approvals' ? 'approvals' : activeTab}
                         currentUser={currentUser}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
@@ -1168,22 +1211,28 @@ export default function Home() {
                     />
                 )}
 
-                {activeTab === 'material-orders' && (
-                    <MaterialOrder 
-                        currentUser={currentUser}
-                        projects={allowedProjects}
-                        showToast={showToast}
-                        onCreateAccountingRequest={handleCreateAccountingRequest}
-                    />
-                )}
-
-                {activeTab === 'manage-material-orders' && (
-                    <MaterialOrderManager 
-                        currentUser={currentUser}
-                        projects={allowedProjects}
-                        dnttList={allowedDnttList}
-                        showToast={showToast}
-                    />
+                {activeTab === 'materials' && (
+                    <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
+                        <div className="flex gap-4 border-b">
+                            <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
+                        </div>
+                        {materialSubTab === 'order' ? (
+                            <MaterialOrder 
+                                currentUser={currentUser}
+                                projects={allowedProjects}
+                                showToast={showToast}
+                                onCreateAccountingRequest={handleCreateAccountingRequest}
+                            />
+                        ) : (
+                            <MaterialOrderManager 
+                                currentUser={currentUser}
+                                projects={allowedProjects}
+                                dnttList={allowedDnttList}
+                                showToast={showToast}
+                            />
+                        )}
+                    </div>
                 )}
 
                 {activeTab === 'expected-invoices' && (
@@ -1243,6 +1292,7 @@ export default function Home() {
                                                 <tr className="bg-slate-50 border-b">
                                                     <th className="p-3 font-bold text-slate-700">Ngày</th>
                                                     <th className="p-3 font-bold text-slate-700">Đợt</th>
+                                                    <th className="p-3 font-bold text-slate-700">Số HĐ</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
@@ -1253,11 +1303,11 @@ export default function Home() {
                                             </thead>
                                             <tbody>
                                                 {(() => {
-                                                    const projectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject);
+                                                    const projectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject && (i.post_tax_amount > 0 || i.amount > 0));
                                                     if (projectIncomes.length === 0) {
                                                         return (
                                                             <tr>
-                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 8 : 7} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 9 : 8} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                             </tr>
                                                         );
                                                     }
@@ -1288,6 +1338,15 @@ export default function Home() {
                                                                 <tr key={i.id} className="border-b hover:bg-slate-50">
                                                                     <td className="p-3">{formatDateVN(i.date)}</td>
                                                                     <td className="p-3 font-bold text-slate-700">{i.phase}</td>
+                                                                    <td className="p-3 font-bold text-slate-600">{(() => {
+                                                                        if (i.note) {
+                                                                            try {
+                                                                                const parsed = JSON.parse(i.note);
+                                                                                if (parsed && typeof parsed === 'object' && parsed.invoice_no) return parsed.invoice_no;
+                                                                            } catch(e) {}
+                                                                        }
+                                                                        return '-';
+                                                                    })()}</td>
                                                                     <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
                                                                     <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
                                                                     <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
@@ -1318,7 +1377,14 @@ export default function Home() {
                                                                                     <Edit3 size={16} />
                                                                                 </button>
                                                                                 <button onClick={() => {
-                                                                                    if (window.confirm('Bạn có chắc chắn muốn xóa đợt thu này?')) handleDeleteIncome(i.id);
+                                                                                    setConfirmModal({
+                                                                                        isOpen: true,
+                                                                                        message: 'Bạn có chắc chắn muốn xóa đợt thu này?',
+                                                                                        onConfirm: () => {
+                                                                                            handleDeleteIncome(i.id);
+                                                                                            setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                                                                                        }
+                                                                                    });
                                                                                 }} className="text-red-500 hover:bg-red-50 p-1.5 rounded transition" title="Xóa">
                                                                                     <Trash2 size={16} />
                                                                                 </button>
@@ -1329,6 +1395,7 @@ export default function Home() {
                                                             ))}
                                                             <tr className="bg-slate-200 font-bold border-t-2 border-slate-300">
                                                                 <td className="p-3 text-slate-800" colSpan={2}>TỔNG CỘNG</td>
+                                                                <td className="p-3"></td>
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>
                                                                 <td className="p-3 text-right text-emerald-700">{formatCurrency(totalSauThue)}</td>

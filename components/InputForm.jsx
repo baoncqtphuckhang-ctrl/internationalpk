@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Save, Trash2, AlertCircle } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
@@ -36,6 +36,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
     const [confirmSave, setConfirmSave] = useState(false);
     const [pendingSubmit, setPendingSubmit] = useState(null);
     const [thanhToanStatus, setThanhToanStatus] = useState('CHƯA XONG');
+    const [confirmReset, setConfirmReset] = useState(false);
 
     useEffect(() => {
         if (editData) {
@@ -76,6 +77,17 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         } catch(e) {}
                     }
                     return 0;
+                })(),
+                invoice_no: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && 'invoice_no' in parsed) {
+                                return parsed.invoice_no;
+                            }
+                        } catch(e) {}
+                    }
+                    return editData.invoice_no || '';
                 })()
             });
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
@@ -87,8 +99,52 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         }
     }, [editData, projects]);
 
+    const availablePhases = useMemo(() => {
+        if (!formData.project_name || !incomes || incomes.length === 0) return [];
+        const phases = incomes
+            .filter(i => i.project_name === formData.project_name && i.phase)
+            .map(i => i.phase);
+        return [...new Set(phases)];
+    }, [formData.project_name, incomes]);
+
+    const selectedPhaseStats = useMemo(() => {
+        if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;
+        
+        const phaseIncs = incomes.filter(i => i.project_name === formData.project_name && i.phase === formData.phase);
+        if (phaseIncs.length === 0) return null;
+
+        const expected = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0).reduce((sum, i) => {
+            let exp = i.post_tax_amount || i.amount || 0;
+            if (i.note) {
+                try {
+                    const parsed = JSON.parse(i.note);
+                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                        exp = Number(parsed.actual_received_amount) || 0;
+                    }
+                } catch(e) {}
+            }
+            return sum + exp;
+        }, 0);
+        
+        const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+            let actual = 0;
+            if (i.note) {
+                try {
+                    const parsed = JSON.parse(i.note);
+                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                        actual = Number(parsed.actual_received_amount) || 0;
+                    }
+                } catch(e) {}
+            }
+            return sum + actual;
+        }, 0);
+        
+        return { expected, received };
+    }, [type, formData.project_name, formData.phase, incomes]);
+
+
     useEffect(() => {
-        if (!editData && type === 'INCOME') {
+        if (!editData && type === 'INCOME_INVOICE') {
             const projIncomes = incomes.filter(i => i.project_name === formData.project_name);
             let maxPhase = 0;
             projIncomes.forEach(inc => {
@@ -126,10 +182,17 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
             }
             if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
             if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
-        } else {
+        } else if (type === 'INCOME_INVOICE') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
-            if (!formData.amount || formData.amount <= 0) newErrors.amount = 'Số tiền thu phải lớn hơn 0';
+            if (!formData.post_tax_amount || formData.post_tax_amount <= 0) newErrors.post_tax_amount = 'Số tiền thu phải lớn hơn 0';
+        } else if (type === 'INCOME_REAL') {
+            if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.actual_received_amount || formData.actual_received_amount <= 0) newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận';
+        } else if (type === 'OFFICE_INCOME') {
+            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
+            if (!formData.debit_account && formData.debit_account !== 'Khác') newErrors.debit_account = 'Vui lòng chọn tài khoản nợ';
+            if (!formData.credit_account && formData.credit_account !== 'Khác') newErrors.credit_account = 'Vui lòng chọn tài khoản có';
+            if (!formData.office_amount || formData.office_amount <= 0) newErrors.office_amount = 'Vui lòng nhập số tiền thu';
         }
 
         setErrors(newErrors);
@@ -263,16 +326,30 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                     <button
                         type="button"
                         onClick={() => { setType('EXPENSE'); setErrors({}); }}
-                        className={`flex-1 py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
+                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
-                        CHI PHÍ (PHIẾU CHI)
+                        CHI PHÍ
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setType('INCOME'); setErrors({}); }}
-                        className={`flex-1 py-4 font-bold text-center transition ${type === 'INCOME' ? 'bg-green-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
+                        onClick={() => { setType('INCOME_INVOICE'); setErrors({}); }}
+                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_INVOICE' ? 'bg-green-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
-                        DOANH THU (THU TIỀN)
+                        DOANH THU (HÓA ĐƠN)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setType('INCOME_REAL'); setErrors({}); }}
+                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_REAL' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
+                    >
+                        DOANH THU (THỰC TẾ)
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setType('OFFICE_INCOME'); setErrors({}); }}
+                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'OFFICE_INCOME' ? 'bg-amber-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
+                    >
+                        THU VĂN PHÒNG
                     </button>
                 </div>
 
@@ -298,12 +375,45 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                             <label className={labelCls}>
                                 Ngày hạch toán <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="date"
-                                value={formData.accounting_date}
-                                onChange={(e) => handleChange('accounting_date', e.target.value)}
-                                className={inputCls('accounting_date')}
-                            />
+                            <div className="relative flex items-center">
+                                <input
+                                    type="text"
+                                    placeholder="dd/mm/yyyy"
+                                    value={formData.display_accounting_date || (formData.accounting_date ? formData.accounting_date.split('-').reverse().join('/') : '')}
+                                    onChange={(e) => {
+                                        let val = e.target.value.replace(/[^0-9/]/g, '');
+                                        if (val.length === 2 && !val.includes('/')) val += '/';
+                                        if (val.length === 5 && val.split('/').length === 2) val += '/';
+                                        handleChange('display_accounting_date', val);
+                                        if (val.length === 10) {
+                                            const [d, m, y] = val.split('/');
+                                            if (d && m && y && y.length === 4) handleChange('accounting_date', `${y}-${m}-${d}`);
+                                        } else {
+                                            handleChange('accounting_date', '');
+                                        }
+                                    }}
+                                    className={inputCls('accounting_date')}
+                                />
+                                <input 
+                                    type="date"
+                                    value={formData.accounting_date}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        handleChange('accounting_date', val);
+                                        if (val) {
+                                            const [y, m, d] = val.split('-');
+                                            handleChange('display_accounting_date', `${d}/${m}/${y}`);
+                                        }
+                                    }}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
+                                />
+                                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                    <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                    <line x1="16" y1="2" x2="16" y2="6"></line>
+                                    <line x1="8" y1="2" x2="8" y2="6"></line>
+                                    <line x1="3" y1="10" x2="21" y2="10"></line>
+                                </svg>
+                            </div>
                             {errorMsg('accounting_date')}
                         </div>
 
@@ -454,7 +564,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                     {errorMsg('amount6418')}
                                 </div>
                             </>
-                        ) : (
+                        ) : type === 'INCOME_INVOICE' ? (
                             <>
                                 {/* Đợt thu */}
                                 <div>
@@ -538,17 +648,77 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                 </div>
                                 {/* Giá trị thanh toán sau thuế */}
                                 <div className="md:col-span-2">
-                                    <label className={labelCls}>Giá trị thanh toán sau thuế</label>
+                                    <label className={labelCls}>Giá trị thanh toán sau thuế <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={formData.post_tax_amount ? formatCurrency(formData.post_tax_amount) : ''}
-                                        onChange={(e) => handleChange('post_tax_amount', parseVietnameseNumber(e.target.value))}
+                                        onChange={(e) => {
+                                            const val = parseVietnameseNumber(e.target.value);
+                                            setFormData(prev => ({ 
+                                                ...prev, 
+                                                post_tax_amount: val,
+                                                amount: val - (prev.vat_amount || 0)
+                                            }));
+                                        }}
                                         placeholder="Nhập số tiền sau thuế..."
                                         className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
                                     />
+                                    {errorMsg('post_tax_amount')}
+                                </div>
+                                {/* Số hóa đơn */}
+                                <div>
+                                    <label className={labelCls}>Số hóa đơn</label>
+                                    <input
+                                        type="text"
+                                        value={formData.invoice_no || ''}
+                                        onChange={(e) => handleChange('invoice_no', e.target.value)}
+                                        placeholder="Nhập số hóa đơn..."
+                                        className={inputCls('invoice_no')}
+                                    />
+                                </div>
+                                {/* Giá trị thực nhận kỳ này */}
+                                <div>
+                                    <label className={labelCls}>Giá trị thực nhận kỳ này (Theo Hồ sơ thanh toán)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.actual_received_amount ? formatCurrency(formData.actual_received_amount) : ''}
+                                        onChange={(e) => handleChange('actual_received_amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập giá trị thực nhận theo hồ sơ..."
+                                        className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
+                                    />
+                                </div>
+                            </>
+                        ) : type === 'INCOME_REAL' ? (
+                            <>
+                                {/* Đợt thu */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Đợt thu (Giai đoạn) <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={formData.phase || ''}
+                                        onChange={(e) => handleChange('phase', e.target.value)}
+                                        className={inputCls('phase')}
+                                    >
+                                        <option value="">-- Chọn đợt thu --</option>
+                                        {availablePhases.map(p => (
+                                            <option key={p} value={p}>{p}</option>
+                                        ))}
+                                    </select>
+                                    {errorMsg('phase')}
+                                    {selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
+                                        <div className="mt-2 text-[13px] p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
+                                            <span className="text-slate-600 font-medium">Tiến độ thu đợt này:</span>
+                                            <div className="font-bold">
+                                                <span className="text-blue-700">{formatCurrency(selectedPhaseStats.received)}</span>
+                                                <span className="text-slate-400 mx-1.5">/</span>
+                                                <span className="text-slate-700">{formatCurrency(selectedPhaseStats.expected)}</span>
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 {/* Giá trị thực nhận/nhập */}
-                                <div className="md:col-span-2">
+                                <div>
                                     <label className={labelCls}>Giá trị thực nhận/nhập <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
@@ -560,18 +730,89 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                     {errorMsg('actual_received_amount')}
                                 </div>
                             </>
-                        )}
+                        ) : type === 'OFFICE_INCOME' ? (
+                            <>
+                                {/* Tài khoản Nợ */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Tài khoản Nợ <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={formData.debit_account === 'Khác' ? 'Khác' : formData.debit_account || ''}
+                                        onChange={(e) => handleChange('debit_account', e.target.value)}
+                                        className={inputCls('debit_account')}
+                                    >
+                                        <option value="">-- Chọn tài khoản --</option>
+                                        <option value="1111 - Tiền mặt">1111 - Tiền mặt</option>
+                                        <option value="1121 - Tiền gửi NH">1121 - Tiền gửi NH</option>
+                                        <option value="131 - Phải thu khách hàng">131 - Phải thu khách hàng</option>
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {formData.debit_account === 'Khác' && (
+                                        <input
+                                            type="text"
+                                            value={formData.custom_debit_account || ''}
+                                            onChange={(e) => handleChange('custom_debit_account', e.target.value)}
+                                            placeholder="Nhập tài khoản nợ..."
+                                            className={`${inputCls('custom_debit_account')} mt-2`}
+                                        />
+                                    )}
+                                    {errorMsg('debit_account')}
+                                </div>
+                                {/* Tài khoản Có */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Tài khoản Có <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={formData.credit_account === 'Khác' ? 'Khác' : formData.credit_account || ''}
+                                        onChange={(e) => handleChange('credit_account', e.target.value)}
+                                        className={inputCls('credit_account')}
+                                    >
+                                        <option value="">-- Chọn tài khoản --</option>
+                                        <option value="511 - Doanh thu">511 - Doanh thu</option>
+                                        <option value="711 - Thu nhập khác">711 - Thu nhập khác</option>
+                                        <option value="131 - Phải thu khách hàng">131 - Phải thu khách hàng</option>
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {formData.credit_account === 'Khác' && (
+                                        <input
+                                            type="text"
+                                            value={formData.custom_credit_account || ''}
+                                            onChange={(e) => handleChange('custom_credit_account', e.target.value)}
+                                            placeholder="Nhập tài khoản có..."
+                                            className={`${inputCls('custom_credit_account')} mt-2`}
+                                        />
+                                    )}
+                                    {errorMsg('credit_account')}
+                                </div>
+                                {/* Số tiền thu */}
+                                <div className="md:col-span-2">
+                                    <label className={labelCls}>
+                                        Số tiền thu <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.office_amount ? formatCurrency(formData.office_amount) : ''}
+                                        onChange={(e) => handleChange('office_amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền..."
+                                        className={`${inputCls('office_amount')} font-bold text-amber-600`}
+                                    />
+                                    {errorMsg('office_amount')}
+                                </div>
+                            </>
+                        ) : null}
                     </div>
 
                     {/* Đối tượng thụ hưởng */}
-                    {type === 'EXPENSE' && (
+                    {(type === 'EXPENSE' || type === 'OFFICE_INCOME') && (
                         <div>
                             <label className={labelCls}>
-                                Đối tượng thụ hưởng/đối tượng khấu trừ <span className="text-red-500">*</span>
+                                Đối tượng <span className="text-red-500">*</span>
                             </label>
                             <input
                                 type="text"
-                                value={formData.recipient}
+                                value={formData.recipient || ''}
                                 onChange={(e) => handleChange('recipient', e.target.value)}
                                 placeholder="Nhập tên đối tượng..."
                                 className={inputCls('recipient')}
@@ -616,28 +857,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         ) : (
                             <button
                                 type="button"
-                                onClick={() => {
-                                    if (window.confirm('Bạn có muốn xóa trắng toàn bộ dữ liệu đang nhập để nhập lại từ đầu?')) {
-                                        setFormData({
-                                            project_name: projects[0]?.name || '',
-                                            accounting_date: new Date().toISOString().split('T')[0],
-                                            invoice_no: '',
-                                            code: '',
-                                            debit: 0,
-                                            credit: 0,
-                                            note: '',
-                                            recipient: '',
-                                            phase: 'Đợt 1',
-                                            amount: 0,
-                                            vat_rate: 8,
-                                            vat_amount: 0,
-                                            post_tax_amount: 0,
-                                            amount6418: 0,
-                                            actual_received_amount: 0
-                                        });
-                                        setErrors({});
-                                    }
-                                }}
+                                onClick={() => setConfirmReset(true)}
                                 className="px-6 py-4 rounded-xl font-bold text-red-500 hover:bg-red-50 hover:text-red-700 border border-red-200 transition flex items-center justify-center gap-2"
                             >
                                 <Trash2 size={20} /> XÓA NHẬP LIỆU
@@ -661,6 +881,37 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                     </div>
                 </form>
             </div>
+            
+            <ConfirmModal
+                isOpen={confirmReset}
+                title="Xóa trắng nhập liệu"
+                message="Bạn có chắc chắn muốn xóa trắng toàn bộ dữ liệu đang nhập để nhập lại từ đầu?"
+                onConfirm={() => {
+                    setFormData({
+                        project_name: projects[0]?.name || '',
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        invoice_no: '',
+                        invoice_date: '',
+                        corresponding_account: '',
+                        code: '',
+                        debit: 0,
+                        credit: 0,
+                        note: '',
+                        recipient: '',
+                        phase: 'Đợt 1',
+                        amount: 0,
+                        vat_rate: 8,
+                        vat_amount: 0,
+                        post_tax_amount: 0,
+                        amount6418: 0,
+                        actual_received_amount: 0,
+                        creator: ''
+                    });
+                    setErrors({});
+                    setConfirmReset(false);
+                }}
+                onCancel={() => setConfirmReset(false)}
+            />
         </div>
     );
 }
