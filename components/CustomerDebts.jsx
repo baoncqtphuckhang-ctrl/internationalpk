@@ -18,6 +18,8 @@ export default function CustomerDebts({ incomes, projects }) {
                     phase: inc.phase,
                     invoiceAmount: 0,
                     receivedAmount: 0,
+                    invoiceNo: '',
+                    voucherNo: ''
                 };
             }
             
@@ -27,8 +29,16 @@ export default function CustomerDebts({ incomes, projects }) {
             if (inc.note) {
                 try {
                     const parsed = JSON.parse(inc.note);
-                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                        actual = parseFloat(parsed.actual_received_amount) || 0;
+                    if (parsed && typeof parsed === 'object') {
+                        if (parsed.actual_received_amount) {
+                            actual = parseFloat(parsed.actual_received_amount) || 0;
+                        }
+                        if (parsed.invoice_no && !grouped[key].invoiceNo.includes(parsed.invoice_no)) {
+                            grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
+                        }
+                        if (parsed.voucher_no && !grouped[key].voucherNo.includes(parsed.voucher_no)) {
+                            grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
+                        }
                     }
                 } catch(e) {}
             }
@@ -38,7 +48,7 @@ export default function CustomerDebts({ incomes, projects }) {
         return Object.values(grouped).map(g => ({
             ...g,
             remainingAmount: g.invoiceAmount - g.receivedAmount
-        })).filter(g => g.remainingAmount > 0).sort((a, b) => {
+        })).sort((a, b) => {
             if (a.project_name !== b.project_name) return a.project_name.localeCompare(b.project_name);
             const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
             const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
@@ -49,7 +59,9 @@ export default function CustomerDebts({ incomes, projects }) {
     const filteredDebtData = useMemo(() => {
         return debtData.filter(d => 
             d.project_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-            d.phase.toLowerCase().includes(searchTerm.toLowerCase())
+            d.phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            d.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            d.voucherNo.toLowerCase().includes(searchTerm.toLowerCase())
         );
     }, [debtData, searchTerm]);
 
@@ -60,9 +72,9 @@ export default function CustomerDebts({ incomes, projects }) {
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
-                        <FileText className="text-blue-600" /> Quản Lý Công Nợ Khách Hàng
+                        <FileText className="text-blue-600" /> Quản Lý Hóa Đơn
                     </h2>
-                    <p className="text-slate-500 text-sm mt-1">Danh sách các hồ sơ thu đợt chưa thu đủ tiền.</p>
+                    <p className="text-slate-500 text-sm mt-1">Danh sách hóa đơn và tình trạng thu tiền theo từng đợt.</p>
                 </div>
                 <div className="flex gap-2 w-full sm:w-auto">
                     <button 
@@ -122,6 +134,8 @@ export default function CustomerDebts({ incomes, projects }) {
                             <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
                                 <th className="p-4 font-black">Công Trình</th>
                                 <th className="p-4 font-black text-center">Giai Đoạn / Đợt Thu</th>
+                                <th className="p-4 font-black">Số Hóa Đơn</th>
+                                <th className="p-4 font-black">Số Chứng Từ</th>
                                 <th className="p-4 font-black text-right">Giá Trị Hóa Đơn</th>
                                 <th className="p-4 font-black text-right">Đã Thực Thu</th>
                                 <th className="p-4 font-black text-right text-red-600">Còn Lại (Công Nợ)</th>
@@ -130,7 +144,7 @@ export default function CustomerDebts({ incomes, projects }) {
                         <tbody className="divide-y divide-slate-100">
                             {filteredDebtData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="5" className="p-8 text-center text-slate-400 font-bold">Không có công nợ khách hàng nào cần thu phù hợp với tìm kiếm.</td>
+                                    <td colSpan="7" className="p-8 text-center text-slate-400 font-bold">Không có công nợ khách hàng nào cần thu phù hợp với tìm kiếm.</td>
                                 </tr>
                             ) : (
                                 filteredDebtData.map(debt => (
@@ -141,6 +155,8 @@ export default function CustomerDebts({ incomes, projects }) {
                                                 {debt.phase}
                                             </span>
                                         </td>
+                                        <td className="p-4 text-sm font-medium text-slate-600">{debt.invoiceNo || '-'}</td>
+                                        <td className="p-4 text-sm font-medium text-slate-600">{debt.voucherNo || '-'}</td>
                                         <td className="p-4 text-right font-bold text-slate-800">{formatCurrency(debt.invoiceAmount)}</td>
                                         <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(debt.receivedAmount)}</td>
                                         <td className="p-4 text-right font-black text-red-600">{formatCurrency(debt.remainingAmount)}</td>

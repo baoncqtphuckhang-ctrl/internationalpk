@@ -88,6 +88,17 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         } catch(e) {}
                     }
                     return editData.invoice_no || '';
+                })(),
+                voucher_no: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && 'voucher_no' in parsed) {
+                                return parsed.voucher_no;
+                            }
+                        } catch(e) {}
+                    }
+                    return '';
                 })()
             });
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
@@ -716,6 +727,17 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                             </div>
                                         </div>
                                     )}
+                                </div>
+                                {/* Số chứng từ */}
+                                <div>
+                                    <label className={labelCls}>Số chứng từ</label>
+                                    <input
+                                        type="text"
+                                        value={formData.voucher_no || ''}
+                                        onChange={(e) => handleChange('voucher_no', e.target.value)}
+                                        placeholder="Nhập số chứng từ..."
+                                        className={inputCls('voucher_no')}
+                                    />
                                 </div>
                                 {/* Giá trị thực nhận/nhập */}
                                 <div>

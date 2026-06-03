@@ -349,7 +349,7 @@ export default function Home() {
                     vat_amount: isReal ? 0 : (data.vat_amount || 0),
                     post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0),
                     is_paid: isReal ? true : false,
-                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, invoice_no: data.invoice_no || '' }),
+                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '' }),
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
