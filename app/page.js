@@ -1323,6 +1323,7 @@ export default function Home() {
                                                     <th className="p-3 font-bold text-slate-700">Số HĐ</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Thực nhận theo HSTT</th>
                                                     <th className="p-3 font-bold text-slate-700 text-center w-64">Thực nhận thực tế</th>
                                                     {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Thao tác</th>}
@@ -1334,7 +1335,7 @@ export default function Home() {
                                                     if (projectIncomes.length === 0) {
                                                         return (
                                                             <tr>
-                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 8 : 7} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 9 : 8} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                             </tr>
                                                         );
                                                     }
@@ -1342,17 +1343,34 @@ export default function Home() {
                                                     const totalTruocThue = projectIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
                                                     const totalVat = projectIncomes.reduce((sum, i) => sum + (i.vat_amount || 0), 0);
                                                     const totalSauThue = projectIncomes.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
-                                                    const totalThucNhan = projectIncomes.reduce((sum, i) => {
-                                                        let actual = i.post_tax_amount || i.amount || 0;
+                                                    const totalHstt = projectIncomes.reduce((sum, i) => {
+                                                        let hstt = 0;
                                                         if (i.note) {
                                                             try {
                                                                 const parsed = JSON.parse(i.note);
-                                                                if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                    actual = Number(parsed.actual_received_amount) || 0;
+                                                                if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                    hstt = Number(parsed.actual_received_amount);
                                                                 }
                                                             } catch(e) {}
                                                         }
-                                                        return sum + actual;
+                                                        return sum + hstt;
+                                                    }, 0);
+                                                    
+                                                    const totalReal = projectIncomes.reduce((sum, i) => {
+                                                        const realRows = allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                        const realSum = realRows.reduce((s, inc) => {
+                                                            let val = 0;
+                                                            if (inc.note) {
+                                                                try {
+                                                                    const parsed = JSON.parse(inc.note);
+                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                        val = Number(parsed.actual_received_amount);
+                                                                    }
+                                                                } catch(e) {}
+                                                            }
+                                                            return s + val;
+                                                        }, 0);
+                                                        return sum + realSum;
                                                     }, 0);
 
                                                     return (
@@ -1376,19 +1394,46 @@ export default function Home() {
                                                                     })()}</td>
                                                                     <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
                                                                     <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
-                                                                    <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
-                                                                    <td className="p-3 text-center">
+                                                                    <td className="p-3 text-right font-black text-blue-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
+                                                                    <td className="p-3 text-right font-black text-emerald-600">
                                                                         {(() => {
-                                                                            const expected = i.post_tax_amount || i.amount || 0;
-                                                                            let actual = 0;
+                                                                            let hstt = 0;
                                                                             if (i.note) {
                                                                                 try {
                                                                                     const parsed = JSON.parse(i.note);
-                                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                                        actual = Number(parsed.actual_received_amount) || 0;
+                                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                                        hstt = Number(parsed.actual_received_amount);
                                                                                     }
                                                                                 } catch(e) {}
                                                                             }
+                                                                            return hstt > 0 ? formatCurrency(hstt) : '-';
+                                                                        })()}
+                                                                    </td>
+                                                                    <td className="p-3 text-center">
+                                                                        {(() => {
+                                                                            let expected = 0;
+                                                                            if (i.note) {
+                                                                                try {
+                                                                                    const parsed = JSON.parse(i.note);
+                                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                                        expected = Number(parsed.actual_received_amount);
+                                                                                    }
+                                                                                } catch(e) {}
+                                                                            }
+                                                                            
+                                                                            const realRows = allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            const actual = realRows.reduce((sum, inc) => {
+                                                                                let val = 0;
+                                                                                if (inc.note) {
+                                                                                    try {
+                                                                                        const parsed = JSON.parse(inc.note);
+                                                                                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                                            val = Number(parsed.actual_received_amount);
+                                                                                        }
+                                                                                    } catch(e) {}
+                                                                                }
+                                                                                return sum + val;
+                                                                            }, 0);
                                                                             
                                                                             const percentage = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0;
                                                                             const isFull = actual >= expected && expected > 0;
@@ -1400,7 +1445,7 @@ export default function Home() {
                                                                                         style={{ width: `${percentage}%` }}
                                                                                     ></div>
                                                                                     <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wide text-slate-800 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] z-10">
-                                                                                        {formatCurrency(actual)} / {formatCurrency(expected)}
+                                                                                        {formatCurrency(actual)} / {expected > 0 ? formatCurrency(expected) : '0'}
                                                                                     </div>
                                                                                 </div>
                                                                             );
@@ -1434,11 +1479,12 @@ export default function Home() {
                                                                 <td className="p-3"></td>
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>
-                                                                <td className="p-3 text-right text-emerald-700">{formatCurrency(totalSauThue)}</td>
+                                                                <td className="p-3 text-right text-blue-700">{formatCurrency(totalSauThue)}</td>
+                                                                <td className="p-3 text-right text-emerald-700">{totalHstt > 0 ? formatCurrency(totalHstt) : '-'}</td>
                                                                 <td className="p-3 text-center">
                                                                     <div className="flex items-center justify-center gap-2">
-                                                                        <span className="text-emerald-800 font-bold">{formatCurrency(totalThucNhan)}</span>
-                                                                        <span className="text-slate-500 font-normal">/ {formatCurrency(totalSauThue)}</span>
+                                                                        <span className="text-emerald-800 font-bold">{formatCurrency(totalReal)}</span>
+                                                                        <span className="text-slate-500 font-normal">/ {totalHstt > 0 ? formatCurrency(totalHstt) : '0'}</span>
                                                                     </div>
                                                                 </td>
                                                                 {(canManageSystem || role === 'ADMIN') && <td className="p-3"></td>}
