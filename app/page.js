@@ -1323,9 +1323,8 @@ export default function Home() {
                                                     <th className="p-3 font-bold text-slate-700">Số HĐ</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
                                                     <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right text-emerald-600">Thực nhận</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-center">Trạng thái</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-right">Thực nhận theo HSTT</th>
+                                                    <th className="p-3 font-bold text-slate-700 text-center w-64">Thực nhận thực tế</th>
                                                     {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Thao tác</th>}
                                                 </tr>
                                             </thead>
@@ -1335,7 +1334,7 @@ export default function Home() {
                                                     if (projectIncomes.length === 0) {
                                                         return (
                                                             <tr>
-                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 9 : 8} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 8 : 7} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                             </tr>
                                                         );
                                                     }
@@ -1378,25 +1377,34 @@ export default function Home() {
                                                                     <td className="p-3 text-right font-black text-slate-600">{formatCurrency(i.amount)}</td>
                                                                     <td className="p-3 text-right font-black text-slate-500">{formatCurrency(i.vat_amount || 0)}</td>
                                                                     <td className="p-3 text-right font-black text-emerald-600">{formatCurrency(i.post_tax_amount || i.amount)}</td>
-                                                                    <td className="p-3 text-right font-black text-emerald-700">{formatCurrency((() => {
-                                                                        if (i.note) {
-                                                                            try {
-                                                                                const parsed = JSON.parse(i.note);
-                                                                                if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                                    return Number(parsed.actual_received_amount) || 0;
-                                                                                }
-                                                                            } catch(e) {}
-                                                                        }
-                                                                        return i.post_tax_amount || i.amount || 0;
-                                                                    })())}</td>
                                                                     <td className="p-3 text-center">
-                                                                        <span 
-                                                                            onClick={() => handleToggleIncomeStatus(i.id, i.is_paid)}
-                                                                            className={`px-2 py-1 rounded text-xs font-bold cursor-pointer transition-colors hover:opacity-80 ${i.is_paid ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
-                                                                            title="Nhấn để thay đổi trạng thái"
-                                                                        >
-                                                                            {i.is_paid ? 'Đã thu' : 'Chưa thu'}
-                                                                        </span>
+                                                                        {(() => {
+                                                                            const expected = i.post_tax_amount || i.amount || 0;
+                                                                            let actual = 0;
+                                                                            if (i.note) {
+                                                                                try {
+                                                                                    const parsed = JSON.parse(i.note);
+                                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                                        actual = Number(parsed.actual_received_amount) || 0;
+                                                                                    }
+                                                                                } catch(e) {}
+                                                                            }
+                                                                            
+                                                                            const percentage = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0;
+                                                                            const isFull = actual >= expected && expected > 0;
+                                                                            
+                                                                            return (
+                                                                                <div className="relative w-full min-w-[120px] h-7 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                                                                                    <div 
+                                                                                        className={`absolute top-0 left-0 h-full transition-all duration-500 ${isFull ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                                                                                        style={{ width: `${percentage}%` }}
+                                                                                    ></div>
+                                                                                    <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wide text-slate-800 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] z-10">
+                                                                                        {formatCurrency(actual)} / {formatCurrency(expected)}
+                                                                                    </div>
+                                                                                </div>
+                                                                            );
+                                                                        })()}
                                                                     </td>
                                                                     {(canManageSystem || role === 'ADMIN') && (
                                                                         <td className="p-3 text-center">
@@ -1427,8 +1435,12 @@ export default function Home() {
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>
                                                                 <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>
                                                                 <td className="p-3 text-right text-emerald-700">{formatCurrency(totalSauThue)}</td>
-                                                                <td className="p-3 text-right text-emerald-800">{formatCurrency(totalThucNhan)}</td>
-                                                                <td className="p-3"></td>
+                                                                <td className="p-3 text-center">
+                                                                    <div className="flex items-center justify-center gap-2">
+                                                                        <span className="text-emerald-800 font-bold">{formatCurrency(totalThucNhan)}</span>
+                                                                        <span className="text-slate-500 font-normal">/ {formatCurrency(totalSauThue)}</span>
+                                                                    </div>
+                                                                </td>
                                                                 {(canManageSystem || role === 'ADMIN') && <td className="p-3"></td>}
                                                             </tr>
                                                         </>
