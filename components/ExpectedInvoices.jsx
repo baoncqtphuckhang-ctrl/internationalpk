@@ -1,23 +1,37 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
-export default function ExpectedInvoices({ projects, projectDetails, currentUser }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [] }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [editingId, setEditingId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    const [activeSubTab, setActiveSubTab] = useState('invoice');
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
         vatAmount: '',
         postTaxValue: '',
         phase: '',
+        teamValue: '',
         note: ''
     });
+
+    const [filterProject, setFilterProject] = useState('');
+    const [filterPhase, setFilterPhase] = useState('');
+    const [isCustomPhase, setIsCustomPhase] = useState(false);
+
+    const availableFormPhases = useMemo(() => {
+        if (!formData.projectName || !incomes || incomes.length === 0) return [];
+        const phases = incomes
+            .filter(i => i.project_name === formData.projectName && i.phase)
+            .map(i => i.phase);
+        return [...new Set(phases)].sort();
+    }, [formData.projectName, incomes]);
 
     // Load data from Supabase or localStorage
     useEffect(() => {
@@ -86,8 +100,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formData.projectName || !formData.postTaxValue) {
-            alert('Vui lòng nhập đầy đủ tên công trình và giá trị!');
+        if (!formData.projectName || (activeSubTab === 'invoice' && !formData.postTaxValue) || (activeSubTab === 'team' && !formData.teamValue)) {
+            alert('Vui lòng nhập đầy đủ tên công trình và giá trị bắt buộc!');
             return;
         }
 
@@ -104,6 +118,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         preTaxValue: preTax,
                         vatAmount: vat,
                         postTaxValue: postTax,
+                        teamValue: parseFloat(formData.teamValue) || 0,
                         phase: formData.phase,
                         note: formData.note
                     })
@@ -119,7 +134,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         ...formData, 
                         preTaxValue: preTax,
                         vatAmount: vat,
-                        postTaxValue: postTax 
+                        postTaxValue: postTax,
+                        teamValue: parseFloat(formData.teamValue) || 0
                     } : inv
                 ));
             } else {
@@ -128,6 +144,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     preTaxValue: preTax,
                     vatAmount: vat,
                     postTaxValue: postTax,
+                    teamValue: parseFloat(formData.teamValue) || 0,
                     phase: formData.phase,
                     note: formData.note
                 };
@@ -154,15 +171,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const resetForm = () => {
         setIsFormOpen(false);
         setEditingId(null);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', phase: '', note: '' });
+        setIsCustomPhase(false);
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', phase: '', note: '' });
     };
 
     const handleEdit = (inv) => {
+        setIsCustomPhase(false);
         setFormData({
             projectName: inv.projectName,
             preTaxValue: inv.preTaxValue || '',
             vatAmount: inv.vatAmount || '',
             postTaxValue: inv.postTaxValue || inv.expectedValue || '',
+            teamValue: inv.teamValue || '',
             phase: inv.phase || '',
             note: inv.note || ''
         });
@@ -194,6 +214,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const filteredInvoices = invoices.filter(inv => {
         const term = searchTerm.toLowerCase();
+        
+        if (filterProject && inv.projectName !== filterProject) return false;
+        if (filterPhase && inv.phase !== filterPhase) return false;
+
         return (
             (inv.projectName || '').toLowerCase().includes(term) ||
             (inv.phase || '').toLowerCase().includes(term) ||
@@ -201,6 +225,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             (projectDetails?.[inv.projectName]?.contractNo || '').toLowerCase().includes(term)
         );
     });
+
+    const availablePhases = [...new Set(invoices.filter(i => !filterProject || i.projectName === filterProject).map(i => i.phase).filter(Boolean))].sort();
 
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
@@ -224,16 +250,58 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 </button>
             </header>
 
+            <div className="flex gap-6 border-b border-slate-200 mb-6">
+                <button 
+                    onClick={() => setActiveSubTab('invoice')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    GIÁ TRỊ HÓA ĐƠN
+                </button>
+                <button 
+                    onClick={() => setActiveSubTab('team')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    GIÁ TRỊ TỔ ĐỘI
+                </button>
+            </div>
+
             <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
                 <div className="flex-1 relative">
                     <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                     <input 
                         type="text"
-                        placeholder="Tìm kiếm công trình, đợt, số hợp đồng, ghi chú..."
+                        placeholder="Tìm kiếm..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-emerald-500 focus:bg-white transition"
                     />
+                </div>
+                <div className="w-full md:w-64">
+                    <select
+                        value={filterProject}
+                        onChange={(e) => {
+                            setFilterProject(e.target.value);
+                            setFilterPhase(''); // Reset phase when project changes
+                        }}
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
+                    >
+                        <option value="">Tất cả công trình</option>
+                        {projects.map(p => (
+                            <option key={p.id} value={p.name}>{p.name}</option>
+                        ))}
+                    </select>
+                </div>
+                <div className="w-full md:w-48">
+                    <select
+                        value={filterPhase}
+                        onChange={(e) => setFilterPhase(e.target.value)}
+                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
+                    >
+                        <option value="">Tất cả các đợt</option>
+                        {availablePhases.map(ph => (
+                            <option key={ph} value={ph}>{ph}</option>
+                        ))}
+                    </select>
                 </div>
             </div>
 
@@ -262,49 +330,89 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             </div>
                             <div>
                                 <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
-                                <input 
-                                    type="text" 
-                                    name="phase" 
-                                    value={formData.phase}
-                                    onChange={handleFormChange}
+                                <select 
+                                    name="phase_select" 
+                                    value={isCustomPhase ? 'Khác' : formData.phase}
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        if (val === 'Khác') {
+                                            setIsCustomPhase(true);
+                                            setFormData(prev => ({ ...prev, phase: '' }));
+                                        } else {
+                                            setIsCustomPhase(false);
+                                            setFormData(prev => ({ ...prev, phase: val }));
+                                        }
+                                    }}
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Ví dụ: Đợt 1"
-                                />
+                                >
+                                    <option value="">-- Chọn đợt --</option>
+                                    {availableFormPhases.map(ph => (
+                                        <option key={ph} value={ph}>{ph}</option>
+                                    ))}
+                                    <option value="Khác">Khác...</option>
+                                </select>
+                                {isCustomPhase && (
+                                    <input 
+                                        type="text" 
+                                        name="phase" 
+                                        value={formData.phase}
+                                        onChange={handleFormChange}
+                                        className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                        placeholder="Nhập đợt khác... (VD: Đợt 1)"
+                                    />
+                                )}
                             </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị trước thuế</label>
-                                <input 
-                                    type="text" 
-                                    name="preTaxValue" 
-                                    value={formData.preTaxValue ? formatCurrency(formData.preTaxValue) : ''}
-                                    onChange={handleNumberChange}
-                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Ví dụ: 150,000,000"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thuế VAT</label>
-                                <input 
-                                    type="text" 
-                                    name="vatAmount" 
-                                    value={formData.vatAmount ? formatCurrency(formData.vatAmount) : ''}
-                                    onChange={handleNumberChange}
-                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Ví dụ: 15,000,000"
-                                />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị sau thuế *</label>
-                                <input 
-                                    type="text" 
-                                    name="postTaxValue" 
-                                    value={formData.postTaxValue ? formatCurrency(formData.postTaxValue) : ''}
-                                    onChange={handleNumberChange}
-                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Ví dụ: 165,000,000"
-                                    required
-                                />
-                            </div>
+                            {activeSubTab === 'invoice' ? (
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị trước thuế</label>
+                                        <input 
+                                            type="text" 
+                                            name="preTaxValue" 
+                                            value={formData.preTaxValue ? formatCurrency(formData.preTaxValue) : ''}
+                                            onChange={handleNumberChange}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: 150,000,000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thuế VAT</label>
+                                        <input 
+                                            type="text" 
+                                            name="vatAmount" 
+                                            value={formData.vatAmount ? formatCurrency(formData.vatAmount) : ''}
+                                            onChange={handleNumberChange}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: 15,000,000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị sau thuế *</label>
+                                        <input 
+                                            type="text" 
+                                            name="postTaxValue" 
+                                            value={formData.postTaxValue ? formatCurrency(formData.postTaxValue) : ''}
+                                            onChange={handleNumberChange}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: 165,000,000"
+                                            required
+                                        />
+                                    </div>
+                                </>
+                            ) : (
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị tổ đội dự kiến *</label>
+                                    <input 
+                                        type="text" 
+                                        name="teamValue" 
+                                        value={formData.teamValue ? formatCurrency(formData.teamValue) : ''}
+                                        onChange={handleNumberChange}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                        placeholder="Ví dụ: 50,000,000"
+                                        required
+                                    />
+                                </div>
+                            )}
                             <div>
                                 <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
                                 <input 
@@ -335,9 +443,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Tên công trình</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị trước thuế</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Thuế VAT</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị sau thuế</th>
+                                {activeSubTab === 'invoice' ? (
+                                    <>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị trước thuế</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Thuế VAT</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị sau thuế</th>
+                                    </>
+                                ) : (
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị tổ đội dự kiến</th>
+                                )}
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
@@ -354,9 +468,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
                                         <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
                                         <td className="p-4 text-sm font-medium text-slate-600">{projectDetails?.[inv.projectName]?.contractNo || '-'}</td>
-                                        <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
-                                        <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(inv.vatAmount || 0)}</td>
-                                        <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || inv.expectedValue || 0)} VNĐ</td>
+                                        {activeSubTab === 'invoice' ? (
+                                            <>
+                                                <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
+                                                <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(inv.vatAmount || 0)}</td>
+                                                <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || inv.expectedValue || 0)} VNĐ</td>
+                                            </>
+                                        ) : (
+                                            <td className="p-4 text-sm font-black text-indigo-600 text-right">{formatCurrency(inv.teamValue || 0)} VNĐ</td>
+                                        )}
                                         <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                         <td className="p-4 text-sm text-slate-500">{inv.note}</td>
                                         <td className="p-4 text-center">
@@ -377,9 +497,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             {filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
                                     <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
-                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
+                                    {activeSubTab === 'invoice' ? (
+                                        <>
+                                            <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                            <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
+                                            <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
+                                        </>
+                                    ) : (
+                                        <td className="p-4 text-sm font-black text-indigo-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))} VNĐ</td>
+                                    )}
                                     <td colSpan="3" className="p-4"></td>
                                 </tr>
                             )}
