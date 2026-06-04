@@ -621,15 +621,12 @@ export default function ApprovalWorkflow({
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
-                                            {showApproveButtons && item.status === STATUSES.WAITING_QS && canApproveQS && (
+                                            {showApproveButtons && (item.status === STATUSES.WAITING_QS || item.status === STATUSES.WAITING_ACC) && (canApproveQS || canApproveKT) && (
                                                 <>
-                                                    <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.WAITING_ACC : STATUSES.WAITING_ACC)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt (QS)</button>
-                                                    <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
-                                                </>
-                                            )}
-                                            {showApproveButtons && item.status === STATUSES.WAITING_ACC && canApproveKT && (
-                                                <>
-                                                    <button onClick={() => onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED)} className="flex-1 lg:flex-none whitespace-nowrap bg-green-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-green-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-green-600/20"><Check size={18}/> Duyệt (KT)</button>
+                                                    <button onClick={() => {
+                                                        onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED);
+                                                        openPrintPreview(item);
+                                                    }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
                                             )}
