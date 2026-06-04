@@ -294,7 +294,7 @@ export default function PartnerDebts({
                                         <td className="p-4 text-sm font-bold text-slate-700">{debt.project_name}</td>
                                         <td className="p-4">
                                             <p className="text-sm font-bold text-slate-800">{debt.partner_name}</p>
-                                            {debt.note && <p className="text-xs text-slate-400 mt-0.5">{debt.note}</p>}
+                                            {debt.note && <p className="text-xs text-slate-400 mt-0.5">{debt.note.split('[PAYLOAD]')[0]}</p>}
                                         </td>
                                         <td className="p-4 text-right font-black text-slate-800">{formatCurrency(debt.amount)}</td>
                                         <td className="p-4 text-center">

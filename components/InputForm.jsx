@@ -30,13 +30,15 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         amount6418: 0,
         amount6418: 0,
         actual_received_amount: 0,
-        creator: ''
+        creator: '',
+        recipient_thu: ''
     });
 
     const [errors, setErrors] = useState({});
     const [confirmSave, setConfirmSave] = useState(false);
     const [pendingSubmit, setPendingSubmit] = useState(null);
     const [thanhToanStatus, setThanhToanStatus] = useState('CHƯA XONG');
+    const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, mode: 'PAY_ONLY', thuStatus: 'CHƯA XONG', chiStatus: 'CHƯA XONG' });
     const [confirmReset, setConfirmReset] = useState(false);
 
     useEffect(() => {
@@ -221,7 +223,14 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 newErrors.amount6418 = 'Vui lòng nhập Số tiền chi hoặc Số tiền thu';
             }
             if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
-            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
+            if (['6413', '6418'].includes(formData.code)) {
+                if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng trả';
+                if (!formData.recipient_thu?.trim()) newErrors.recipient_thu = 'Vui lòng nhập đối tượng thu';
+                if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Vui lòng nhập số tiền chi';
+                if (!formData.amount6418 || formData.amount6418 <= 0) newErrors.amount6418 = 'Vui lòng nhập số tiền thu';
+            } else {
+                if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
+            }
         } else if (type === 'INCOME_INVOICE') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.post_tax_amount || formData.post_tax_amount <= 0) newErrors.post_tax_amount = 'Số tiền thu phải lớn hơn 0';
@@ -246,19 +255,96 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (type === 'EXPENSE') {
             const isBothCode = ['6413', '6418'].includes(formData.code);
             const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
-            const isPayable = ['331'].some(acc => formData.corresponding_account?.startsWith(acc));
+            const isPayable = ['331', '334', '338'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
             
             const isPayOnly = isMaterialOrEquipment || isPayable;
             const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
-            
 
+            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
+                setDebtConfirmModal({
+                    isOpen: true,
+                    data: formData,
+                    mode: isBoth ? 'BOTH' : 'PAY_ONLY',
+                    thuStatus: 'CHƯA XONG',
+                    chiStatus: 'CHƯA XONG'
+                });
+                return;
+            }
         }
 
         // Hiện confirm trước khi lưu
         const action = editData ? 'cập nhật' : 'thêm mới';
         setPendingSubmit({ type, formData, editId: editData?.id });
         setConfirmSave(true);
+    };
+
+        const handleDebtConfirm = () => {
+            const { data, mode, thuStatus, chiStatus } = debtConfirmModal;
+            setDebtConfirmModal({ ...debtConfirmModal, isOpen: false });
+            
+            data.thuStatus = thuStatus;
+            data.chiStatus = chiStatus;
+
+            onSubmit('EXPENSE', data, editData?.id);
+        
+        if (onAddDebt) {
+            const isVatTu = ['621', '623'].includes(data.code);
+            const categoryPrefix = isVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
+            
+            const debts = [];
+            if (mode === 'BOTH') {
+                let partnerNameThu = data.recipient_thu || data.recipient || 'Đối tác/Nhà cung cấp';
+                let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
+                if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
+                else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
+
+                const payloadThu = {
+                    project_name: data.project_name,
+                    invoice_no: data.invoice_no || '',
+                    recipient: partnerNameThu,
+                    corresponding_account: data.corresponding_account || '',
+                    code: data.code,
+                    debit: 0,
+                    credit: parseFloat(data.amount6418) || 0,
+                    note: data.note ? data.note + (data.code === '6418' ? ' (Bảo hiểm TN)' : ' (Hồ sơ)') : ''
+                };
+
+                debts.push({
+                    project_name: data.project_name,
+                    partner_name: partnerNameThu,
+                    debt_type: 'CẦN THU',
+                    amount: parseFloat(data.amount6418) || parseFloat(data.debit) || 0,
+                    status: thuStatus,
+                    note: thuStatus === 'CHƯA XONG' ? `${debtNote}[PAYLOAD]${JSON.stringify(payloadThu)}` : debtNote
+                });
+            }
+            
+            const payloadChi = {
+                project_name: data.project_name,
+                invoice_no: data.invoice_no || '',
+                recipient: data.recipient || '',
+                corresponding_account: data.corresponding_account || '',
+                code: data.code,
+                debit: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                credit: 0,
+                note: data.note || ''
+            };
+
+            const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
+
+            debts.push({
+                project_name: data.project_name,
+                partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
+                debt_type: 'CẦN TRẢ',
+                amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                status: chiStatus,
+                note: chiStatus === 'CHƯA XONG' ? `${debtNoteChi}[PAYLOAD]${JSON.stringify(payloadChi)}` : debtNoteChi
+            });
+            onAddDebt(debts);
+        }
+        
+        if (!editData) resetForm();
     };
 
 
@@ -286,46 +372,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         const data = pendingSubmit.formData;
         onSubmit(pendingSubmit.type, data, pendingSubmit.editId);
         
-        if (pendingSubmit.type === 'EXPENSE' && onAddDebt) {
-            const isBothCode = ['6413', '6418'].includes(data.code);
-            const isAdvanceOrReceivable = ['131', '141'].some(acc => data.corresponding_account?.startsWith(acc));
-            const isPayable = ['331'].some(acc => data.corresponding_account?.startsWith(acc));
-            const isMaterialOrEquipment = ['621', '623'].includes(data.code);
-            const isPayOnly = isMaterialOrEquipment || isPayable;
-            const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
-
-            if ((isBoth || isPayOnly) && parseFloat(data.debit) > 0) {
-                const isVatTu = ['621', '623'].includes(data.code);
-                const categoryPrefix = isVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
-                
-                const debts = [];
-                if (isBoth) {
-                    let partnerName = data.recipient || 'Đối tác/Nhà cung cấp';
-                    let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
-                    if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
-                    else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
-
-                    debts.push({
-                        project_name: data.project_name,
-                        partner_name: partnerName,
-                        debt_type: 'CẦN THU',
-                        amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                        status: 'CHƯA XONG',
-                        note: debtNote
-                    });
-                }
-                
-                debts.push({
-                    project_name: data.project_name,
-                    partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
-                    debt_type: 'CẦN TRẢ',
-                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                    status: thanhToanStatus,
-                    note: `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`
-                });
-                onAddDebt(debts);
-            }
-        }
+        // Không thêm công nợ tại đây nữa vì handleDebtConfirm đã lo việc đó nếu cần
+        // đối với các mã chi phí tạo ra công nợ (isBoth hoặc isPayOnly)
 
         setPendingSubmit(null);
         if (!editData) resetForm();
@@ -498,7 +546,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 {/* Số tiền chi */}
                                 <div>
                                     <label className={labelCls}>
-                                        Số tiền chi (Nợ)
+                                        Số tiền chi (Nợ) {['6413', '6418'].includes(formData.code) && <span className="text-red-500">*</span>}
                                     </label>
                                     <input
                                         type="text"
@@ -592,7 +640,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 {/* Số tiền thu */}
                                 <div>
                                     <label className={labelCls}>
-                                        Số tiền thu
+                                        Số tiền thu {['6413', '6418'].includes(formData.code) && <span className="text-red-500">*</span>}
                                     </label>
                                     <input
                                         type="text"
@@ -857,19 +905,52 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
                     {/* Đối tượng thụ hưởng */}
                     {(type === 'EXPENSE' || type === 'OFFICE_INCOME') && (
-                        <div>
-                            <label className={labelCls}>
-                                Đối tượng <span className="text-red-500">*</span>
-                            </label>
-                            <RecipientInput
-                                value={formData.recipient}
-                                onChange={(val) => handleChange('recipient', val)}
-                                errorCls={errors.recipient ? 'border-red-500' : ''}
-                                placeholder="Nhập tên đối tượng..."
-                                suggestions={projectRecipients}
-                            />
-                            {errorMsg('recipient')}
-                        </div>
+                        <>
+                            {type === 'EXPENSE' && ['6413', '6418'].includes(formData.code) ? (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
+                                    <div>
+                                        <label className={labelCls}>
+                                            Đối tượng thu <span className="text-red-500">*</span>
+                                        </label>
+                                        <RecipientInput
+                                            value={formData.recipient_thu}
+                                            onChange={(val) => handleChange('recipient_thu', val)}
+                                            errorCls={errors.recipient_thu ? 'border-red-500' : ''}
+                                            placeholder="Nhập tên đối tượng thu..."
+                                            suggestions={projectRecipients}
+                                        />
+                                        {errorMsg('recipient_thu')}
+                                    </div>
+                                    <div>
+                                        <label className={labelCls}>
+                                            Đối tượng trả <span className="text-red-500">*</span>
+                                        </label>
+                                        <RecipientInput
+                                            value={formData.recipient}
+                                            onChange={(val) => handleChange('recipient', val)}
+                                            errorCls={errors.recipient ? 'border-red-500' : ''}
+                                            placeholder="Nhập tên đối tượng trả..."
+                                            suggestions={projectRecipients}
+                                        />
+                                        {errorMsg('recipient')}
+                                    </div>
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className={labelCls}>
+                                        Đối tượng <span className="text-red-500">*</span>
+                                    </label>
+                                    <RecipientInput
+                                        value={formData.recipient}
+                                        onChange={(val) => handleChange('recipient', val)}
+                                        errorCls={errors.recipient ? 'border-red-500' : ''}
+                                        placeholder="Nhập tên đối tượng..."
+                                        suggestions={projectRecipients}
+                                    />
+                                    {errorMsg('recipient')}
+                                </div>
+                            )}
+                        </>
                     )}
 
                     {/* Nội dung / Diễn giải */}
@@ -887,41 +968,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         />
                         {errorMsg('note')}
                     </div>
-
-                    {/* Xác nhận công nợ */}
-                    {type === 'EXPENSE' && (() => {
-                        const isBothCode = ['6413', '6418'].includes(formData.code);
-                        const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
-                        const isPayable = ['331'].some(acc => formData.corresponding_account?.startsWith(acc));
-                        const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
-                        const isPayOnly = isMaterialOrEquipment || isPayable;
-                        const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
-                        const showDebtConfirm = (isBoth || isPayOnly) && parseFloat(formData.debit) > 0;
-                        
-                        if (!showDebtConfirm) return null;
-                        
-                        return (
-                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4 mb-4">
-                                <div>
-                                    <span className="font-bold text-slate-700 text-sm block">Xác nhận công nợ tự động</span>
-                                    <span className="text-xs text-slate-500">
-                                        Hệ thống sẽ tự động ghi nhận công nợ {isBoth ? '(Cần Thu & Cần Trả)' : '(Cần Trả)'}
-                                    </span>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    <span className="text-sm font-medium text-slate-600">Trạng thái TT:</span>
-                                    <select
-                                        value={thanhToanStatus}
-                                        onChange={(e) => setThanhToanStatus(e.target.value)}
-                                        className="w-40 bg-white border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
-                                    >
-                                        <option value="ĐÃ XONG">Đã thanh toán</option>
-                                        <option value="CHƯA XONG">Chưa thanh toán</option>
-                                    </select>
-                                </div>
-                            </div>
-                        );
-                    })()}
 
                     {/* Hiển thị số lỗi nếu có */}
                     {Object.keys(errors).length > 0 && (
@@ -998,6 +1044,100 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 }}
                 onCancel={() => setConfirmReset(false)}
             />
+
+            {/* Modal Xác Nhận Công Nợ */}
+            {debtConfirmModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-indigo-600 p-6 text-white">
+                            <h3 className="text-2xl font-bold mb-2 flex items-center gap-2">
+                                <AlertCircle className="text-indigo-200" size={28} />
+                                Xác nhận Trạng thái
+                            </h3>
+                            <p className="text-indigo-100 opacity-90 text-sm">Hệ thống phát hiện chi phí này có phát sinh công nợ tự động. Vui lòng xác nhận trạng thái.</p>
+                        </div>
+                        
+                        <div className="p-8">
+                            <div className="space-y-6">
+                                {debtConfirmModal.mode === 'BOTH' && (
+                                    <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                        <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Công nợ đã thu hay chưa?</label>
+                                        <div className="flex gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => setDebtConfirmModal({ ...debtConfirmModal, thuStatus: 'ĐÃ XONG' })}
+                                                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                    debtConfirmModal.thuStatus === 'ĐÃ XONG' 
+                                                        ? 'bg-emerald-50 text-emerald-600 border-emerald-400 shadow-sm' 
+                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
+                                                }`}
+                                            >
+                                                ĐÃ THU
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setDebtConfirmModal({ ...debtConfirmModal, thuStatus: 'CHƯA XONG' })}
+                                                className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                    debtConfirmModal.thuStatus === 'CHƯA XONG' 
+                                                        ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
+                                                        : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
+                                                }`}
+                                            >
+                                                CHƯA THU
+                                            </button>
+                                        </div>
+                                    </div>
+                                )}
+                                
+                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                    <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Công nợ đã chi hay chưa?</label>
+                                    <div className="flex gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setDebtConfirmModal({ ...debtConfirmModal, chiStatus: 'ĐÃ XONG' })}
+                                            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                debtConfirmModal.chiStatus === 'ĐÃ XONG' 
+                                                    ? 'bg-emerald-50 text-emerald-600 border-emerald-400 shadow-sm' 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-emerald-200 hover:bg-emerald-50/50'
+                                            }`}
+                                        >
+                                            ĐÃ CHI
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => setDebtConfirmModal({ ...debtConfirmModal, chiStatus: 'CHƯA XONG' })}
+                                            className={`flex-1 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                                                debtConfirmModal.chiStatus === 'CHƯA XONG' 
+                                                    ? 'bg-amber-50 text-amber-600 border-amber-400 shadow-sm' 
+                                                    : 'bg-white text-slate-500 border-slate-200 hover:border-amber-200 hover:bg-amber-50/50'
+                                            }`}
+                                        >
+                                            CHƯA CHI
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="flex flex-col gap-3 mt-8">
+                                <button
+                                    type="button"
+                                    onClick={handleDebtConfirm}
+                                    className="w-full py-4 bg-indigo-600 text-white hover:bg-indigo-700 font-bold rounded-2xl transition shadow-lg shadow-indigo-600/20"
+                                >
+                                    LƯU DỮ LIỆU & CHUYỂN TỚI CÔNG NỢ
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setDebtConfirmModal({ ...debtConfirmModal, isOpen: false })}
+                                    className="w-full py-3 text-slate-500 hover:bg-slate-100 font-bold rounded-2xl transition"
+                                >
+                                    Hủy bỏ
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

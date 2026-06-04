@@ -353,18 +353,22 @@ export default function Home() {
                     const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
                     if (error) throw error;
                 } else {
-                    const { error } = await supabase.from('transactions').insert([payload]);
-                    if (error) throw error;
+                    if (!data.chiStatus || data.chiStatus === 'ĐÃ XONG') {
+                        const { error } = await supabase.from('transactions').insert([payload]);
+                        if (error) throw error;
+                    }
                     
-                    if (data.amount6418 && data.amount6418 > 0) {
-                        const payload6418 = {
+                    if (data.amount6418 && data.amount6418 > 0 && data.thuStatus === 'ĐÃ XONG') {
+                        const noteSuffix = data.code === '6418' ? ' (Bảo hiểm TN)' : ' (Hồ sơ)';
+                        const payloadThu = {
                             ...payload,
-                            code: '6418',
+                            recipient: data.recipient_thu || payload.recipient,
+                            code: data.code,
                             debit: 0,
                             credit: data.amount6418,
-                            note: data.note ? data.note + ' (Bảo hiểm TN)' : 'Bảo hiểm TN'
+                            note: data.note ? data.note + noteSuffix : noteSuffix.trim()
                         };
-                        await supabase.from('transactions').insert([payload6418]);
+                        await supabase.from('transactions').insert([payloadThu]);
                     }
                 }
             } else {
@@ -664,10 +668,28 @@ export default function Home() {
     const handleDeleteTransaction = async (id) => {
         setIsLoading(true);
         try {
+            const { data: txData } = await supabase.from('transactions').select('*').eq('id', id).single();
+
             await moveToTrash('transactions', 'id', id);
             const { error } = await supabase.from('transactions').delete().eq('id', id);
             if (error) throw error;
-            showToast('Đã chuyển khoản chi vào thùng rác!');
+
+            if (txData && txData.note) {
+                const { data: relatedDebts } = await supabase
+                    .from('partner_debts')
+                    .select('id')
+                    .eq('project_name', txData.project_name)
+                    .ilike('note', `%${txData.note}%`);
+                
+                if (relatedDebts && relatedDebts.length > 0) {
+                    for (const d of relatedDebts) {
+                        await moveToTrash('partner_debts', 'id', d.id);
+                        await supabase.from('partner_debts').delete().eq('id', d.id);
+                    }
+                }
+            }
+
+            showToast('Đã chuyển khoản chi và công nợ liên quan vào thùng rác!');
             logActivity('Xóa', 'Chi phí', `Xóa giao dịch chi (ID: ${id})`);
             fetchData();
         } catch (error) {
@@ -929,11 +951,27 @@ export default function Home() {
         setIsLoading(true);
         try {
             const id = typeof debtOrId === 'object' ? debtOrId.id : debtOrId;
+            const debtObj = typeof debtOrId === 'object' ? debtOrId : debts.find(d => d.id === id);
+
             const { error } = await supabase.from('partner_debts').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
             logActivity('Cập nhật', 'Công nợ', `Đổi trạng thái công nợ (ID: ${id}) thành: ${newStatus}`);
 
-
+            if (newStatus === 'ĐÃ XONG' && debtObj && debtObj.note && debtObj.note.includes('[PAYLOAD]')) {
+                try {
+                    const payloadStr = debtObj.note.split('[PAYLOAD]')[1];
+                    const txPayload = JSON.parse(payloadStr);
+                    
+                    // Cập nhật ngày hạch toán là ngày hôm nay khi xác nhận công nợ
+                    txPayload.accounting_date = new Date().toISOString().split('T')[0];
+                    txPayload.created_by = currentUser.username;
+                    
+                    const { error: insertError } = await supabase.from('transactions').insert([txPayload]);
+                    if (insertError) throw insertError;
+                } catch(e) {
+                    console.error('Lỗi khi khôi phục giao dịch từ công nợ:', e);
+                }
+            }
 
             showToast(`Đã cập nhật trạng thái thành ${newStatus}!`);
             fetchData();

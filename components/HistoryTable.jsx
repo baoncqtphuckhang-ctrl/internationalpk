@@ -119,7 +119,7 @@ export default function HistoryTable({
         setConfirmState({ isOpen: true, message, onConfirm, title, requirePassword });
     };
     const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
-    const [sortConfig, setSortConfig] = useState({ key: 'accounting_date', direction: 'desc' });
+    const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
 
     const getUnique = (key) => {
         const unique = [...new Set(transactions.map(t => t[key]))].sort();
@@ -225,10 +225,16 @@ export default function HistoryTable({
         const valA = a[sortConfig.key];
         const valB = b[sortConfig.key];
         
-        if (sortConfig.key === 'accounting_date' || sortConfig.key === 'invoice_date') {
-            return sortConfig.direction === 'asc' 
-                ? new Date(valA) - new Date(valB)
-                : new Date(valB) - new Date(valA);
+        if (sortConfig.key === 'accounting_date' || sortConfig.key === 'invoice_date' || sortConfig.key === 'created_at') {
+            const dateA = new Date(valA).getTime();
+            const dateB = new Date(valB).getTime();
+            if (dateA !== dateB) {
+                return sortConfig.direction === 'asc' ? dateA - dateB : dateB - dateA;
+            }
+            // Fallback to created_at if dates are same
+            const createA = new Date(a.created_at).getTime();
+            const createB = new Date(b.created_at).getTime();
+            return sortConfig.direction === 'asc' ? createA - createB : createB - createA;
         }
         
         const strA = (valA || '').toString().toLowerCase();
@@ -374,7 +380,14 @@ export default function HistoryTable({
                                         {formatCurrency(t.credit - t.debit)}
                                     </td>
                                     <td className="p-3 border-r border-slate-100">{t.recipient || '-'}</td>
-                                    <td className="p-3 border-r border-slate-100 text-slate-500 italic">{t.created_by || '-'}</td>
+                                    <td className="p-3 border-r border-slate-100">
+                                        <div className="text-slate-500 italic">{t.created_by || '-'}</div>
+                                        {t.created_at && (
+                                            <div className="text-[10px] text-slate-400 mt-0.5" title="Thời gian thao tác">
+                                                {new Date(t.created_at).toLocaleDateString('vi-VN')} {new Date(t.created_at).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                                            </div>
+                                        )}
+                                    </td>
                                     <td className="p-3 text-center align-middle">
                                         <div className="flex justify-center gap-2">
                                             <button
