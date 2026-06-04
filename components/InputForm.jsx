@@ -4,6 +4,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Save, Trash2, AlertCircle } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
+import RecipientInput from './RecipientInput';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser }) {
@@ -392,7 +393,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                         {/* Ngày hạch toán */}
                         <div>
                             <label className={labelCls}>
-                                Ngày hạch toán <span className="text-red-500">*</span>
+                                {type === 'INCOME_REAL' ? 'Ngày TT' : 'Ngày hạch toán'} <span className="text-red-500">*</span>
                             </label>
                             <div className="relative flex items-center">
                                 <input
@@ -840,12 +841,11 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                             <label className={labelCls}>
                                 Đối tượng <span className="text-red-500">*</span>
                             </label>
-                            <input
-                                type="text"
-                                value={formData.recipient || ''}
-                                onChange={(e) => handleChange('recipient', e.target.value)}
+                            <RecipientInput
+                                value={formData.recipient}
+                                onChange={(val) => handleChange('recipient', val)}
+                                errorCls={errors.recipient ? 'border-red-500' : ''}
                                 placeholder="Nhập tên đối tượng..."
-                                className={inputCls('recipient')}
                             />
                             {errorMsg('recipient')}
                         </div>

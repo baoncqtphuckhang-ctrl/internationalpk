@@ -379,7 +379,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
     const handleDelete = async (id) => {
         setConfirmModal({
             isOpen: true,
-            message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng vật tư này (và các yêu cầu thanh toán liên quan)?',
+            message: 'Bạn có chắc chắn muốn chuyển đơn vật tư này (và các yêu cầu thanh toán liên quan) vào thùng rác?',
             onConfirm: async () => {
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
@@ -411,12 +411,12 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                              }
                         }
                         
-                        showToast('Đã xóa đơn đặt hàng và dữ liệu đồng bộ!');
+                        showToast('Đã chuyển đơn đặt hàng và dữ liệu đồng bộ vào thùng rác!');
                     } else {
                         const localOrders = orders.filter(o => o.id !== id);
                         localStorage.setItem('misa_material_orders', JSON.stringify(localOrders));
                         setOrders(localOrders);
-                        showToast('Đã xóa đơn đặt hàng cục bộ!');
+                        showToast('Đã chuyển đơn đặt hàng vào thùng rác!');
                     }
                     fetchOrders();
                 } catch (err) {

@@ -333,7 +333,7 @@ export default function PartnerDebts({
                                                         onClick={() => {
                                                             setConfirmModal({
                                                                 isOpen: true,
-                                                                message: `Bạn có chắc chắn muốn xóa khoản công nợ của [${debt.partner_name}]?`,
+                                                                message: `Bạn có chắc chắn muốn chuyển khoản công nợ của [${debt.partner_name}] vào thùng rác?`,
                                                                 onConfirm: () => {
                                                                     onDeleteDebt(debt.id);
                                                                     setConfirmModal({ isOpen: false, message: '', onConfirm: null });

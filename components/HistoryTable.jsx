@@ -241,6 +241,10 @@ export default function HistoryTable({
         }
     });
 
+    const totalDebit = filteredTransactions.reduce((sum, t) => sum + (Number(t.debit) || 0), 0);
+    const totalCredit = filteredTransactions.reduce((sum, t) => sum + (Number(t.credit) || 0), 0);
+    const totalAmount = totalCredit - totalDebit;
+
     return (
         <div className="animate-in fade-in duration-500">
             <ConfirmModal
@@ -402,9 +406,22 @@ export default function HistoryTable({
                                     </td>
                                 </tr>
                             ))}
+                            {filteredTransactions.length > 0 && (
+                                <tr className="bg-slate-200 font-bold sticky bottom-0 z-10 border-t-2 border-slate-300 shadow-[0_-2px_4px_rgba(0,0,0,0.05)] text-slate-800">
+                                    <td colSpan="8" className="p-3 border-r border-slate-300 text-center uppercase tracking-wider text-sm">
+                                        Tổng Cộng {filteredTransactions.length} Giao Dịch Đã Lọc
+                                    </td>
+                                    <td className="p-3 border-r border-slate-300 text-right text-red-700">{totalDebit > 0 ? formatCurrency(totalDebit) : ''}</td>
+                                    <td className="p-3 border-r border-slate-300 text-right text-green-700">{totalCredit > 0 ? formatCurrency(totalCredit) : ''}</td>
+                                    <td className={`p-3 border-r border-slate-300 text-right ${totalAmount >= 0 ? 'text-green-800' : 'text-red-800'}`}>
+                                        {formatCurrency(totalAmount)}
+                                    </td>
+                                    <td colSpan="3" className="p-3"></td>
+                                </tr>
+                            )}
                             {filteredTransactions.length === 0 && (
                                 <tr>
-                                    <td colSpan="13" className="p-8 text-center text-slate-400 italic">Không có dữ liệu phù hợp.</td>
+                                    <td colSpan="14" className="p-8 text-center text-slate-400 italic">Không có dữ liệu phù hợp.</td>
                                 </tr>
                             )}
                         </tbody>

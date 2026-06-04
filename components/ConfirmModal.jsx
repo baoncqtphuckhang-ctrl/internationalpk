@@ -3,7 +3,7 @@
 import React from 'react';
 import { AlertTriangle, Trash2, Info } from 'lucide-react';
 
-export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận', requirePassword = false }) {
+export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận', requirePassword = false, confirmText }) {
     const [password, setPassword] = React.useState('');
 
     React.useEffect(() => {
@@ -69,7 +69,7 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, typ
                         disabled={requirePassword && !password}
                         className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm ${requirePassword && !password ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
-                        {isDanger ? 'Xóa ngay' : 'Đồng ý'}
+                        {confirmText || (isDanger ? 'Chuyển vào thùng rác' : 'Đồng ý')}
                     </button>
                 </div>
             </div>

@@ -672,13 +672,13 @@ export default function ApprovalWorkflow({
                                                 <button onClick={() => { 
                                                     setConfirmModal({
                                                         isOpen: true,
-                                                        message: 'Chắc chắn xóa phiếu phê duyệt này?',
+                                                        message: 'Bạn có chắc chắn muốn chuyển phiếu này vào thùng rác?',
                                                         onConfirm: () => {
                                                             setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                                                             onDeleteApproval(item.id);
                                                         }
                                                     });
-                                                }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Xóa phiếu">
+                                                }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Chuyển vào thùng rác">
                                                     <Trash2 size={20}/>
                                                 </button>
                                             )}
