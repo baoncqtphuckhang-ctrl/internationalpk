@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, ChevronDown, Plus } from 'lucide-react';
 
-export default function RecipientInput({ value, onChange, errorCls, placeholder = "Nhập tên đối tượng..." }) {
+export default function RecipientInput({ value, onChange, errorCls, placeholder = "Nhập tên đối tượng...", suggestions = [] }) {
     const [history, setHistory] = useState([]);
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState(value || '');
@@ -54,52 +54,53 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
     };
 
     const handleInputBlur = () => {
-        if (inputValue) {
-            onChange(inputValue);
-            saveToHistory(inputValue);
-        }
+        setTimeout(() => {
+            if (inputValue) {
+                onChange(inputValue);
+                saveToHistory(inputValue);
+            }
+            setIsOpen(false);
+        }, 200);
     };
 
-    const filteredHistory = history.filter(h => h.toLowerCase().includes((inputValue || '').toLowerCase()));
+    const combinedHistory = Array.from(new Set([...suggestions, ...history]));
+    const filteredHistory = combinedHistory.filter(h => h.toLowerCase().includes((inputValue || '').toLowerCase()));
 
     return (
         <div ref={wrapperRef} className="relative">
-            {!isTypingNew && history.length > 0 ? (
-                <div 
-                    className={`flex items-center justify-between cursor-pointer bg-slate-50 border-2 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 transition-colors ${errorCls || 'border-slate-200'}`}
-                    onClick={() => setIsOpen(!isOpen)}
-                >
-                    <span className={value ? 'text-slate-700' : 'text-slate-400 font-normal'}>
-                        {value || placeholder}
-                    </span>
-                    <ChevronDown size={18} className="text-slate-400" />
-                </div>
-            ) : (
+            <div className="relative">
                 <input
                     type="text"
                     value={inputValue}
                     onChange={(e) => {
                         setInputValue(e.target.value);
                         onChange(e.target.value);
+                        setIsOpen(true);
                     }}
                     onFocus={() => setIsOpen(true)}
                     onBlur={handleInputBlur}
                     placeholder={placeholder}
-                    className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none transition-colors ${errorCls || 'border-slate-200 focus:border-blue-500 focus:bg-white'}`}
+                    className={`w-full bg-slate-50 border-2 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none transition-colors pr-10 ${errorCls || 'border-slate-200 focus:border-blue-500 focus:bg-white'}`}
                 />
-            )}
+                <div 
+                    className="absolute inset-y-0 right-0 flex items-center pr-3 cursor-pointer"
+                    onClick={() => setIsOpen(!isOpen)}
+                >
+                    <ChevronDown size={18} className="text-slate-400" />
+                </div>
+            </div>
 
-            {isOpen && (
+            {isOpen && combinedHistory.length > 0 && (
                 <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden max-h-60 flex flex-col">
-                    {!isTypingNew && history.length > 0 && (
-                        <div className="overflow-y-auto">
-                            {filteredHistory.length > 0 ? filteredHistory.map((item, idx) => (
-                                <div 
-                                    key={idx}
-                                    className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between group border-b border-slate-50 last:border-0"
-                                    onClick={() => handleSelect(item)}
-                                >
-                                    <span className="text-sm font-semibold text-slate-700">{item}</span>
+                    <div className="overflow-y-auto">
+                        {filteredHistory.length > 0 ? filteredHistory.map((item, idx) => (
+                            <div 
+                                key={idx}
+                                className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between group border-b border-slate-50 last:border-0"
+                                onClick={() => handleSelect(item)}
+                            >
+                                <span className="text-sm font-semibold text-slate-700">{item}</span>
+                                {history.includes(item) && (
                                     <button 
                                         onClick={(e) => handleDelete(e, item)}
                                         className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1 rounded transition opacity-0 group-hover:opacity-100"
@@ -107,35 +108,12 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
                                     >
                                         <X size={16} />
                                     </button>
-                                </div>
-                            )) : (
-                                <div className="px-4 py-3 text-sm text-slate-500 italic">Không tìm thấy trong lịch sử</div>
-                            )}
-                        </div>
-                    )}
-                    
-                    {!isTypingNew && (
-                        <div 
-                            className="px-4 py-3 bg-blue-50 hover:bg-blue-100 text-blue-600 cursor-pointer flex items-center gap-2 font-bold text-sm border-t border-blue-100 transition"
-                            onClick={() => {
-                                setIsTypingNew(true);
-                                setIsOpen(false);
-                                setInputValue('');
-                                onChange('');
-                            }}
-                        >
-                            <Plus size={16} /> Thêm đối tượng mới
-                        </div>
-                    )}
-                    
-                    {isTypingNew && history.length > 0 && (
-                        <div 
-                            className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 cursor-pointer text-center font-bold text-xs transition"
-                            onClick={() => setIsTypingNew(false)}
-                        >
-                            Quay lại danh sách
-                        </div>
-                    )}
+                                )}
+                            </div>
+                        )) : (
+                            <div className="px-4 py-3 text-sm text-slate-500 italic">Không tìm thấy đối tượng</div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

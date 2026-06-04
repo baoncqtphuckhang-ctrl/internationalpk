@@ -139,7 +139,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
     };
 
     const handleEmptyTrash = async (pwd) => {
-        if (pwd !== '123456') {
+        if (pwd !== '0000') {
             alert('Mật khẩu không đúng!');
             return;
         }
@@ -154,6 +154,23 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
             setTrashItems([]);
             localStorage.removeItem('system_trash_bin');
             showToast('Đã làm sạch thùng rác (Local)!');
+        } finally {
+            setIsLoading(false);
+            setConfirmState({ ...confirmState, isOpen: false });
+        }
+    };
+
+    const handleDelete = async (item) => {
+        setIsLoading(true);
+        try {
+            await supabase.from('trash_bin').delete().eq('id', item.id);
+            const newTrash = trashItems.filter(t => t.id !== item.id);
+            setTrashItems(newTrash);
+            localStorage.setItem('system_trash_bin', JSON.stringify(newTrash));
+            showToast('Đã xóa vĩnh viễn dữ liệu!');
+        } catch (error) {
+            console.error(error);
+            showToast('Lỗi khi xóa dữ liệu!', 'error');
         } finally {
             setIsLoading(false);
             setConfirmState({ ...confirmState, isOpen: false });
@@ -209,19 +226,36 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                             {renderContent(item)}
                                         </td>
                                         <td className="p-4 text-center">
-                                            <button 
-                                                onClick={() => setConfirmState({ 
-                                                    isOpen: true, 
-                                                    item,
-                                                    action: 'restore',
-                                                    title: 'Khôi phục dữ liệu',
-                                                    message: 'Bạn có chắc chắn muốn khôi phục dữ liệu này về vị trí ban đầu?',
-                                                    requirePassword: false
-                                                })}
-                                                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg transition font-bold text-xs flex items-center gap-1 mx-auto"
-                                            >
-                                                <RotateCcw size={14} /> Khôi phục
-                                            </button>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button 
+                                                    onClick={() => setConfirmState({ 
+                                                        isOpen: true, 
+                                                        item,
+                                                        action: 'restore',
+                                                        title: 'Khôi phục dữ liệu',
+                                                        message: 'Bạn có chắc chắn muốn khôi phục dữ liệu này về vị trí ban đầu?',
+                                                        requirePassword: false
+                                                    })}
+                                                    className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg transition font-bold text-xs flex items-center gap-1"
+                                                    title="Khôi phục"
+                                                >
+                                                    <RotateCcw size={14} /> Khôi phục
+                                                </button>
+                                                <button 
+                                                    onClick={() => setConfirmState({ 
+                                                        isOpen: true, 
+                                                        item,
+                                                        action: 'delete',
+                                                        title: 'Xóa vĩnh viễn',
+                                                        message: 'Bạn có chắc chắn muốn xóa vĩnh viễn dữ liệu này? Hành động này không thể hoàn tác.',
+                                                        requirePassword: false
+                                                    })}
+                                                    className="bg-red-100 hover:bg-red-200 text-red-700 p-2 rounded-lg transition font-bold text-xs flex items-center gap-1"
+                                                    title="Xóa vĩnh viễn"
+                                                >
+                                                    <Trash2 size={14} /> Xóa
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -236,10 +270,12 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                 title={confirmState.title || "Khác"}
                 message={confirmState.message || ""}
                 requirePassword={confirmState.requirePassword}
-                confirmText={confirmState.action === 'empty' ? 'Xóa sạch' : 'Khôi phục'}
+                confirmText={confirmState.action === 'empty' ? 'Xóa sạch' : confirmState.action === 'delete' ? 'Xóa vĩnh viễn' : 'Khôi phục'}
                 onConfirm={(pwd) => {
                     if (confirmState.action === 'empty') {
                         handleEmptyTrash(pwd);
+                    } else if (confirmState.action === 'delete') {
+                        handleDelete(confirmState.item);
                     } else {
                         handleRestore(confirmState.item);
                     }

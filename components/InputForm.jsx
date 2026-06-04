@@ -7,7 +7,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import RecipientInput from './RecipientInput';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
-export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser }) {
+export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
     const [isCustomAccount, setIsCustomAccount] = useState(false);
@@ -160,6 +160,26 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
         
         return { expected, received };
     }, [type, formData.project_name, formData.phase, incomes]);
+
+    const projectRecipients = useMemo(() => {
+        if (!formData.project_name) return [];
+        const recipients = new Set();
+        if (incomes) {
+            incomes.forEach(i => {
+                if (i.project_name === formData.project_name && i.recipient) {
+                    recipients.add(i.recipient);
+                }
+            });
+        }
+        if (transactions) {
+            transactions.forEach(t => {
+                if (t.project_name === formData.project_name && t.recipient) {
+                    recipients.add(t.recipient);
+                }
+            });
+        }
+        return Array.from(recipients);
+    }, [formData.project_name, incomes, transactions]);
 
 
 
@@ -846,6 +866,7 @@ export default function InputForm({ projects, onSubmit, onAddDebt, isLoading, ed
                                 onChange={(val) => handleChange('recipient', val)}
                                 errorCls={errors.recipient ? 'border-red-500' : ''}
                                 placeholder="Nhập tên đối tượng..."
+                                suggestions={projectRecipients}
                             />
                             {errorMsg('recipient')}
                         </div>
