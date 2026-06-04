@@ -35,6 +35,7 @@ const ROLES = {
 
 const STATUSES = {
     DRAFT: 'Draft', WAITING_QS: 'Waiting QS', WAITING_ACC: 'Waiting Accounting',
+    WAITING_PRINT: 'Waiting Print',
     APPROVED: 'Approved', REJECTED: 'Rejected', PAID: 'Paid', ACCOUNTED: 'Accounted'
 };
 

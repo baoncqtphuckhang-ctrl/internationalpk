@@ -312,6 +312,7 @@ export default function ApprovalWorkflow({
 
     const getStatusStyle = (status) => {
         switch(status) {
+            case STATUSES.WAITING_PRINT: return 'bg-purple-100 text-purple-700 border-purple-200';
             case STATUSES.APPROVED: return 'bg-green-100 text-green-700 border-green-200';
             case STATUSES.REJECTED: return 'bg-red-100 text-red-700 border-red-200';
             case STATUSES.PAID: return 'bg-blue-100 text-blue-700 border-blue-200';
@@ -624,11 +625,16 @@ export default function ApprovalWorkflow({
                                             {showApproveButtons && (item.status === STATUSES.WAITING_QS || item.status === STATUSES.WAITING_ACC) && (canApproveQS || canApproveKT) && (
                                                 <>
                                                     <button onClick={() => {
-                                                        onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED);
-                                                        openPrintPreview(item);
+                                                        onUpdateStatus(item.id, STATUSES.WAITING_PRINT);
                                                     }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
+                                            )}
+                                            {showApproveButtons && item.status === STATUSES.WAITING_PRINT && (
+                                                <button onClick={() => {
+                                                    onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED);
+                                                    openPrintPreview(item);
+                                                }} className="flex-1 lg:flex-none whitespace-nowrap bg-purple-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-purple-600/20"><Printer size={18}/> Chưa in</button>
                                             )}
                                             {showApproveButtons && item.status === STATUSES.APPROVED && canPay && (
                                                 <button 
