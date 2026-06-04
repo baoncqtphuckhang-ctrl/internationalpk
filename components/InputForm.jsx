@@ -888,6 +888,41 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         {errorMsg('note')}
                     </div>
 
+                    {/* Xác nhận công nợ */}
+                    {type === 'EXPENSE' && (() => {
+                        const isBothCode = ['6413', '6418'].includes(formData.code);
+                        const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
+                        const isPayable = ['331'].some(acc => formData.corresponding_account?.startsWith(acc));
+                        const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
+                        const isPayOnly = isMaterialOrEquipment || isPayable;
+                        const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
+                        const showDebtConfirm = (isBoth || isPayOnly) && parseFloat(formData.debit) > 0;
+                        
+                        if (!showDebtConfirm) return null;
+                        
+                        return (
+                            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200 mt-4 mb-4">
+                                <div>
+                                    <span className="font-bold text-slate-700 text-sm block">Xác nhận công nợ tự động</span>
+                                    <span className="text-xs text-slate-500">
+                                        Hệ thống sẽ tự động ghi nhận công nợ {isBoth ? '(Cần Thu & Cần Trả)' : '(Cần Trả)'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <span className="text-sm font-medium text-slate-600">Trạng thái TT:</span>
+                                    <select
+                                        value={thanhToanStatus}
+                                        onChange={(e) => setThanhToanStatus(e.target.value)}
+                                        className="w-40 bg-white border-2 border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 transition-colors"
+                                    >
+                                        <option value="ĐÃ XONG">Đã thanh toán</option>
+                                        <option value="CHƯA XONG">Chưa thanh toán</option>
+                                    </select>
+                                </div>
+                            </div>
+                        );
+                    })()}
+
                     {/* Hiển thị số lỗi nếu có */}
                     {Object.keys(errors).length > 0 && (
                         <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-xl text-red-600 text-sm font-medium">
