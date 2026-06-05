@@ -146,6 +146,7 @@ export default function Home() {
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
     const [partnerDebts, setPartnerDebts] = useState([]);
+    const [expectedInvoices, setExpectedInvoices] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
     const [materialSubTab, setMaterialSubTab] = useState('order');
@@ -260,6 +261,15 @@ export default function Home() {
                 }
             } catch (e) {
                 console.warn('Partner debts table might not exist yet', e);
+            }
+
+            try {
+                const { data: expInvData, error: expInvError } = await supabase.from('expected_invoices').select('*');
+                if (!expInvError) {
+                    setExpectedInvoices(expInvData || []);
+                }
+            } catch (e) {
+                console.warn('Expected invoices table might not exist yet', e);
             }
 
             try {
@@ -1260,6 +1270,7 @@ export default function Home() {
                 canViewApprovals={canViewApprovals}
                 dnttList={allowedDnttList}
                 partnerDebts={allowedPartnerDebts}
+                expectedInvoices={expectedInvoices}
                 STATUSES={STATUSES}
                 onDeleteProject={handleDeleteProject}
                 systemConfig={systemConfig}

@@ -16,9 +16,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         preTaxValue: '',
         vatAmount: '',
         postTaxValue: '',
-        phase: '',
         teamValue: '',
+        accumulatedAdvance: '',
         teamName: '',
+        phase: '',
         note: ''
     });
 
@@ -110,30 +111,30 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formData.projectName || (activeSubTab === 'invoice' && !formData.postTaxValue) || (activeSubTab === 'team' && (!formData.teamValue || !formData.teamName))) {
-            alert('Vui lòng nhập đầy đủ tên công trình và giá trị bắt buộc!');
-            return;
-        }
-
+        
         const preTax = parseFloat(formData.preTaxValue) || 0;
         const vat = parseFloat(formData.vatAmount) || 0;
         const postTax = parseFloat(formData.postTaxValue) || 0;
+        const teamVal = parseFloat(parseVietnameseNumber(formData.teamValue)) || 0;
+        const accAdv = parseFloat(parseVietnameseNumber(formData.accumulatedAdvance)) || 0;
 
         try {
             if (editingId) {
-                const { error } = await supabase
+                const { data, error } = await supabase
                     .from('expected_invoices')
                     .update({
                         projectName: formData.projectName,
                         preTaxValue: preTax,
                         vatAmount: vat,
                         postTaxValue: postTax,
-                        teamValue: parseFloat(formData.teamValue) || 0,
+                        teamValue: teamVal,
+                        accumulatedAdvance: accAdv,
                         teamName: formData.teamName || '',
                         phase: formData.phase,
                         note: formData.note
                     })
-                    .eq('id', editingId);
+                    .eq('id', editingId)
+                    .select();
 
                 if (error) {
                     console.warn('Supabase update failed, updating locally', error);
@@ -142,12 +143,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 setInvoices(prev => prev.map(inv => 
                     inv.id === editingId ? { 
                         ...inv, 
-                        ...formData, 
+                        projectName: formData.projectName,
                         preTaxValue: preTax,
                         vatAmount: vat,
                         postTaxValue: postTax,
-                        teamValue: parseFloat(formData.teamValue) || 0,
-                        teamName: formData.teamName || ''
+                        teamValue: teamVal,
+                        accumulatedAdvance: accAdv,
+                        teamName: formData.teamName || '',
+                        phase: formData.phase,
+                        note: formData.note
                     } : inv
                 ));
             } else {
@@ -156,7 +160,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     preTaxValue: preTax,
                     vatAmount: vat,
                     postTaxValue: postTax,
-                    teamValue: parseFloat(formData.teamValue) || 0,
+                    teamValue: teamVal,
+                    accumulatedAdvance: accAdv,
                     teamName: formData.teamName || '',
                     phase: formData.phase,
                     note: formData.note
@@ -186,25 +191,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setEditingId(null);
         setIsCustomPhase(false);
         setIsCustomTeamName(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', teamName: '', phase: '', note: '' });
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '' });
     };
 
     const handleEdit = (inv) => {
         setIsCustomPhase(false);
-        
-        // Cập nhật isCustomTeamName dựa trên việc inv.teamName có nằm trong danh sách availableTeamNames hay không
-        // Nhưng ở thời điểm này availableTeamNames có thể chưa cập nhật theo projectName mới, 
-        // nên ta sẽ đơn giản set isCustomTeamName thành true nếu teamName có giá trị để input text luôn hiện ra (nếu không có trong options nó sẽ rơi vào 'Khác').
-        // Tuy nhiên cách an toàn là luôn set isCustomTeamName = false và dùng list option, 
-        // nếu không có nó sẽ ko chọn được, ta sửa lại UI bên dưới.
         setIsCustomTeamName(!inv.teamName ? false : true);
 
         setFormData({
             projectName: inv.projectName,
             preTaxValue: inv.preTaxValue || '',
             vatAmount: inv.vatAmount || '',
-            postTaxValue: inv.postTaxValue || inv.expectedValue || '',
-            teamValue: inv.teamValue || '',
+            postTaxValue: inv.postTaxValue || '',
+            teamValue: inv.teamValue ? inv.teamValue.toLocaleString('en-US') : '',
+            accumulatedAdvance: inv.accumulatedAdvance ? inv.accumulatedAdvance.toLocaleString('en-US') : '',
             teamName: inv.teamName || '',
             phase: inv.phase || '',
             note: inv.note || ''
@@ -243,7 +243,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
 
         const term = searchTerm.toLowerCase();
-        
         if (filterProject && inv.projectName !== filterProject) return false;
         if (filterPhase && inv.phase !== filterPhase) return false;
 
@@ -310,7 +309,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         value={filterProject}
                         onChange={(e) => {
                             setFilterProject(e.target.value);
-                            setFilterPhase(''); // Reset phase when project changes
+                            setFilterPhase('');
                         }}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
                     >
@@ -371,16 +370,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 setFormData(prev => ({ ...prev, phase: '' }));
                                             } else {
                                                 setIsCustomPhase(false);
-                                                const matchedIncome = incomes?.find(i => i.project_name === formData.projectName && i.phase === val);
-                                                setFormData(prev => ({ 
-                                                    ...prev, 
-                                                    phase: val,
-                                                    ...(matchedIncome ? {
-                                                        preTaxValue: matchedIncome.amount || '',
-                                                        vatAmount: matchedIncome.vat_amount || '',
-                                                        postTaxValue: matchedIncome.post_tax_amount || ''
-                                                    } : {})
-                                                }));
+                                                setFormData(prev => ({ ...prev, phase: val }));
                                             }
                                         }}
                                         className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -398,7 +388,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             value={formData.phase}
                                             onChange={handleFormChange}
                                             className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Nhập đợt khác... (VD: Đợt 1)"
+                                            placeholder="Nhập đợt khác..."
                                         />
                                     )}
                                 </div>
@@ -469,13 +459,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 }
                                             }}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            required={!isCustomTeamName && !formData.teamName}
                                         >
-                                            <option value="">-- Chọn đối tượng / tổ đội --</option>
+                                            <option value="">-- Chọn tổ đội --</option>
                                             {availableTeamNames.map(name => (
                                                 <option key={name} value={name}>{name}</option>
                                             ))}
-                                            <option value="Khác">Khác (Tự nhập mới)...</option>
+                                            <option value="Khác">Khác...</option>
                                         </select>
                                         {(isCustomTeamName || (!availableTeamNames.includes(formData.teamName) && formData.teamName)) && (
                                             <input 
@@ -485,21 +474,39 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 onChange={handleFormChange}
                                                 className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
                                                 placeholder="Nhập tên tổ đội..."
-                                                required
                                             />
                                         )}
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị tổ đội dự kiến *</label>
-                                        <input 
-                                            type="text" 
-                                            name="teamValue" 
-                                            value={formData.teamValue ? formatCurrency(formData.teamValue) : ''}
-                                            onChange={handleNumberChange}
-                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 50,000,000"
-                                            required
-                                        />
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        <div>
+                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lũy kế tạm ứng</label>
+                                            <input 
+                                                type="text" 
+                                                name="accumulatedAdvance" 
+                                                value={formData.accumulatedAdvance || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value.replace(/\D/g, '');
+                                                    setFormData(prev => ({ ...prev, accumulatedAdvance: value ? parseInt(value).toLocaleString('en-US') : '' }));
+                                                }}
+                                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-blue-600 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                                placeholder="Ví dụ: 50,000,000"
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị kỳ này *</label>
+                                            <input 
+                                                type="text" 
+                                                name="teamValue" 
+                                                value={formData.teamValue || ''}
+                                                onChange={(e) => {
+                                                    const value = e.target.value.replace(/\D/g, '');
+                                                    setFormData(prev => ({ ...prev, teamValue: value ? parseInt(value).toLocaleString('en-US') : '' }));
+                                                }}
+                                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-emerald-600 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                                placeholder="Ví dụ: 50,000,000"
+                                                required
+                                            />
+                                        </div>
                                     </div>
                                 </>
                             )}
@@ -536,14 +543,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
                                 {activeSubTab === 'invoice' ? (
                                     <>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị trước thuế</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Thuế VAT</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị sau thuế</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị trước thuế</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-32">Thuế VAT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Giá trị sau thuế</th>
                                     </>
                                 ) : (
                                     <>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Tên tổ đội</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị tổ đội dự kiến</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Lũy kế tạm ứng</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị kỳ này</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Tổng cộng</th>
                                     </>
                                 )}
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
@@ -554,7 +563,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <tbody className="divide-y divide-slate-100">
                             {filteredInvoices.length === 0 ? (
                                 <tr>
-                                    <td colSpan={activeSubTab === 'invoice' ? 9 : 8} className="p-8 text-center text-slate-500">Chưa có dữ liệu hoặc không tìm thấy {activeSubTab === 'invoice' ? 'hóa đơn' : 'tổ đội'} phù hợp.</td>
+                                    <td colSpan={activeSubTab === 'invoice' ? 9 : 10} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                 </tr>
                             ) : (
                                 filteredInvoices.map((inv, idx) => (
@@ -566,25 +575,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <>
                                                 <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
                                                 <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(inv.vatAmount || 0)}</td>
-                                                <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || inv.expectedValue || 0)} VNĐ</td>
+                                                <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || 0)} VNĐ</td>
                                             </>
                                         ) : (
                                             <>
                                                 <td className="p-4 text-sm font-bold text-slate-800">{inv.teamName || '-'}</td>
-                                                <td className="p-4 text-sm font-black text-indigo-600 text-right">{formatCurrency(inv.teamValue || 0)} VNĐ</td>
+                                                <td className="p-4 text-sm text-right font-medium text-blue-600">{formatCurrency(inv.accumulatedAdvance || 0)}</td>
+                                                <td className="p-4 text-sm text-right font-bold text-emerald-600">{formatCurrency(inv.teamValue || 0)}</td>
+                                                <td className="p-4 text-sm text-right font-black text-indigo-600">{formatCurrency((inv.accumulatedAdvance || 0) + (inv.teamValue || 0))} VNĐ</td>
                                             </>
                                         )}
                                         <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                         <td className="p-4 text-sm text-slate-500">{inv.note}</td>
                                         <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2 transition">
-                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa">
-                                                    <Edit2 size={16} />
-                                                </button>
+                                            <div className="flex items-center justify-center gap-2">
+                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa"><Edit2 size={16} /></button>
                                                 {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                                    <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa">
-                                                        <Trash2 size={16} />
-                                                    </button>
+                                                    <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa"><Trash2 size={16} /></button>
                                                 )}
                                             </div>
                                         </td>
@@ -598,7 +605,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
                                             <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
-                                            <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
+                                            <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNĐ</td>
                                         </>
                                     ) : (
                                         <>

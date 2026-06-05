@@ -25,6 +25,7 @@ export default function Sidebar({
     canViewApprovals,
     dnttList,
     partnerDebts,
+    expectedInvoices,
     STATUSES,
     onDeleteProject,
     handleExportBackup,
@@ -51,6 +52,7 @@ export default function Sidebar({
     }).length || 0;
 
     const pendingDebtsCount = partnerDebts?.filter(d => d.status === 'CHƯA XONG').length || 0;
+    const expectedInvoicesCount = expectedInvoices?.length || 0;
 
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
@@ -62,7 +64,7 @@ export default function Sidebar({
         { id: 'partner-debts', label: 'Công Nợ Tổ Đội', icon: ClipboardList, show: canInputData || isThuKy, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
         { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isThuKy, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
-        { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: true },
+        { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: true, badge: expectedInvoicesCount > 0 ? expectedInvoicesCount : null },
     ];
 
     const toggleTab = (id) => {
