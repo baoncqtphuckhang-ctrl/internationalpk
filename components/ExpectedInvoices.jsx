@@ -3,7 +3,7 @@ import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'l
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
-export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [] }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [] }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -18,12 +18,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         postTaxValue: '',
         phase: '',
         teamValue: '',
+        teamName: '',
         note: ''
     });
 
     const [filterProject, setFilterProject] = useState('');
     const [filterPhase, setFilterPhase] = useState('');
     const [isCustomPhase, setIsCustomPhase] = useState(false);
+    const [isCustomTeamName, setIsCustomTeamName] = useState(false);
+
+    const availableTeamNames = useMemo(() => {
+        if (!formData.projectName || !transactions || transactions.length === 0) return [];
+        const recipients = transactions
+            .filter(t => t.project_name === formData.projectName && t.recipient)
+            .map(t => t.recipient);
+        return [...new Set(recipients)].sort();
+    }, [formData.projectName, transactions]);
 
     const availableFormPhases = useMemo(() => {
         if (!formData.projectName || !incomes || incomes.length === 0) return [];
@@ -100,7 +110,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const handleSave = async (e) => {
         e.preventDefault();
-        if (!formData.projectName || (activeSubTab === 'invoice' && !formData.postTaxValue) || (activeSubTab === 'team' && !formData.teamValue)) {
+        if (!formData.projectName || (activeSubTab === 'invoice' && !formData.postTaxValue) || (activeSubTab === 'team' && (!formData.teamValue || !formData.teamName))) {
             alert('Vui lòng nhập đầy đủ tên công trình và giá trị bắt buộc!');
             return;
         }
@@ -119,6 +129,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         vatAmount: vat,
                         postTaxValue: postTax,
                         teamValue: parseFloat(formData.teamValue) || 0,
+                        teamName: formData.teamName || '',
                         phase: formData.phase,
                         note: formData.note
                     })
@@ -135,7 +146,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         preTaxValue: preTax,
                         vatAmount: vat,
                         postTaxValue: postTax,
-                        teamValue: parseFloat(formData.teamValue) || 0
+                        teamValue: parseFloat(formData.teamValue) || 0,
+                        teamName: formData.teamName || ''
                     } : inv
                 ));
             } else {
@@ -145,6 +157,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     vatAmount: vat,
                     postTaxValue: postTax,
                     teamValue: parseFloat(formData.teamValue) || 0,
+                    teamName: formData.teamName || '',
                     phase: formData.phase,
                     note: formData.note
                 };
@@ -172,17 +185,27 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsFormOpen(false);
         setEditingId(null);
         setIsCustomPhase(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', phase: '', note: '' });
+        setIsCustomTeamName(false);
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', teamName: '', phase: '', note: '' });
     };
 
     const handleEdit = (inv) => {
         setIsCustomPhase(false);
+        
+        // Cập nhật isCustomTeamName dựa trên việc inv.teamName có nằm trong danh sách availableTeamNames hay không
+        // Nhưng ở thời điểm này availableTeamNames có thể chưa cập nhật theo projectName mới, 
+        // nên ta sẽ đơn giản set isCustomTeamName thành true nếu teamName có giá trị để input text luôn hiện ra (nếu không có trong options nó sẽ rơi vào 'Khác').
+        // Tuy nhiên cách an toàn là luôn set isCustomTeamName = false và dùng list option, 
+        // nếu không có nó sẽ ko chọn được, ta sửa lại UI bên dưới.
+        setIsCustomTeamName(!inv.teamName ? false : true);
+
         setFormData({
             projectName: inv.projectName,
             preTaxValue: inv.preTaxValue || '',
             vatAmount: inv.vatAmount || '',
             postTaxValue: inv.postTaxValue || inv.expectedValue || '',
             teamValue: inv.teamValue || '',
+            teamName: inv.teamName || '',
             phase: inv.phase || '',
             note: inv.note || ''
         });
@@ -213,6 +236,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     };
 
     const filteredInvoices = invoices.filter(inv => {
+        if (activeSubTab === 'invoice') {
+            if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
+        } else if (activeSubTab === 'team') {
+            if (!inv.teamValue && !inv.teamName) return false;
+        }
+
         const term = searchTerm.toLowerCase();
         
         if (filterProject && inv.projectName !== filterProject) return false;
@@ -236,9 +265,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <div className="bg-emerald-100 p-2 rounded-xl">
                             <FileSpreadsheet className="text-emerald-600" size={28} />
                         </div>
-                        <h2 className="text-3xl font-black tracking-tight uppercase">Giá trị hóa đơn dự kiến</h2>
+                        <h2 className="text-3xl font-black tracking-tight uppercase">Hóa Đơn - Tổ Đội Dự Kiến</h2>
                     </div>
-                    <p className="text-slate-500 text-sm mt-1">Quản lý và theo dõi các hóa đơn dự kiến của công trình</p>
+                    <p className="text-slate-500 text-sm mt-1">Quản lý và theo dõi các hóa đơn, tổ đội dự kiến của công trình</p>
                 </div>
                 
                 <button 
@@ -306,9 +335,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             </div>
 
             {isFormOpen && (
-                <div className="bg-white rounded-2xl shadow-xl border border-slate-200 mb-8 overflow-hidden animate-in slide-in-from-top-4">
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden animate-in zoom-in-95 duration-200">
                     <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-                        <h3 className="text-white font-bold text-lg">{editingId ? 'Cập nhật' : 'Thêm mới'} hóa đơn dự kiến</h3>
+                        <h3 className="text-white font-bold text-lg">{editingId ? 'Cập nhật' : 'Thêm mới'} {activeSubTab === 'invoice' ? 'hóa đơn' : 'tổ đội'} dự kiến</h3>
                         <button onClick={resetForm} className="text-slate-400 hover:text-white transition"><X /></button>
                     </div>
                     <form onSubmit={handleSave} className="p-6">
@@ -328,40 +358,63 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     ))}
                                 </select>
                             </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
-                                <select 
-                                    name="phase_select" 
-                                    value={isCustomPhase ? 'Khác' : formData.phase}
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        if (val === 'Khác') {
-                                            setIsCustomPhase(true);
-                                            setFormData(prev => ({ ...prev, phase: '' }));
-                                        } else {
-                                            setIsCustomPhase(false);
-                                            setFormData(prev => ({ ...prev, phase: val }));
-                                        }
-                                    }}
-                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                >
-                                    <option value="">-- Chọn đợt --</option>
-                                    {availableFormPhases.map(ph => (
-                                        <option key={ph} value={ph}>{ph}</option>
-                                    ))}
-                                    <option value="Khác">Khác...</option>
-                                </select>
-                                {isCustomPhase && (
+                            {activeSubTab === 'invoice' ? (
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
+                                    <select 
+                                        name="phase_select" 
+                                        value={isCustomPhase ? 'Khác' : formData.phase}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Khác') {
+                                                setIsCustomPhase(true);
+                                                setFormData(prev => ({ ...prev, phase: '' }));
+                                            } else {
+                                                setIsCustomPhase(false);
+                                                const matchedIncome = incomes?.find(i => i.project_name === formData.projectName && i.phase === val);
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    phase: val,
+                                                    ...(matchedIncome ? {
+                                                        preTaxValue: matchedIncome.amount || '',
+                                                        vatAmount: matchedIncome.vat_amount || '',
+                                                        postTaxValue: matchedIncome.post_tax_amount || ''
+                                                    } : {})
+                                                }));
+                                            }
+                                        }}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Chọn đợt --</option>
+                                        {availableFormPhases.map(ph => (
+                                            <option key={ph} value={ph}>{ph}</option>
+                                        ))}
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {isCustomPhase && (
+                                        <input 
+                                            type="text" 
+                                            name="phase" 
+                                            value={formData.phase}
+                                            onChange={handleFormChange}
+                                            className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                            placeholder="Nhập đợt khác... (VD: Đợt 1)"
+                                        />
+                                    )}
+                                </div>
+                            ) : (
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
                                     <input 
                                         type="text" 
                                         name="phase" 
                                         value={formData.phase}
                                         onChange={handleFormChange}
-                                        className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                        placeholder="Nhập đợt khác... (VD: Đợt 1)"
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                        placeholder="Ví dụ: Đợt 1"
                                     />
-                                )}
-                            </div>
+                                </div>
+                            )}
                             {activeSubTab === 'invoice' ? (
                                 <>
                                     <div>
@@ -400,18 +453,55 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     </div>
                                 </>
                             ) : (
-                                <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị tổ đội dự kiến *</label>
-                                    <input 
-                                        type="text" 
-                                        name="teamValue" 
-                                        value={formData.teamValue ? formatCurrency(formData.teamValue) : ''}
-                                        onChange={handleNumberChange}
-                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                        placeholder="Ví dụ: 50,000,000"
-                                        required
-                                    />
-                                </div>
+                                <>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên tổ đội *</label>
+                                        <select 
+                                            value={isCustomTeamName ? 'Khác' : (availableTeamNames.includes(formData.teamName) ? formData.teamName : (formData.teamName ? 'Khác' : ''))}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === 'Khác') {
+                                                    setIsCustomTeamName(true);
+                                                    setFormData(prev => ({ ...prev, teamName: '' }));
+                                                } else {
+                                                    setIsCustomTeamName(false);
+                                                    setFormData(prev => ({ ...prev, teamName: val }));
+                                                }
+                                            }}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            required={!isCustomTeamName && !formData.teamName}
+                                        >
+                                            <option value="">-- Chọn đối tượng / tổ đội --</option>
+                                            {availableTeamNames.map(name => (
+                                                <option key={name} value={name}>{name}</option>
+                                            ))}
+                                            <option value="Khác">Khác (Tự nhập mới)...</option>
+                                        </select>
+                                        {(isCustomTeamName || (!availableTeamNames.includes(formData.teamName) && formData.teamName)) && (
+                                            <input 
+                                                type="text" 
+                                                name="teamName" 
+                                                value={formData.teamName || ''}
+                                                onChange={handleFormChange}
+                                                className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                                placeholder="Nhập tên tổ đội..."
+                                                required
+                                            />
+                                        )}
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị tổ đội dự kiến *</label>
+                                        <input 
+                                            type="text" 
+                                            name="teamValue" 
+                                            value={formData.teamValue ? formatCurrency(formData.teamValue) : ''}
+                                            onChange={handleNumberChange}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: 50,000,000"
+                                            required
+                                        />
+                                    </div>
+                                </>
                             )}
                             <div>
                                 <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
@@ -433,6 +523,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         </div>
                     </form>
                 </div>
+            </div>
             )}
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
@@ -450,7 +541,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị sau thuế</th>
                                     </>
                                 ) : (
-                                    <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị tổ đội dự kiến</th>
+                                    <>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Tên tổ đội</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-right">Giá trị tổ đội dự kiến</th>
+                                    </>
                                 )}
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
@@ -460,7 +554,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <tbody className="divide-y divide-slate-100">
                             {filteredInvoices.length === 0 ? (
                                 <tr>
-                                    <td colSpan="9" className="p-8 text-center text-slate-500">Chưa có dữ liệu hoặc không tìm thấy hóa đơn phù hợp.</td>
+                                    <td colSpan={activeSubTab === 'invoice' ? 9 : 8} className="p-8 text-center text-slate-500">Chưa có dữ liệu hoặc không tìm thấy {activeSubTab === 'invoice' ? 'hóa đơn' : 'tổ đội'} phù hợp.</td>
                                 </tr>
                             ) : (
                                 filteredInvoices.map((inv, idx) => (
@@ -475,12 +569,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || inv.expectedValue || 0)} VNĐ</td>
                                             </>
                                         ) : (
-                                            <td className="p-4 text-sm font-black text-indigo-600 text-right">{formatCurrency(inv.teamValue || 0)} VNĐ</td>
+                                            <>
+                                                <td className="p-4 text-sm font-bold text-slate-800">{inv.teamName || '-'}</td>
+                                                <td className="p-4 text-sm font-black text-indigo-600 text-right">{formatCurrency(inv.teamValue || 0)} VNĐ</td>
+                                            </>
                                         )}
                                         <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                         <td className="p-4 text-sm text-slate-500">{inv.note}</td>
                                         <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100 transition">
+                                            <div className="flex items-center justify-center gap-2 transition">
                                                 <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa">
                                                     <Edit2 size={16} />
                                                 </button>
@@ -504,7 +601,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue || inv.expectedValue) || 0), 0))} VNĐ</td>
                                         </>
                                     ) : (
-                                        <td className="p-4 text-sm font-black text-indigo-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))} VNĐ</td>
+                                        <>
+                                            <td></td>
+                                            <td className="p-4 text-sm font-black text-indigo-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))} VNĐ</td>
+                                        </>
                                     )}
                                     <td colSpan="3" className="p-4"></td>
                                 </tr>

@@ -1362,6 +1362,7 @@ export default function Home() {
                         projectDetails={projectDetails}
                         currentUser={currentUser}
                         incomes={allowedIncomes}
+                        transactions={allowedTransactions}
                     />
                 )}
 
