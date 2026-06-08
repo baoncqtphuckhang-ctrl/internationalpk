@@ -1489,17 +1489,22 @@ export default function Home() {
                                                         const phaseInvs = invoiceRecords.filter(i => i.phase === phase);
                                                         // Lấy giá trị HSTT mới nhất cho đợt này
                                                         const sorted = [...phaseInvs].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                                                        let expectedForPhase = 0;
                                                         for (const inv of sorted) {
                                                             if (inv.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inv.note);
                                                                     if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                        return sum + Number(parsed.actual_received_amount);
+                                                                        expectedForPhase = Number(parsed.actual_received_amount);
+                                                                        break;
                                                                     }
                                                                 } catch(e) {}
                                                             }
                                                         }
-                                                        return sum;
+                                                        if (expectedForPhase === 0 && (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng')) {
+                                                            expectedForPhase = projectDetails[selectedProject]?.advanceValue || 0;
+                                                        }
+                                                        return sum + expectedForPhase;
                                                     }, 0);
                                                     
                                                     const totalReal = uniquePhases.reduce((sum, phase) => {
@@ -1594,6 +1599,10 @@ export default function Home() {
                                                                                         }
                                                                                     } catch(e) {}
                                                                                 }
+                                                                            }
+                                                                            
+                                                                            if (expected === 0 && (i.phase === 'Tạm ứng' || i.phase?.toLowerCase() === 'tạm ứng')) {
+                                                                                expected = projectDetails[selectedProject]?.advanceValue || 0;
                                                                             }
                                                                             
                                                                             const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
