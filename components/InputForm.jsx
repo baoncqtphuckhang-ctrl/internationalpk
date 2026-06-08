@@ -114,37 +114,49 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     }, [editData, projects]);
 
     const availablePhases = useMemo(() => {
-        if (!formData.project_name || !incomes || incomes.length === 0) return [];
-        const phases = incomes
-            .filter(i => i.project_name === formData.project_name && i.phase)
-            .map(i => i.phase);
-        return [...new Set(phases)];
+        const phases = new Set();
+        phases.add('Tạm ứng');
+        if (formData.project_name && incomes && incomes.length > 0) {
+            incomes.forEach(i => {
+                if (i.project_name === formData.project_name && i.phase) {
+                    phases.add(i.phase);
+                }
+            });
+        }
+        return Array.from(phases);
     }, [formData.project_name, incomes]);
 
     const selectedPhaseStats = useMemo(() => {
         if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;
         
         const phaseIncs = incomes.filter(i => i.project_name === formData.project_name && i.phase === formData.phase);
-        if (phaseIncs.length === 0) return null;
-
-        // Bug 2 fix: HSTT là giá trị duy nhất cho mỗi đợt (lấy bản ghi mới nhất, không cộng dồn)
-        const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+        
         let expected = 0;
-        const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-        for (const inv of sortedInvoices) {
-            if (inv.note) {
-                try {
-                    const parsed = JSON.parse(inv.note);
-                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                        expected = Number(parsed.actual_received_amount) || 0;
-                        break; // Chỉ lấy giá trị mới nhất
-                    }
-                } catch(e) {}
+
+        if (formData.phase === 'Tạm ứng') {
+            const proj = projects.find(p => p.name === formData.project_name);
+            expected = proj?.advance_value || 0;
+        } else {
+            if (phaseIncs.length === 0) return null;
+
+            // Bug 2 fix: HSTT là giá trị duy nhất cho mỗi đợt (lấy bản ghi mới nhất, không cộng dồn)
+            const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+            const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+            for (const inv of sortedInvoices) {
+                if (inv.note) {
+                    try {
+                        const parsed = JSON.parse(inv.note);
+                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            expected = Number(parsed.actual_received_amount) || 0;
+                            break; // Chỉ lấy giá trị mới nhất
+                        }
+                    } catch(e) {}
+                }
             }
-        }
-        // Nếu không có HSTT, dùng tổng post_tax_amount
-        if (expected === 0) {
-            expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+            // Nếu không có HSTT, dùng tổng post_tax_amount
+            if (expected === 0) {
+                expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+            }
         }
         
         const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
@@ -160,8 +172,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             return sum + actual;
         }, 0);
         
+        if (formData.phase !== 'Tạm ứng' && phaseIncs.length === 0) return null;
+
         return { expected, received };
-    }, [type, formData.project_name, formData.phase, incomes]);
+    }, [type, formData.project_name, formData.phase, incomes, projects]);
 
     const projectRecipients = useMemo(() => {
         if (!formData.project_name) return [];

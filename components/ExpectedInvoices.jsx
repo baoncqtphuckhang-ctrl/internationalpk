@@ -10,6 +10,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [editingId, setEditingId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
     const [activeSubTab, setActiveSubTab] = useState('invoice');
     const [formData, setFormData] = useState({
         projectName: '',
@@ -235,6 +236,33 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setConfirmDeleteId(null);
     };
 
+    const handleDeleteAll = () => {
+        setIsDeleteAllConfirmOpen(true);
+    };
+
+    const confirmDeleteAll = async () => {
+        if (filteredInvoices.length === 0) {
+            setIsDeleteAllConfirmOpen(false);
+            return;
+        }
+        
+        try {
+            const idsToDelete = filteredInvoices.map(inv => inv.id);
+            const { error } = await supabase
+                .from('expected_invoices')
+                .delete()
+                .in('id', idsToDelete);
+            
+            if (error) {
+                console.warn('Supabase delete all failed, deleting locally', error);
+            }
+            setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
+        } catch (error) {
+            console.error('Error in confirmDeleteAll:', error);
+        }
+        setIsDeleteAllConfirmOpen(false);
+    };
+
     const filteredInvoices = invoices.filter(inv => {
         if (activeSubTab === 'invoice') {
             if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
@@ -269,13 +297,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     <p className="text-slate-500 text-sm mt-1">Quản lý và theo dõi các hóa đơn, tổ đội dự kiến của công trình</p>
                 </div>
                 
-                <button 
-                    onClick={() => { resetForm(); setIsFormOpen(true); }}
-                    className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
-                >
-                    <Plus size={20} />
-                    Thêm mới
-                </button>
+                <div className="flex gap-3">
+                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                        <button 
+                            onClick={handleDeleteAll}
+                            disabled={filteredInvoices.length === 0}
+                            className={`px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 ${filteredInvoices.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600'}`}
+                        >
+                            <Trash2 size={20} />
+                            Xóa tất cả
+                        </button>
+                    )}
+                    <button 
+                        onClick={() => { resetForm(); setIsFormOpen(true); }}
+                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                    >
+                        <Plus size={20} />
+                        Thêm mới
+                    </button>
+                </div>
             </header>
 
             <div className="flex gap-6 border-b border-slate-200 mb-6">
@@ -370,7 +410,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 setFormData(prev => ({ ...prev, phase: '' }));
                                             } else {
                                                 setIsCustomPhase(false);
-                                                setFormData(prev => ({ ...prev, phase: val }));
+                                                const matchedIncome = incomes?.find(i => i.project_name === formData.projectName && i.phase === val);
+                                                setFormData(prev => ({ 
+                                                    ...prev, 
+                                                    phase: val,
+                                                    ...(matchedIncome ? {
+                                                        preTaxValue: matchedIncome.amount ? matchedIncome.amount.toLocaleString('en-US') : '',
+                                                        vatAmount: matchedIncome.vat_amount ? matchedIncome.vat_amount.toLocaleString('en-US') : '',
+                                                        postTaxValue: matchedIncome.post_tax_amount ? matchedIncome.post_tax_amount.toLocaleString('en-US') : ''
+                                                    } : {})
+                                                }));
                                             }
                                         }}
                                         className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -540,7 +589,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <tr className="bg-slate-900 text-white border-b border-slate-200">
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Tên công trình</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
                                 {activeSubTab === 'invoice' ? (
                                     <>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị trước thuế</th>
@@ -563,14 +611,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <tbody className="divide-y divide-slate-100">
                             {filteredInvoices.length === 0 ? (
                                 <tr>
-                                    <td colSpan={activeSubTab === 'invoice' ? 9 : 10} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                    <td colSpan={activeSubTab === 'invoice' ? 8 : 9} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                 </tr>
                             ) : (
                                 filteredInvoices.map((inv, idx) => (
                                     <tr key={inv.id} className="hover:bg-slate-50 transition group">
                                         <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
                                         <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
-                                        <td className="p-4 text-sm font-medium text-slate-600">{projectDetails?.[inv.projectName]?.contractNo || '-'}</td>
                                         {activeSubTab === 'invoice' ? (
                                             <>
                                                 <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
@@ -600,7 +647,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td colSpan={activeSubTab === 'invoice' ? 2 : 3} className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
                                     {activeSubTab === 'invoice' ? (
                                         <>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
@@ -609,8 +656,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         </>
                                     ) : (
                                         <>
-                                            <td></td>
-                                            <td className="p-4 text-sm font-black text-indigo-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))} VNĐ</td>
+                                            <td className="p-4 text-sm font-black text-blue-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                            <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                            <td className="p-4 text-sm font-black text-indigo-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0)), 0))} VNĐ</td>
                                         </>
                                     )}
                                     <td colSpan="3" className="p-4"></td>
@@ -627,6 +675,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 message="Bạn có chắc chắn muốn xóa mục này? Thao tác này không thể hoàn tác."
                 onConfirm={confirmDelete}
                 onCancel={() => setConfirmDeleteId(null)}
+            />
+
+            <ConfirmModal
+                isOpen={isDeleteAllConfirmOpen}
+                title={`Xóa tất cả ${activeSubTab === 'invoice' ? 'hóa đơn' : 'tổ đội'} dự kiến`}
+                message={`Bạn có chắc chắn muốn xóa tất cả ${filteredInvoices.length} mục đang hiển thị? Thao tác này không thể hoàn tác.`}
+                onConfirm={confirmDeleteAll}
+                onCancel={() => setIsDeleteAllConfirmOpen(false)}
             />
         </div>
     );
