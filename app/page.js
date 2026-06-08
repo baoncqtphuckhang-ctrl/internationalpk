@@ -1501,6 +1501,24 @@ export default function Home() {
                                                                 } catch(e) {}
                                                             }
                                                         }
+                                                        return sum + expectedForPhase;
+                                                    }, 0);
+
+                                                    const totalExpected = uniquePhases.reduce((sum, phase) => {
+                                                        const phaseInvs = invoiceRecords.filter(i => i.phase === phase);
+                                                        const sorted = [...phaseInvs].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                                                        let expectedForPhase = 0;
+                                                        for (const inv of sorted) {
+                                                            if (inv.note) {
+                                                                try {
+                                                                    const parsed = JSON.parse(inv.note);
+                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                                                        expectedForPhase = Number(parsed.actual_received_amount);
+                                                                        break;
+                                                                    }
+                                                                } catch(e) {}
+                                                            }
+                                                        }
                                                         if (expectedForPhase === 0 && (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng')) {
                                                             expectedForPhase = projectDetails[selectedProject]?.advanceValue || 0;
                                                         }
@@ -1668,7 +1686,7 @@ export default function Home() {
                                                                 <td className="p-3 text-center">
                                                                     <div className="flex items-center justify-center gap-2">
                                                                         <span className="text-emerald-800 font-bold">{formatCurrency(totalReal)}</span>
-                                                                        <span className="text-slate-500 font-normal">/ {totalHstt > 0 ? formatCurrency(totalHstt) : '0'}</span>
+                                                                        <span className="text-slate-500 font-normal">/ {totalExpected > 0 ? formatCurrency(totalExpected) : '0'}</span>
                                                                     </div>
                                                                 </td>
                                                                 {(canManageSystem || role === 'ADMIN') && <td className="p-3"></td>}
