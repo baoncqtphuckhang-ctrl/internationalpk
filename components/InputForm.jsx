@@ -48,7 +48,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 project_name: editData.project_name || projects[0]?.name || '',
                 accounting_date: editData.accounting_date || editData.date || new Date().toISOString().split('T')[0],
                 invoice_no: editData.invoice_no || '',
-                invoice_date: editData.invoice_date || '',
+                invoice_date: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && 'invoice_date' in parsed) {
+                                return parsed.invoice_date;
+                            }
+                        } catch(e) {}
+                    }
+                    return editData.invoice_date || '';
+                })(),
                 corresponding_account: editData.corresponding_account || '',
                 code: editData.code || '',
                 debit: editData.debit || 0,
@@ -776,6 +786,16 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         onChange={(e) => handleChange('invoice_no', e.target.value)}
                                         placeholder="Nhập số hóa đơn..."
                                         className={inputCls('invoice_no')}
+                                    />
+                                </div>
+                                {/* Ngày hóa đơn */}
+                                <div>
+                                    <label className={labelCls}>Ngày hóa đơn</label>
+                                    <input
+                                        type="date"
+                                        value={formData.invoice_date || ''}
+                                        onChange={(e) => handleChange('invoice_date', e.target.value)}
+                                        className={inputCls('invoice_date')}
                                     />
                                 </div>
                                 {/* Giá trị thực nhận kỳ này */}

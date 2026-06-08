@@ -5,6 +5,7 @@ import { FileText, Save, Search, Filter } from 'lucide-react';
 export default function CustomerDebts({ incomes, projects }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
+    const [monthFilter, setMonthFilter] = useState('');
 
     const projectColors = useMemo(() => {
         const colors = [
@@ -44,7 +45,8 @@ export default function CustomerDebts({ incomes, projects }) {
                     invoiceAmount: 0,
                     receivedAmount: 0,
                     invoiceNo: '',
-                    voucherNo: ''
+                    voucherNo: '',
+                    invoiceDate: ''
                 };
             }
             
@@ -66,6 +68,9 @@ export default function CustomerDebts({ incomes, projects }) {
                         if (parsed.voucher_no && !grouped[key].voucherNo.includes(parsed.voucher_no)) {
                             grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
                         }
+                        if (parsed.invoice_date && !grouped[key].invoiceDate.includes(parsed.invoice_date)) {
+                            grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + parsed.invoice_date;
+                        }
                     }
                 } catch(e) {}
             }
@@ -84,14 +89,21 @@ export default function CustomerDebts({ incomes, projects }) {
     }, [incomes]);
 
     const filteredDebtData = useMemo(() => {
-        return debtData.filter(d => 
-            (projectFilter === '' || d.project_name === projectFilter) &&
-            (d.project_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+        return debtData.filter(d => {
+            const matchProject = projectFilter === '' || d.project_name === projectFilter;
+            const matchSearch = d.project_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
              d.phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
              d.invoiceNo.toLowerCase().includes(searchTerm.toLowerCase()) ||
-             d.voucherNo.toLowerCase().includes(searchTerm.toLowerCase()))
-        );
-    }, [debtData, searchTerm, projectFilter]);
+             d.voucherNo.toLowerCase().includes(searchTerm.toLowerCase());
+            
+            let matchMonth = true;
+            if (monthFilter) {
+                matchMonth = d.invoiceDate && d.invoiceDate.includes(monthFilter);
+            }
+            
+            return matchProject && matchSearch && matchMonth;
+        });
+    }, [debtData, searchTerm, projectFilter, monthFilter]);
 
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
 
@@ -159,6 +171,15 @@ export default function CustomerDebts({ incomes, projects }) {
                                 ))}
                             </select>
                         </div>
+                        <div className="relative w-full sm:w-48">
+                            <input
+                                type="month"
+                                value={monthFilter}
+                                onChange={(e) => setMonthFilter(e.target.value)}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                                title="Lọc theo tháng hóa đơn"
+                            />
+                        </div>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
@@ -178,6 +199,7 @@ export default function CustomerDebts({ incomes, projects }) {
                                 <th className="p-4 font-black">Công Trình</th>
                                 <th className="p-4 font-black text-center">Giai Đoạn / Đợt Thu</th>
                                 <th className="p-4 font-black">Số Hóa Đơn</th>
+                                <th className="p-4 font-black">Ngày Hóa Đơn</th>
                                 <th className="p-4 font-black">Số Chứng Từ</th>
                                 <th className="p-4 font-black text-right">Giá Trị Trước Thuế</th>
                                 <th className="p-4 font-black text-right">Thuế VAT</th>
@@ -189,7 +211,7 @@ export default function CustomerDebts({ incomes, projects }) {
                         <tbody className="divide-y divide-slate-100">
                             {filteredDebtData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="9" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
+                                    <td colSpan="10" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
                                 </tr>
                             ) : (
                                 filteredDebtData.map(debt => (
@@ -205,6 +227,13 @@ export default function CustomerDebts({ incomes, projects }) {
                                             </span>
                                         </td>
                                         <td className="p-4 text-sm font-medium text-slate-600">{debt.invoiceNo || '-'}</td>
+                                        <td className="p-4 text-sm font-medium text-slate-600">
+                                            {debt.invoiceDate ? debt.invoiceDate.split(', ').map(d => {
+                                                const parts = d.split('-');
+                                                if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
+                                                return d;
+                                            }).join(', ') : '-'}
+                                        </td>
                                         <td className="p-4 text-sm font-medium text-slate-600">{debt.voucherNo || '-'}</td>
                                         <td className="p-4 text-right font-bold text-slate-800">{formatCurrency(debt.amount)}</td>
                                         <td className="p-4 text-right font-bold text-slate-500">{formatCurrency(debt.vatAmount)}</td>
