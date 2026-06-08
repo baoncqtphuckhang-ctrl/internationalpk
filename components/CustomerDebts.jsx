@@ -68,8 +68,14 @@ export default function CustomerDebts({ incomes, projects }) {
                         if (parsed.voucher_no && !grouped[key].voucherNo.includes(parsed.voucher_no)) {
                             grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
                         }
-                        if (parsed.invoice_date && !grouped[key].invoiceDate.includes(parsed.invoice_date)) {
-                            grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + parsed.invoice_date;
+                        
+                        let invDate = parsed.invoice_date || '';
+                        if (!invDate && inc.date && (inc.post_tax_amount > 0 || inc.amount > 0)) {
+                            invDate = inc.date;
+                        }
+                        
+                        if (invDate && !grouped[key].invoiceDate.includes(invDate)) {
+                            grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
                         }
                     }
                 } catch(e) {}

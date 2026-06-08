@@ -25,7 +25,7 @@ import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import Trash from '@/components/Trash';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
-import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const ROLES = {
@@ -1806,6 +1806,18 @@ export default function Home() {
                                                     </button>
                                                     <button onClick={() => setPasswordModal({ isOpen: true, user: u })} className="text-indigo-400 hover:text-indigo-600 p-2 hover:bg-indigo-50 rounded transition" title="Đổi mật khẩu">
                                                         <Key size={16} />
+                                                    </button>
+                                                    <button onClick={async () => {
+                                                        if(u.username === 'admin') return alert('Không thể khóa Admin gốc!');
+                                                        const newStatus = !u.isLocked;
+                                                        try {
+                                                            await supabase.from('users').update({ is_locked: newStatus }).eq('id', u.id);
+                                                        } catch(e) {}
+                                                        setUsersList(usersList.map(x => x.id === u.id ? { ...x, isLocked: newStatus } : x));
+                                                        showToast(newStatus ? 'Đã khóa tài khoản!' : 'Đã mở khóa tài khoản!');
+                                                        try { logActivity(newStatus ? 'Khóa' : 'Mở khóa', 'Hệ thống', `${newStatus ? 'Khóa' : 'Mở khóa'} tài khoản nhân viên: ${u.username}`); } catch(e){}
+                                                    }} className={`p-2 rounded transition ${u.isLocked ? 'text-emerald-500 hover:bg-emerald-50 hover:text-emerald-600' : 'text-orange-500 hover:bg-orange-50 hover:text-orange-600'}`} title={u.isLocked ? "Mở khóa tài khoản" : "Khóa khẩn cấp"}>
+                                                        {u.isLocked ? <Unlock size={16} /> : <Lock size={16} />}
                                                     </button>
                                                     <button onClick={() => {
                                                         if(u.username === 'admin') return alert('Không thể xóa Admin gốc!');
