@@ -1715,7 +1715,7 @@ export default function Home() {
                 )}
 
                 {activeTab === 'users' && (
-                    <div className="animate-in fade-in duration-500 w-full">
+                    <div className="animate-in fade-in duration-500 max-w-4xl mx-auto">
                         <header className="mb-6 flex justify-between items-center">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-800">Quản lý Nhân viên</h2>
