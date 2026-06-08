@@ -114,7 +114,7 @@ export default function CustomerDebts({ incomes, projects }) {
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+        <div className="w-full animate-in fade-in duration-500">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">

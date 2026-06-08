@@ -98,7 +98,7 @@ export default function PartnerDebts({
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'KẾ TOÁN TRƯỞNG', 'KẾ TOÁN'].includes(currentUser?.role?.toUpperCase());
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+        <div className="w-full animate-in fade-in duration-500">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
