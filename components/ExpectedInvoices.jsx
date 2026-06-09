@@ -298,13 +298,26 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
                 
                 let phaseHstt = 0;
+                let invoice_no = '';
+                let invoice_date = '';
+                let voucher_nos = [];
+                
                 const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                
+                if (sortedInvoices.length > 0) {
+                    const primaryInv = sortedInvoices[0];
+                    invoice_no = primaryInv.invoice_no || '';
+                    invoice_date = primaryInv.invoice_date || primaryInv.date || '';
+                }
+
                 for (const inv of sortedInvoices) {
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
                             if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
                                 phaseHstt = Number(parsed.actual_received_amount) || 0;
+                                if (inv.invoice_no) invoice_no = inv.invoice_no;
+                                if (inv.invoice_date || inv.date) invoice_date = inv.invoice_date || inv.date;
                                 break;
                             }
                         } catch(e) {}
@@ -322,6 +335,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
                 const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
                     let actual = 0;
+                    if (i.voucher_no) voucher_nos.push(i.voucher_no);
                     if (i.note) {
                         try {
                             const parsed = JSON.parse(i.note);
@@ -332,16 +346,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     }
                     return sum + actual;
                 }, 0);
+                
+                const uniqueVouchers = [...new Set(voucher_nos.filter(Boolean))].join(', ');
 
                 const remaining = pExpected - pActual;
                 if (remaining > 0) {
                     debts.push({
                         id: `${name}_${phase}`,
                         projectName: name,
+                        contractNo: details.contractNo || '',
                         phase: phase,
                         expected: pExpected,
                         actual: pActual,
-                        remaining: remaining
+                        remaining: remaining,
+                        invoice_no: invoice_no,
+                        invoice_date: invoice_date ? new Date(invoice_date).toLocaleDateString('vi-VN') : '',
+                        voucher_no: uniqueVouchers
                     });
                 }
             });
@@ -703,6 +723,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     </>
                                 ) : (
                                     <>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số hóa đơn</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày hóa đơn</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số chứng từ</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt thanh toán</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Cần thu (HSTT)</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Đã thu</th>
@@ -722,6 +746,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <tr key={debt.id} className="hover:bg-slate-50 transition group">
                                             <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{debt.projectName}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.contractNo || '-'}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_no || '-'}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_date || '-'}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.voucher_no || '-'}</td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{debt.phase}</td>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(debt.expected)} VNĐ</td>
                                             <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(debt.actual)} VNĐ</td>
@@ -769,7 +797,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td colSpan="7" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
                                     <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>
