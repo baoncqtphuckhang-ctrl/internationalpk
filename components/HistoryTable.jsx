@@ -156,13 +156,13 @@ export default function HistoryTable({
 
     
     const [filterState, setFilterState] = useState({
-        accountingDate: getUnique('accounting_date'),
-        invoiceDate: getUnique('invoice_date'),
-        code: getUnique('code'),
-        correspondingAccount: getUnique('corresponding_account'),
-        recipient: getUnique('recipient'),
-        createdBy: getUnique('created_by'),
-        projectName: getUnique('project_name')
+        accountingDate: [],
+        invoiceDate: [],
+        code: [],
+        correspondingAccount: [],
+        recipient: [],
+        createdBy: [],
+        projectName: []
     });
 
     const [textFilters, setTextFilters] = useState({
@@ -173,16 +173,52 @@ export default function HistoryTable({
         setSortConfig({ key, direction });
     };
 
+    const prevUniqueRef = React.useRef({});
+
     // Cập nhật filterState khi transactions thay đổi (ví dụ: sau khi fetch mới)
     useEffect(() => {
-        setFilterState({
-            accountingDate: getUnique('accounting_date'),
-            invoiceDate: getUnique('invoice_date'),
-            code: getUnique('code'),
-            correspondingAccount: getUnique('corresponding_account'),
-            recipient: getUnique('recipient'),
-            createdBy: getUnique('created_by'),
-            projectName: getUnique('project_name')
+        const mappings = [
+            { stateKey: 'accountingDate', dbField: 'accounting_date' },
+            { stateKey: 'invoiceDate', dbField: 'invoice_date' },
+            { stateKey: 'code', dbField: 'code' },
+            { stateKey: 'correspondingAccount', dbField: 'corresponding_account' },
+            { stateKey: 'recipient', dbField: 'recipient' },
+            { stateKey: 'createdBy', dbField: 'created_by' },
+            { stateKey: 'projectName', dbField: 'project_name' }
+        ];
+
+        if (Object.keys(prevUniqueRef.current).length === 0) {
+            const initial = {};
+            const initialPrev = {};
+            mappings.forEach(m => {
+                const u = getUnique(m.dbField);
+                initial[m.stateKey] = u;
+                initialPrev[m.stateKey] = u;
+            });
+            prevUniqueRef.current = initialPrev;
+            setFilterState(initial);
+            return;
+        }
+
+        setFilterState(prev => {
+            const next = { ...prev };
+            const nextPrev = {};
+            mappings.forEach(m => {
+                const currentUnique = getUnique(m.dbField);
+                const previousUnique = prevUniqueRef.current[m.stateKey] || [];
+                
+                const newlyAdded = currentUnique.filter(x => !previousUnique.includes(x));
+                const prevSelected = prev[m.stateKey] || [];
+                
+                const nextSelected = currentUnique.filter(x => 
+                    prevSelected.includes(x) || newlyAdded.includes(x)
+                );
+                
+                next[m.stateKey] = nextSelected;
+                nextPrev[m.stateKey] = currentUnique;
+            });
+            prevUniqueRef.current = nextPrev;
+            return next;
         });
     }, [transactions]);
 
