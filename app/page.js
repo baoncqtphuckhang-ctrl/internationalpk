@@ -712,15 +712,18 @@ export default function Home() {
                                 const r = JSON.parse(appReq.reason);
                                 if (r.date && r.project) {
                                     const { data: moData } = await supabase.from('material_orders')
-                                        .select('id')
+                                        .select('id, company, recipient, order_phase')
                                         .eq('project_name', r.project)
-                                        .eq('order_date', r.date)
-                                        .eq('recipient', r.recipient || appReq.recipient);
+                                        .eq('order_date', r.date);
                                     
                                     if (moData && moData.length > 0) {
                                         for (const m of moData) {
-                                            await moveToTrash('material_orders', 'id', m.id);
-                                            await supabase.from('material_orders').delete().eq('id', m.id);
+                                            const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === appReq.recipient || m.recipient === appReq.recipient;
+                                            const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
+                                            if (matchRecipient && matchPhase) {
+                                                await moveToTrash('material_orders', 'id', m.id);
+                                                await supabase.from('material_orders').delete().eq('id', m.id);
+                                            }
                                         }
                                     }
                                 }
@@ -875,11 +878,20 @@ export default function Home() {
                     if (r.date && r.project) {
                         // TODO: Trashing material_orders might require complex query, skipped or simplify by not intercepting this specific nested delete.
                         // Actually, I can intercept with 3 conditions? We don't have multiple conditions in moveToTrash. Let's just delete it directly or leave it hard deleted, as it's just a generated order representation.
-                        await supabase.from('material_orders')
-                            .delete()
+                        const { data: moData } = await supabase.from('material_orders')
+                            .select('id, company, recipient, order_phase')
                             .eq('project_name', r.project)
-                            .eq('order_date', r.date)
-                            .eq('recipient', r.recipient || dntt.recipient);
+                            .eq('order_date', r.date);
+                            
+                        if (moData && moData.length > 0) {
+                            for (const m of moData) {
+                                const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === dntt.recipient || m.recipient === dntt.recipient;
+                                const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
+                                if (matchRecipient && matchPhase) {
+                                    await supabase.from('material_orders').delete().eq('id', m.id);
+                                }
+                            }
+                        }
                     }
                 } catch(e) {}
             }
