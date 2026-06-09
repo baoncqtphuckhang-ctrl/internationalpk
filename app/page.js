@@ -1216,9 +1216,14 @@ export default function Home() {
                 }
                 
                 // pExpected = HSTT nếu có, nếu không dùng tổng post_tax_amount
-                const pExpected = phaseHstt > 0 
-                    ? phaseHstt 
-                    : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                let pExpected = 0;
+                if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
+                    pExpected = Number(advanceValue) || 0;
+                } else {
+                    pExpected = phaseHstt > 0 
+                        ? phaseHstt 
+                        : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                }
 
                 const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
                     let actual = 0;
