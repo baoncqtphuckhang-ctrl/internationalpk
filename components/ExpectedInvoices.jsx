@@ -282,7 +282,92 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         );
     });
 
-    const availablePhases = [...new Set(invoices.filter(i => !filterProject || i.projectName === filterProject).map(i => i.phase).filter(Boolean))].sort();
+    const customerDebts = useMemo(() => {
+        if (activeSubTab !== 'customer_debt') return [];
+        const debts = [];
+        
+        projects.forEach(p => {
+            const name = p.name;
+            const details = projectDetails[name] || {};
+            const advanceValue = details.advanceValue || 0;
+            const projIncomes = incomes.filter(i => i.project_name === name);
+            const allPhases = [...new Set(projIncomes.map(i => i.phase).filter(Boolean))].sort();
+
+            allPhases.forEach(phase => {
+                const phaseIncs = projIncomes.filter(i => i.phase === phase);
+                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                
+                let phaseHstt = 0;
+                const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                for (const inv of sortedInvoices) {
+                    if (inv.note) {
+                        try {
+                            const parsed = JSON.parse(inv.note);
+                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                phaseHstt = Number(parsed.actual_received_amount) || 0;
+                                break;
+                            }
+                        } catch(e) {}
+                    }
+                }
+                
+                let pExpected = 0;
+                if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
+                    pExpected = Number(advanceValue) || 0;
+                } else {
+                    pExpected = phaseHstt > 0 
+                        ? phaseHstt 
+                        : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                }
+
+                const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+                    let actual = 0;
+                    if (i.note) {
+                        try {
+                            const parsed = JSON.parse(i.note);
+                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                actual = Number(parsed.actual_received_amount) || 0;
+                            }
+                        } catch(e) {}
+                    }
+                    return sum + actual;
+                }, 0);
+
+                const remaining = pExpected - pActual;
+                if (remaining > 0) {
+                    debts.push({
+                        id: `${name}_${phase}`,
+                        projectName: name,
+                        phase: phase,
+                        expected: pExpected,
+                        actual: pActual,
+                        remaining: remaining
+                    });
+                }
+            });
+        });
+        return debts;
+    }, [activeSubTab, projects, projectDetails, incomes]);
+
+    const filteredCustomerDebts = useMemo(() => {
+        return customerDebts.filter(debt => {
+            const term = searchTerm.toLowerCase();
+            if (filterProject && debt.projectName !== filterProject) return false;
+            if (filterPhase && debt.phase !== filterPhase) return false;
+
+            return (
+                (debt.projectName || '').toLowerCase().includes(term) ||
+                (debt.phase || '').toLowerCase().includes(term)
+            );
+        });
+    }, [customerDebts, searchTerm, filterProject, filterPhase]);
+
+    const availablePhases = useMemo(() => {
+        if (activeSubTab === 'customer_debt') {
+            return [...new Set(customerDebts.filter(i => !filterProject || i.projectName === filterProject).map(i => i.phase).filter(Boolean))].sort();
+        }
+        return [...new Set(invoices.filter(i => !filterProject || i.projectName === filterProject).map(i => i.phase).filter(Boolean))].sort();
+    }, [activeSubTab, invoices, customerDebts, filterProject]);
 
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
@@ -298,7 +383,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 </div>
                 
                 <div className="flex gap-3">
-                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                    {activeSubTab !== 'customer_debt' && currentUser?.role?.toUpperCase() === 'ADMIN' && (
                         <button 
                             onClick={handleDeleteAll}
                             disabled={filteredInvoices.length === 0}
@@ -308,28 +393,36 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             Xóa tất cả
                         </button>
                     )}
-                    <button 
-                        onClick={() => { resetForm(); setIsFormOpen(true); }}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
-                    >
-                        <Plus size={20} />
-                        Thêm mới
-                    </button>
+                    {activeSubTab !== 'customer_debt' && (
+                        <button 
+                            onClick={() => { resetForm(); setIsFormOpen(true); }}
+                            className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                        >
+                            <Plus size={20} />
+                            Thêm mới
+                        </button>
+                    )}
                 </div>
             </header>
 
-            <div className="flex gap-6 border-b border-slate-200 mb-6">
+            <div className="flex gap-6 border-b border-slate-200 mb-6 overflow-x-auto hide-scrollbar">
                 <button 
                     onClick={() => setActiveSubTab('invoice')}
-                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
                     GIÁ TRỊ HÓA ĐƠN
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('team')}
-                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
                     GIÁ TRỊ TỔ ĐỘI
+                </button>
+                <button 
+                    onClick={() => setActiveSubTab('customer_debt')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'customer_debt' ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    CÔNG NỢ KHÁCH HÀNG
                 </button>
             </div>
 
@@ -594,58 +687,95 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị trước thuế</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-32">Thuế VAT</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Giá trị sau thuế</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
                                     </>
-                                ) : (
+                                ) : activeSubTab === 'team' ? (
                                     <>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Tên tổ đội</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Lũy kế tạm ứng</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị kỳ này</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Tổng cộng</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
+                                    </>
+                                ) : (
+                                    <>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt thanh toán</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Cần thu (HSTT)</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Đã thu</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Còn lại</th>
                                     </>
                                 )}
-                                <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {filteredInvoices.length === 0 ? (
-                                <tr>
-                                    <td colSpan={activeSubTab === 'invoice' ? 8 : 9} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
-                                </tr>
-                            ) : (
-                                filteredInvoices.map((inv, idx) => (
-                                    <tr key={inv.id} className="hover:bg-slate-50 transition group">
-                                        <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
-                                        <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
-                                        {activeSubTab === 'invoice' ? (
-                                            <>
-                                                <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
-                                                <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(inv.vatAmount || 0)}</td>
-                                                <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || 0)} VNĐ</td>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <td className="p-4 text-sm font-bold text-slate-800">{inv.teamName || '-'}</td>
-                                                <td className="p-4 text-sm text-right font-medium text-blue-600">{formatCurrency(inv.accumulatedAdvance || 0)}</td>
-                                                <td className="p-4 text-sm text-right font-bold text-emerald-600">{formatCurrency(inv.teamValue || 0)}</td>
-                                                <td className="p-4 text-sm text-right font-black text-indigo-600">{formatCurrency((inv.accumulatedAdvance || 0) + (inv.teamValue || 0))} VNĐ</td>
-                                            </>
-                                        )}
-                                        <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
-                                        <td className="p-4 text-sm text-slate-500">{inv.note}</td>
-                                        <td className="p-4 text-center">
-                                            <div className="flex items-center justify-center gap-2">
-                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa"><Edit2 size={16} /></button>
-                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                                    <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa"><Trash2 size={16} /></button>
-                                                )}
-                                            </div>
-                                        </td>
+                            {activeSubTab === 'customer_debt' ? (
+                                filteredCustomerDebts.length === 0 ? (
+                                    <tr>
+                                        <td colSpan="6" className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
-                                ))
+                                ) : (
+                                    filteredCustomerDebts.map((debt, idx) => (
+                                        <tr key={debt.id} className="hover:bg-slate-50 transition group">
+                                            <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
+                                            <td className="p-4 text-sm font-bold text-slate-800">{debt.projectName}</td>
+                                            <td className="p-4 text-sm font-bold text-slate-800">{debt.phase}</td>
+                                            <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(debt.expected)} VNĐ</td>
+                                            <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(debt.actual)} VNĐ</td>
+                                            <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(debt.remaining)} VNĐ</td>
+                                        </tr>
+                                    ))
+                                )
+                            ) : (
+                                filteredInvoices.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={activeSubTab === 'invoice' ? 8 : 9} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                    </tr>
+                                ) : (
+                                    filteredInvoices.map((inv, idx) => (
+                                        <tr key={inv.id} className="hover:bg-slate-50 transition group">
+                                            <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
+                                            <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
+                                            {activeSubTab === 'invoice' ? (
+                                                <>
+                                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(inv.preTaxValue || 0)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(inv.vatAmount || 0)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(inv.postTaxValue || 0)} VNĐ</td>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <td className="p-4 text-sm font-bold text-slate-800">{inv.teamName || '-'}</td>
+                                                    <td className="p-4 text-sm text-right font-medium text-blue-600">{formatCurrency(inv.accumulatedAdvance || 0)}</td>
+                                                    <td className="p-4 text-sm text-right font-bold text-emerald-600">{formatCurrency(inv.teamValue || 0)}</td>
+                                                    <td className="p-4 text-sm text-right font-black text-indigo-600">{formatCurrency((inv.accumulatedAdvance || 0) + (inv.teamValue || 0))} VNĐ</td>
+                                                </>
+                                            )}
+                                            <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
+                                            <td className="p-4 text-sm text-slate-500">{inv.note}</td>
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa"><Edit2 size={16} /></button>
+                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                        <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa"><Trash2 size={16} /></button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )
                             )}
-                            {filteredInvoices.length > 0 && (
+                            {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
+                                <tr className="bg-slate-100 border-t-2 border-slate-300">
+                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>
+                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>
+                                    <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>
+                                </tr>
+                            )}
+                            {activeSubTab !== 'customer_debt' && filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
                                     <td colSpan={activeSubTab === 'invoice' ? 2 : 3} className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
                                     {activeSubTab === 'invoice' ? (
