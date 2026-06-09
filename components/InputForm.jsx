@@ -144,7 +144,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         let expected = 0;
 
         if (formData.phase === 'Tạm ứng') {
-            expected = 0;
+            const proj = projects.find(p => p.name === formData.project_name);
+            expected = proj?.advance_value || 0;
         } else {
             if (phaseIncs.length === 0) return null;
 
