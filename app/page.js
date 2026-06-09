@@ -360,6 +360,15 @@ export default function Home() {
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
+                    if (type === 'EXPENSE') {
+                        if (data.amount6418 > 0 && (!data.debit || data.debit === 0)) {
+                            payload.credit = data.amount6418;
+                            payload.debit = 0;
+                        } else {
+                            payload.credit = 0;
+                            payload.debit = data.debit || 0;
+                        }
+                    }
                     const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
                     if (error) throw error;
                 } else {

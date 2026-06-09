@@ -69,7 +69,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 vat_rate: editData.vat_rate || 8,
                 vat_amount: editData.vat_amount || 0,
                 post_tax_amount: editData.post_tax_amount || 0,
-                amount6418: editData.amount6418 || 0,
+                amount6418: editData.credit || 0,
                 creator: editData.created_by || '',
                 note: (() => {
                     if (editData.type === 'INCOME' && editData.note) {
@@ -248,10 +248,14 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
             if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
             if (['6413', '6418'].includes(formData.code)) {
-                if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng trả';
-                if (!formData.recipient_thu?.trim()) newErrors.recipient_thu = 'Vui lòng nhập đối tượng thu';
-                if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Vui lòng nhập số tiền chi';
-                if (!formData.amount6418 || formData.amount6418 <= 0) newErrors.amount6418 = 'Vui lòng nhập số tiền thu';
+                if (!editData) {
+                    if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng trả';
+                    if (!formData.recipient_thu?.trim()) newErrors.recipient_thu = 'Vui lòng nhập đối tượng thu';
+                    if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Vui lòng nhập số tiền chi';
+                    if (!formData.amount6418 || formData.amount6418 <= 0) newErrors.amount6418 = 'Vui lòng nhập số tiền thu';
+                } else {
+                    if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
+                }
             } else {
                 if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
             }
@@ -285,7 +289,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const isPayOnly = isMaterialOrEquipment || isPayable;
             const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
 
-            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0) {
+            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0 && !editData) {
                 setDebtConfirmModal({
                     isOpen: true,
                     data: formData,
