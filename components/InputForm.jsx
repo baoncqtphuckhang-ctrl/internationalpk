@@ -133,8 +133,57 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 }
             });
         }
-        return Array.from(phases);
-    }, [formData.project_name, incomes]);
+        
+        const allPhases = Array.from(phases);
+        const proj = projects.find(p => p.name === formData.project_name);
+        
+        return allPhases.filter(p => {
+            // Keep if we are editing it
+            if (editData && editData.phase === p) return true;
+            
+            const phaseIncs = incomes ? incomes.filter(i => i.project_name === formData.project_name && i.phase === p) : [];
+            let expected = 0;
+            
+            if (p === 'Tạm ứng') {
+                expected = Number(proj?.advance_value) || 0;
+            } else {
+                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+                for (const inv of sortedInvoices) {
+                    if (inv.note) {
+                        try {
+                            const parsed = JSON.parse(inv.note);
+                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                                expected = Number(parsed.actual_received_amount) || 0;
+                                break;
+                            }
+                        } catch(e) {}
+                    }
+                }
+                if (expected === 0) {
+                    expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                }
+            }
+            
+            const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+                let actual = 0;
+                if (i.note) {
+                    try {
+                        const parsed = JSON.parse(i.note);
+                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            actual = Number(parsed.actual_received_amount) || 0;
+                        }
+                    } catch(e) {}
+                }
+                return sum + actual;
+            }, 0);
+            
+            if (expected > 0 && received >= expected) {
+                return false;
+            }
+            return true;
+        });
+    }, [formData.project_name, incomes, editData, projects]);
 
     const selectedPhaseStats = useMemo(() => {
         if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;

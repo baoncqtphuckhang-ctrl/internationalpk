@@ -1572,7 +1572,8 @@ export default function Home() {
                                                             }
                                                         }
                                                         if (expectedForPhase === 0 && (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng')) {
-                                                            expectedForPhase = projectDetails[selectedProject]?.advanceValue || 0;
+                                                            const proj = allowedProjects.find(p => p.name === selectedProject);
+                                                            expectedForPhase = Number(proj?.advance_value) || 0;
                                                         }
                                                         return sum + expectedForPhase;
                                                     }, 0);
@@ -1672,7 +1673,8 @@ export default function Home() {
                                                                             }
                                                                             
                                                                             if (expected === 0 && (i.phase === 'Tạm ứng' || i.phase?.toLowerCase() === 'tạm ứng')) {
-                                                                                expected = projectDetails[selectedProject]?.advanceValue || 0;
+                                                                                const proj = allowedProjects.find(p => p.name === selectedProject);
+                                                                                expected = Number(proj?.advance_value) || 0;
                                                                             }
                                                                             
                                                                             const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
