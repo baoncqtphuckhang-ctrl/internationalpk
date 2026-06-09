@@ -204,7 +204,6 @@ export default function Home() {
                 
                 details[p.name] = { 
                     contractValueAfterTax: p.contract_value_after_tax,
-                    advanceValue: p.advance_value,
                     debtToCollect: debtToCollect,
                     extraPlhdTotal: extraPlhdTotal,
                     totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal,
@@ -469,7 +468,6 @@ export default function Home() {
                         name: data.name,
                         contract_no: data.contract_no,
                         contract_value_after_tax: data.contract_value_after_tax,
-                        advance_value: data.advance_value,
                         debt_to_collect: data.debt_to_collect,
                         plhds: data.plhd_list || [],
                         address: data.address,
@@ -499,7 +497,6 @@ export default function Home() {
                         name: data.name,
                         contract_no: data.contract_no,
                         contract_value_after_tax: data.contract_value_after_tax,
-                        advance_value: data.advance_value,
                         debt_to_collect: data.debt_to_collect,
                         plhds: data.plhd_list || [],
                         address: data.address,
@@ -513,7 +510,6 @@ export default function Home() {
                     name: data.name,
                     contract_no: data.contract_no,
                     contract_value_after_tax: data.contract_value_after_tax,
-                    advance_value: data.advance_value,
                     debt_to_collect: data.debt_to_collect,
                     plhds: data.plhd_list || [],
                     address: data.address,
@@ -1187,7 +1183,6 @@ export default function Home() {
             const recoveredAdvance = recoveredAdvanceRow ? recoveredAdvanceRow.debit : 0;
             const utilityValueRow = utilityValues.find(t => t.project_name === name);
             const utilityValue = utilityValueRow ? utilityValueRow.debit : 0;
-            const advanceValue = details.advanceValue || 0;
             
             let calculatedDebtToCollect = 0;
             let totalPhaseReceived = 0;
@@ -1246,7 +1241,7 @@ export default function Home() {
 
             if (calculatedDebtToCollect < 0) calculatedDebtToCollect = 0;
 
-            const totalReceivedAmount = totalPhaseReceived + advanceValue;
+            const totalReceivedAmount = totalPhaseReceived;
             const totalExp = exp + remainingCost;
             const profit = totalReceivedAmount - totalExp;
 
@@ -1257,7 +1252,6 @@ export default function Home() {
                 debtToCollect: calculatedDebtToCollect,
                 totalExpense: totalExp,
                 totalActualIncome: actInc,
-                advanceValue: advanceValue,
                 totalPhaseReceived: totalPhaseReceived,
                 totalReceivedAmount: totalReceivedAmount,
                 profit: profit,
@@ -1275,13 +1269,12 @@ export default function Home() {
             debtToCollect: acc.debtToCollect + (row.debtToCollect || 0),
             totalExpense: acc.totalExpense + row.totalExpense,
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
-            advanceValue: acc.advanceValue + (row.advanceValue || 0),
             totalPhaseReceived: acc.totalPhaseReceived + (row.totalPhaseReceived || 0),
             totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
             recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
             utilityValue: acc.utilityValue + (row.utilityValue || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {

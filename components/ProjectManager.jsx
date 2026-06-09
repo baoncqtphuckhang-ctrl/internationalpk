@@ -13,7 +13,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         name: '',
         contract_no: '',
         contract_value_after_tax: 0,
-        advance_value: 0,
         address: '',
         cht_name: '',
         cht_phone: '',
@@ -37,7 +36,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             name: p.name,
             contract_no: details.contractNo || '',
             contract_value_after_tax: details.contractValueAfterTax || 0,
-            advance_value: details.advanceValue || 0,
             address: details.address || '',
             cht_name: details.chtName || '',
             cht_phone: details.chtPhone || '',
@@ -52,7 +50,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
     };
 
     const handleDelete = (projectName) => {
@@ -110,7 +108,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -195,19 +193,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                         value={formData.contract_value_after_tax ? formatCurrency(formData.contract_value_after_tax) : ''}
                                         onChange={(e) => setFormData({...formData, contract_value_after_tax: parseVietnameseNumber(e.target.value)})}
                                         className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-blue-700"
-                                        placeholder="0"
-                                    />
-                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Giá trị Tạm ứng</label>
-                                <div className="relative flex items-center">
-                                    <input 
-                                        type="text"
-                                        value={formData.advance_value ? formatCurrency(formData.advance_value) : ''}
-                                        onChange={(e) => setFormData({...formData, advance_value: parseVietnameseNumber(e.target.value)})}
-                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-amber-600"
                                         placeholder="0"
                                     />
                                     <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
@@ -349,10 +334,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     <div className="flex justify-between border-b border-slate-50 pb-2">
                                         <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
                                         <span className="font-bold text-orange-600">{formatCurrency(details.debtToCollect)} VNĐ</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>
-                                        <span className="font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</span>
                                     </div>
                                 </div>
                             </div>
