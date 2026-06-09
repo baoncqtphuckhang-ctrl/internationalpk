@@ -309,13 +309,15 @@ export default function ApprovalWorkflow({
             const hasVatTu = distributionData.some(d => ['621', '623'].includes(d.code));
             const categoryPrefix = hasVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
             
+            const phaseInfo = distributeItem.orderPhase ? ` - ${distributeItem.orderPhase}` : (distributeItem.phase ? ` - Đợt ${distributeItem.phase}` : '');
+            
             onAddDebt({
                 project_name: distributeItem.project_name,
                 partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
                 debt_type: 'CẦN TRẢ',
                 amount: distributeItem.total_amount,
                 status: status || 'CHƯA XONG',
-                note: `${categoryPrefix}Thanh toán chi phí - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
+                note: `${categoryPrefix}Thanh toán chi phí${phaseInfo} - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
             });
         }
 
