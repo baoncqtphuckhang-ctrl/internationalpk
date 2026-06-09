@@ -27,11 +27,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         vat_rate: 8,
         vat_amount: 0,
         post_tax_amount: 0,
-        amount6418: 0,
-        amount6418: 0,
         actual_received_amount: 0,
-        creator: '',
-        recipient_thu: ''
+        creator: ''
     });
 
     const [errors, setErrors] = useState({});
@@ -64,6 +61,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
                 recipient: editData.recipient || '',
+                actual_received_amount: editData.actual_received_amount || 0,
+                creator: editData.created_by || '',
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0,
                 vat_rate: editData.vat_rate || 8,
@@ -290,24 +289,11 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (type === 'EXPENSE') {
             if (!formData.code?.trim()) newErrors.code = 'Vui lòng nhập mã chi phí';
             const hasDebit = formData.debit > 0;
-            const hasAmount6418 = formData.amount6418 > 0;
-            if (!hasDebit && !hasAmount6418) {
-                newErrors.debit = 'Vui lòng nhập Số tiền chi hoặc Số tiền thu';
-                newErrors.amount6418 = 'Vui lòng nhập Số tiền chi hoặc Số tiền thu';
+            if (!hasDebit) {
+                newErrors.debit = 'Vui lòng nhập số tiền chi';
             }
             if (!formData.note?.trim()) newErrors.note = 'Vui lòng nhập nội dung / diễn giải';
-            if (['6413', '6418'].includes(formData.code)) {
-                if (!editData) {
-                    if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng trả';
-                    if (!formData.recipient_thu?.trim()) newErrors.recipient_thu = 'Vui lòng nhập đối tượng thu';
-                    if (!formData.debit || formData.debit <= 0) newErrors.debit = 'Vui lòng nhập số tiền chi';
-                    if (!formData.amount6418 || formData.amount6418 <= 0) newErrors.amount6418 = 'Vui lòng nhập số tiền thu';
-                } else {
-                    if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
-                }
-            } else {
-                if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
-            }
+            if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
         } else if (type === 'INCOME_INVOICE') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.post_tax_amount || formData.post_tax_amount <= 0) newErrors.post_tax_amount = 'Số tiền thu phải lớn hơn 0';
@@ -371,43 +357,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             
             const debts = [];
             if (mode === 'BOTH') {
-                let partnerNameThu = data.recipient_thu || data.recipient || 'Đối tác/Nhà cung cấp';
+                let partnerNameThu = data.recipient || 'Đối tác/Nhà cung cấp';
                 let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
                 if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
                 else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
-
-                const payloadThu = {
-                    project_name: data.project_name,
-                    invoice_no: data.invoice_no || '',
-                    recipient: partnerNameThu,
-                    corresponding_account: data.corresponding_account || '',
-                    code: data.code,
-                    debit: 0,
-                    credit: parseFloat(data.amount6418) || 0,
-                    note: data.note ? data.note + (data.code === '6418' ? ' (Bảo hiểm TN)' : ' (Hồ sơ)') : ''
-                };
 
                 debts.push({
                     project_name: data.project_name,
                     partner_name: partnerNameThu,
                     debt_type: 'CẦN THU',
-                    amount: parseFloat(data.amount6418) || parseFloat(data.debit) || 0,
+                    amount: parseFloat(data.debit) || 0,
                     status: thuStatus,
-                    note: thuStatus === 'CHƯA XONG' ? `${debtNote}[PAYLOAD]${JSON.stringify(payloadThu)}` : debtNote
+                    note: debtNote
                 });
             }
             
-            const payloadChi = {
-                project_name: data.project_name,
-                invoice_no: data.invoice_no || '',
-                recipient: data.recipient || '',
-                corresponding_account: data.corresponding_account || '',
-                code: data.code,
-                debit: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                credit: 0,
-                note: data.note || ''
-            };
-
             const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
 
             debts.push({
@@ -416,7 +380,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 debt_type: 'CẦN TRẢ',
                 amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
                 status: chiStatus,
-                note: chiStatus === 'CHƯA XONG' ? `${debtNoteChi}[PAYLOAD]${JSON.stringify(payloadChi)}` : debtNoteChi
+                note: debtNoteChi
             });
             onAddDebt(debts);
         }
@@ -437,7 +401,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             vat_rate: 8,
             vat_amount: 0,
             post_tax_amount: 0,
-            amount6418: 0,
             actual_received_amount: 0
         }));
         setIsCustomCode(false);
@@ -623,7 +586,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 {/* Số tiền chi */}
                                 <div>
                                     <label className={labelCls}>
-                                        Số tiền chi (Nợ) {['6413', '6418'].includes(formData.code) && <span className="text-red-500">*</span>}
+                                        Số tiền chi (Nợ)
                                     </label>
                                     <input
                                         type="text"
@@ -714,20 +677,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         className={inputCls('creator')}
                                     />
                                 </div>
-                                {/* Số tiền thu */}
-                                <div>
-                                    <label className={labelCls}>
-                                        Số tiền thu {['6413', '6418'].includes(formData.code) && <span className="text-red-500">*</span>}
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.amount6418 ? formatCurrency(formData.amount6418) : ''}
-                                        onChange={(e) => handleChange('amount6418', parseVietnameseNumber(e.target.value))}
-                                        placeholder="Nhập số tiền thu..."
-                                        className={`${inputCls('amount6418')} font-bold text-amber-600`}
-                                    />
-                                    {errorMsg('amount6418')}
-                                </div>
+
                             </>
                         ) : type === 'INCOME_INVOICE' ? (
                             <>
@@ -992,52 +942,19 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
                     {/* Đối tượng thụ hưởng */}
                     {(type === 'EXPENSE' || type === 'OFFICE_INCOME') && (
-                        <>
-                            {type === 'EXPENSE' && ['6413', '6418'].includes(formData.code) ? (
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full">
-                                    <div>
-                                        <label className={labelCls}>
-                                            Đối tượng thu <span className="text-red-500">*</span>
-                                        </label>
-                                        <RecipientInput
-                                            value={formData.recipient_thu}
-                                            onChange={(val) => handleChange('recipient_thu', val)}
-                                            errorCls={errors.recipient_thu ? 'border-red-500' : ''}
-                                            placeholder="Nhập tên đối tượng thu..."
-                                            suggestions={projectRecipients}
-                                        />
-                                        {errorMsg('recipient_thu')}
-                                    </div>
-                                    <div>
-                                        <label className={labelCls}>
-                                            Đối tượng trả <span className="text-red-500">*</span>
-                                        </label>
-                                        <RecipientInput
-                                            value={formData.recipient}
-                                            onChange={(val) => handleChange('recipient', val)}
-                                            errorCls={errors.recipient ? 'border-red-500' : ''}
-                                            placeholder="Nhập tên đối tượng trả..."
-                                            suggestions={projectRecipients}
-                                        />
-                                        {errorMsg('recipient')}
-                                    </div>
-                                </div>
-                            ) : (
-                                <div>
-                                    <label className={labelCls}>
-                                        Đối tượng <span className="text-red-500">*</span>
-                                    </label>
-                                    <RecipientInput
-                                        value={formData.recipient}
-                                        onChange={(val) => handleChange('recipient', val)}
-                                        errorCls={errors.recipient ? 'border-red-500' : ''}
-                                        placeholder="Nhập tên đối tượng..."
-                                        suggestions={projectRecipients}
-                                    />
-                                    {errorMsg('recipient')}
-                                </div>
-                            )}
-                        </>
+                        <div>
+                            <label className={labelCls}>
+                                Đối tượng <span className="text-red-500">*</span>
+                            </label>
+                            <RecipientInput
+                                value={formData.recipient}
+                                onChange={(val) => handleChange('recipient', val)}
+                                errorCls={errors.recipient ? 'border-red-500' : ''}
+                                placeholder="Nhập tên đối tượng..."
+                                suggestions={projectRecipients}
+                            />
+                            {errorMsg('recipient')}
+                        </div>
                     )}
 
                     {/* Nội dung / Diễn giải */}
@@ -1122,7 +1039,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         vat_rate: 8,
                         vat_amount: 0,
                         post_tax_amount: 0,
-                        amount6418: 0,
                         actual_received_amount: 0,
                         creator: ''
                     });

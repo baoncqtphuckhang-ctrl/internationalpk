@@ -361,34 +361,14 @@ export default function Home() {
                 };
                 if (editId) {
                     if (type === 'EXPENSE') {
-                        if (data.amount6418 > 0 && (!data.debit || data.debit === 0)) {
-                            payload.credit = data.amount6418;
-                            payload.debit = 0;
-                        } else {
-                            payload.credit = 0;
-                            payload.debit = data.debit || 0;
-                        }
+                        payload.credit = 0;
+                        payload.debit = data.debit || 0;
                     }
                     const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
                     if (error) throw error;
                 } else {
-                    if (!data.chiStatus || data.chiStatus === 'ĐÃ XONG') {
-                        const { error } = await supabase.from('transactions').insert([payload]);
-                        if (error) throw error;
-                    }
-                    
-                    if (data.amount6418 && data.amount6418 > 0 && data.thuStatus === 'ĐÃ XONG') {
-                        const noteSuffix = data.code === '6418' ? ' (Bảo hiểm TN)' : ' (Hồ sơ)';
-                        const payloadThu = {
-                            ...payload,
-                            recipient: data.recipient_thu || payload.recipient,
-                            code: data.code,
-                            debit: 0,
-                            credit: data.amount6418,
-                            note: data.note ? data.note + noteSuffix : noteSuffix.trim()
-                        };
-                        await supabase.from('transactions').insert([payloadThu]);
-                    }
+                    const { error } = await supabase.from('transactions').insert([payload]);
+                    if (error) throw error;
                 }
             } else {
                 const isReal = type === 'INCOME_REAL';
@@ -1018,22 +998,6 @@ export default function Home() {
             const { error } = await supabase.from('partner_debts').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
             logActivity('Cập nhật', 'Công nợ', `Đổi trạng thái công nợ (ID: ${id}) thành: ${newStatus}`);
-
-            if (newStatus === 'ĐÃ XONG' && debtObj && debtObj.note && debtObj.note.includes('[PAYLOAD]')) {
-                try {
-                    const payloadStr = debtObj.note.split('[PAYLOAD]')[1];
-                    const txPayload = JSON.parse(payloadStr);
-                    
-                    // Cập nhật ngày hạch toán là ngày hôm nay khi xác nhận công nợ
-                    txPayload.accounting_date = new Date().toISOString().split('T')[0];
-                    txPayload.created_by = currentUser.username;
-                    
-                    const { error: insertError } = await supabase.from('transactions').insert([txPayload]);
-                    if (insertError) throw insertError;
-                } catch(e) {
-                    console.error('Lỗi khi khôi phục giao dịch từ công nợ:', e);
-                }
-            }
 
             showToast(`Đã cập nhật trạng thái thành ${newStatus}!`);
             fetchData();
