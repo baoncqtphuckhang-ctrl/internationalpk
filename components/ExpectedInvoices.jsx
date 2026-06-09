@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
-export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [] }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -403,6 +403,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 </div>
                 
                 <div className="flex gap-3">
+                    <button 
+                        onClick={() => exportTableToExcel('expected-invoices-table', 'Du_Kien')}
+                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2"
+                        title="Xuất Excel"
+                    >
+                        <Download size={20} />
+                        <span className="hidden sm:inline">Xuất Excel</span>
+                    </button>
                     {activeSubTab !== 'customer_debt' && currentUser?.role?.toUpperCase() === 'ADMIN' && (
                         <button 
                             onClick={handleDeleteAll}
@@ -697,11 +705,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left border-collapse min-w-[1100px]">
+                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1100px]">
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200">
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider">Tên công trình</th>
+                                <th className="p-4 font-black uppercase text-xs tracking-wider">{activeSubTab === 'customer_debt' ? 'Tên' : 'Tên công trình'}</th>
                                 {activeSubTab === 'invoice' ? (
                                     <>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị trước thuế</th>
@@ -724,10 +732,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 ) : (
                                     <>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số hóa đơn</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày hóa đơn</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số chứng từ</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt thanh toán</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số HĐ</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày HĐ</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số CT</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt TT</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Cần thu (HSTT)</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Đã thu</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Còn lại</th>

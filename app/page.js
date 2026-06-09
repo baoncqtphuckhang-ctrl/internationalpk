@@ -1395,6 +1395,8 @@ export default function Home() {
                         currentUser={currentUser}
                         incomes={allowedIncomes}
                         transactions={allowedTransactions}
+                        handleCopyTable={handleCopyTable}
+                        exportTableToExcel={exportTableToExcel}
                     />
                 )}
 
