@@ -697,6 +697,37 @@ export default function Home() {
                         await supabase.from('partner_debts').delete().eq('id', d.id);
                     }
                 }
+
+                // Delete related approval_request & material_order if it's a "Đơn Vật Tư"
+                const matchId = txData.note.match(/\[ID:([a-f0-9\-]{36})\]/i);
+                if (matchId && matchId[1]) {
+                    const reqId = matchId[1];
+                    const { data: appReq } = await supabase.from('approval_requests').select('*').eq('id', reqId).single();
+                    if (appReq) {
+                        await moveToTrash('approval_requests', 'id', reqId);
+                        await supabase.from('approval_requests').delete().eq('id', reqId);
+
+                        if (appReq.doc_type === 'Đơn Vật Tư') {
+                            try {
+                                const r = JSON.parse(appReq.reason);
+                                if (r.date && r.project) {
+                                    const { data: moData } = await supabase.from('material_orders')
+                                        .select('id')
+                                        .eq('project_name', r.project)
+                                        .eq('order_date', r.date)
+                                        .eq('recipient', r.recipient || appReq.recipient);
+                                    
+                                    if (moData && moData.length > 0) {
+                                        for (const m of moData) {
+                                            await moveToTrash('material_orders', 'id', m.id);
+                                            await supabase.from('material_orders').delete().eq('id', m.id);
+                                        }
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
             }
 
             showToast('Đã chuyển khoản chi và công nợ liên quan vào thùng rác!');

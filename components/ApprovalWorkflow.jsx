@@ -228,6 +228,16 @@ export default function ApprovalWorkflow({
             items = parsed.items || [];
             paymentMethod = parsed.paymentMethod || 'tien_mat';
             orderPhase = parsed.orderPhase || (parsed.items && parsed.items[0] && parsed.items[0].note ? parsed.items[0].note.split(' | ')[1] : null) || parsed.phase || null;
+            
+            // Gom chung lại thành 1 mục đối với Đơn Vật Tư
+            if (item.doc_type === 'Đơn Vật Tư') {
+                const combinedContent = orderPhase ? `Thanh toán ${orderPhase}` : 'Thanh toán Đơn Vật Tư';
+                items = [{
+                    content: combinedContent,
+                    amount: item.total_amount,
+                    note: orderPhase || ''
+                }];
+            }
         } catch(e) {
             items = [{ content: item.reason, amount: item.total_amount }];
         }
@@ -250,7 +260,10 @@ export default function ApprovalWorkflow({
         if (option === 'auto' && distributeItem) {
             try {
                 const parsed = JSON.parse(distributeItem.reason);
-                const originalItems = parsed.items || [];
+                let originalItems = parsed.items || [];
+                if (distributeItem.doc_type === 'Đơn Vật Tư') {
+                    originalItems = [{ amount: distributeItem.total_amount }];
+                }
                 setDistributionData(prev => prev.map((d, i) => ({
                     ...d,
                     amount: originalItems[i] ? parseFloat(originalItems[i].amount) : 0

@@ -337,13 +337,13 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                     const dnttPayload = {
                         doc_type: 'Đơn Vật Tư',
                         project_name: formData.project_name,
-                        recipient: formData.recipient,
+                        recipient: formData.company || formData.recipient,
                         total_amount: grandTotal,
                         status: 'Waiting QS', // Phải được QS duyệt trước
                         reason: JSON.stringify({
                             docType: 'Đơn Vật Tư',
                             date: formData.order_date,
-                            recipient: formData.recipient,
+                            recipient: formData.company || formData.recipient,
                             project: formData.project_name,
                             paymentMethod: 'chuyen_khoan',
                             orderPhase: formData.order_phase,
@@ -1195,7 +1195,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             </div>
 
                             <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Đơn vị đặt hàng (Công ty)</label>
+                                <label className="block text-xs font-black text-slate-900 uppercase">Nhà cung cấp</label>
                                 <select 
                                     value={
                                         isCustomCompany ? "custom" : (
@@ -1224,7 +1224,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                     }}
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-medium text-slate-800 transition"
                                 >
-                                    <option value="">-- Chọn đơn vị đặt hàng --</option>
+                                    <option value="">-- Chọn nhà cung cấp --</option>
                                     <option value="CÔNG TY TNHH AKZO NOBEL VIỆT NAM">CÔNG TY TNHH AKZO NOBEL VIỆT NAM</option>
                                     <option value="CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI">CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI</option>
                                     <option value="Công ty TNHH Sơn Jotun Việt Nam">Công ty TNHH Sơn Jotun Việt Nam</option>
@@ -1252,7 +1252,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                         type="text"
                                         value={formData.company}
                                         onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                                        placeholder="Nhập tên đơn vị đặt hàng khác..."
+                                        placeholder="Nhập tên nhà cung cấp khác..."
                                         className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
                                     />
                                 ) : null}
