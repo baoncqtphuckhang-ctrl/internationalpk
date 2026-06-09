@@ -32,7 +32,6 @@ export default function Dashboard({
         profit: 'Lợi nhuận',
         totalActualIncome: 'Tổng SẢN LƯỢNG',
         phases: 'Chi tiết thu các đợt',
-        advanceValue: 'Giá trị Tạm ứng',
         recoveredAdvance: 'Giá trị thu hồi',
         utilityValue: 'Giá trị tiện ích',
         remainingCost: 'Chi phí còn lại'
@@ -203,11 +202,7 @@ export default function Dashboard({
                                     <button onClick={() => toggleCol('phases')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-yellow-600 hover:text-red-500 transition-all p-1 bg-yellow-100/50 rounded" title="Ẩn nhóm cột này"><EyeOff size={14} /></button>
                                     CHI TIẾT THU CÁC ĐỢT
                                 </th>}
-                                {!hiddenCols.includes('advanceValue') && <th className="p-3 border-b border-l-2 border-slate-300 border-r border-slate-300 font-bold text-right text-amber-700 bg-amber-50 align-top min-w-[120px] group relative" rowSpan="2">
-                                    <button onClick={() => toggleCol('advanceValue')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-amber-400 hover:text-red-500 transition-all p-1 bg-amber-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
-                                    Giá trị<br />Tạm ứng
-                                </th>}
-                                {!hiddenCols.includes('recoveredAdvance') && <th className="p-3 border-b border-r border-slate-300 font-bold text-right text-cyan-700 bg-cyan-50 align-top min-w-[120px] group relative" rowSpan="2">
+                                {!hiddenCols.includes('recoveredAdvance') && <th className="p-3 border-b border-l-2 border-slate-300 border-r border-slate-300 font-bold text-right text-cyan-700 bg-cyan-50 align-top min-w-[120px] group relative" rowSpan="2">
                                     <button onClick={() => toggleCol('recoveredAdvance')} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-cyan-400 hover:text-red-500 transition-all p-1 bg-cyan-100/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button>
                                     Giá trị<br />thu hồi tạm ứng
                                 </th>}
@@ -264,9 +259,8 @@ export default function Dashboard({
                                             </td>
                                         );
                                     })}
-                                    {!hiddenCols.includes('advanceValue') && <td className="p-3 text-right border-b border-l-2 border-slate-200 border-r border-slate-200 font-bold text-amber-700 bg-amber-50/30 text-[14px] tabular-nums">{formatCurrency(row.advanceValue || 0)}</td>}
                                     {!hiddenCols.includes('recoveredAdvance') && <td 
-                                        className="p-3 text-right border-b border-r border-slate-200 bg-cyan-50/50 transition-colors hover:bg-cyan-100 cursor-pointer font-bold text-cyan-700 text-[14px] tabular-nums"
+                                        className="p-3 text-right border-b border-l-2 border-slate-200 border-r border-slate-200 bg-cyan-50/50 transition-colors hover:bg-cyan-100 cursor-pointer font-bold text-cyan-700 text-[14px] tabular-nums"
                                         onClick={() => {
                                             if (handleSaveRecoveredAdvance) {
                                                 handleOpenPrompt(row.project, row.recoveredAdvance, 'RECOVERED_ADVANCE', 'Giá trị thu hồi tạm ứng');
@@ -312,8 +306,7 @@ export default function Dashboard({
                                 {!hiddenCols.includes('phases') && allPhases.map(phase => (
                                     <td key={phase} className="p-2 text-right border-r border-slate-300">-</td>
                                 ))}
-                                {!hiddenCols.includes('advanceValue') && <td className="p-3 text-right text-amber-800 bg-slate-300 border-l-2 border-slate-400 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.advanceValue || 0)}</td>}
-                                {!hiddenCols.includes('recoveredAdvance') && <td className="p-3 text-right text-cyan-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.recoveredAdvance || 0)}</td>}
+                                {!hiddenCols.includes('recoveredAdvance') && <td className="p-3 text-right text-cyan-800 bg-slate-300 border-l-2 border-slate-400 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.recoveredAdvance || 0)}</td>}
                                 {!hiddenCols.includes('utilityValue') && <td className="p-3 text-right text-violet-800 bg-slate-300 border-r border-slate-400 tabular-nums">{formatCurrency(computedTotals.utilityValue || 0)}</td>}
                                 {!hiddenCols.includes('remainingCost') && <td className="p-3 text-right text-pink-800 bg-slate-300 border-slate-400 tabular-nums">
                                     {formatCurrency(computedTotals.remainingCost || 0)}
