@@ -71,11 +71,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 amount6418: editData.credit || 0,
                 creator: editData.created_by || '',
                 note: (() => {
-                    if (editData.type === 'INCOME' && editData.note) {
+                    if (editData.note) {
                         try {
                             const p = JSON.parse(editData.note);
-                            return p.text || '';
-                        } catch(e) { return editData.note; }
+                            if (p && typeof p === 'object' && p.text !== undefined) {
+                                return p.text;
+                            }
+                        } catch(e) {}
                     }
                     return editData.note || '';
                 })(),
@@ -293,6 +295,24 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         } else if (type === 'INCOME_REAL') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             if (!formData.actual_received_amount || formData.actual_received_amount <= 0) newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận';
+            
+            if (selectedPhaseStats && selectedPhaseStats.expected > 0) {
+                let originalRealAmount = 0;
+                if (editData && editData.type === 'INCOME_REAL') {
+                    if (editData.note) {
+                        try {
+                            const p = JSON.parse(editData.note);
+                            if (p && typeof p === 'object' && p.actual_received_amount) {
+                                originalRealAmount = Number(p.actual_received_amount) || 0;
+                            }
+                        } catch(e) {}
+                    }
+                }
+                const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received + originalRealAmount;
+                if (formData.actual_received_amount > maxAllowed) {
+                    newErrors.actual_received_amount = `Vượt quá giới hạn (tối đa: ${formatCurrency(maxAllowed)})`;
+                }
+            }
         } else if (type === 'OFFICE_INCOME') {
             if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
             if (!formData.debit_account && formData.debit_account !== 'Khác') newErrors.debit_account = 'Vui lòng chọn tài khoản nợ';
@@ -460,7 +480,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setType('INCOME_REAL'); setErrors({}); }}
+                        onClick={() => { 
+                            if (type === 'INCOME_INVOICE') {
+                                setFormData(prev => ({...prev, actual_received_amount: 0}));
+                            }
+                            setType('INCOME_REAL'); 
+                            setErrors({}); 
+                        }}
                         className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_REAL' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         DOANH THU (THỰC TẾ)
