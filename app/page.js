@@ -1155,6 +1155,7 @@ export default function Home() {
             
             let calculatedDebtToCollect = 0;
             let totalPhaseReceived = 0;
+            let actualAdvanceReceived = 0;
             
             const phaseData = {};
             allPhases.forEach(phase => {
@@ -1202,7 +1203,12 @@ export default function Home() {
                     return sum + actual;
                 }, 0);
 
-                totalPhaseReceived += pActual;
+                if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
+                    actualAdvanceReceived += pActual;
+                } else {
+                    totalPhaseReceived += pActual;
+                }
+
                 calculatedDebtToCollect += (pExpected - pActual);
 
                 phaseData[phase] = {
@@ -1215,7 +1221,9 @@ export default function Home() {
 
             if (calculatedDebtToCollect < 0) calculatedDebtToCollect = 0;
 
-            const totalReceivedAmount = totalPhaseReceived + advanceValue;
+            const hasAdvanceIncome = projIncomes.some(i => i.phase === 'Tạm ứng' || i.phase?.toLowerCase() === 'tạm ứng');
+            const totalReceivedAmount = totalPhaseReceived + (hasAdvanceIncome ? actualAdvanceReceived : advanceValue);
+            
             const totalExp = exp + remainingCost;
             const profit = totalReceivedAmount - totalExp;
 
