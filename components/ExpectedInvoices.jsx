@@ -349,6 +349,28 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 
                 const uniqueVouchers = [...new Set(voucher_nos.filter(Boolean))].join(', ');
 
+                let due_date_str = '';
+                let overdue_days = '';
+
+                if (invoice_date) {
+                    const invDateObj = new Date(invoice_date);
+                    if (!isNaN(invDateObj.getTime())) {
+                        const dueDateObj = new Date(invDateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
+                        due_date_str = dueDateObj.toLocaleDateString('vi-VN');
+                        
+                        const now = new Date();
+                        now.setHours(0, 0, 0, 0);
+                        const due = new Date(dueDateObj);
+                        due.setHours(0, 0, 0, 0);
+                        const diffTime = now.getTime() - due.getTime();
+                        if (diffTime > 0) {
+                            overdue_days = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                        } else {
+                            overdue_days = 0;
+                        }
+                    }
+                }
+
                 const remaining = pExpected - pActual;
                 if (remaining > 0) {
                     debts.push({
@@ -361,6 +383,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         remaining: remaining,
                         invoice_no: invoice_no,
                         invoice_date: invoice_date ? new Date(invoice_date).toLocaleDateString('vi-VN') : '',
+                        due_date: due_date_str,
+                        overdue_days: overdue_days,
                         voucher_no: uniqueVouchers
                     });
                 }
@@ -734,6 +758,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Số HĐ</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày HĐ</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày tới hạn</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-center">Quá hạn</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Số CT</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt TT</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Cần thu (HSTT)</th>
@@ -757,6 +783,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <td className="p-4 text-sm font-medium text-slate-700">{debt.contractNo || '-'}</td>
                                             <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_no || '-'}</td>
                                             <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_date || '-'}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.due_date || '-'}</td>
+                                            <td className="p-4 text-sm font-medium text-center">
+                                                {debt.overdue_days > 0 ? (
+                                                    <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full font-bold text-xs">{debt.overdue_days} ngày</span>
+                                                ) : debt.due_date ? (
+                                                    <span className="text-emerald-600 font-bold text-xs">Trong hạn</span>
+                                                ) : '-'}
+                                            </td>
                                             <td className="p-4 text-sm font-medium text-slate-700">{debt.voucher_no || '-'}</td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{debt.phase}</td>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(debt.expected)} VNĐ</td>
