@@ -384,8 +384,17 @@ export default function Home() {
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
-                    const { error } = await supabase.from('incomes').update(payload).eq('id', editId);
-                    if (error) throw error;
+                    const originalData = incomes.find(i => i.id === editId);
+                    const isOriginalReal = originalData ? (originalData.post_tax_amount === 0 && originalData.amount === 0) : false;
+                    
+                    if (isReal !== isOriginalReal) {
+                        // User switched tabs while editing. Insert instead of update to prevent data loss.
+                        const { error } = await supabase.from('incomes').insert([payload]);
+                        if (error) throw error;
+                    } else {
+                        const { error } = await supabase.from('incomes').update(payload).eq('id', editId);
+                        if (error) throw error;
+                    }
                 } else {
                     const { error } = await supabase.from('incomes').insert([payload]);
                     if (error) throw error;
@@ -407,7 +416,13 @@ export default function Home() {
     };
 
     const handleEditTransaction = (t) => {
-        setEditTransaction({ ...t, type: t.phase ? 'INCOME' : 'EXPENSE' });
+        let typeStr = 'EXPENSE';
+        if (t.phase) {
+            typeStr = (t.post_tax_amount === 0 && t.amount === 0) ? 'INCOME_REAL' : 'INCOME_INVOICE';
+        } else if (t.office_amount !== undefined) {
+            typeStr = 'OFFICE_INCOME';
+        }
+        setEditTransaction({ ...t, type: typeStr });
         setPreviousTab(activeTab);
         setActiveTab('input');
     };

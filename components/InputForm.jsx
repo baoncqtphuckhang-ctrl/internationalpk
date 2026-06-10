@@ -446,33 +446,29 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 <div className="flex border-b">
                     <button
                         type="button"
-                        onClick={() => { if(!editData) { setType('EXPENSE'); setErrors({}); } }}
-                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : (editData ? 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60' : 'hover:bg-slate-50 text-slate-500')}`}
-                        disabled={!!editData}
+                        onClick={() => { setType('EXPENSE'); setErrors({}); }}
+                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         CHI PHÍ
                     </button>
                     <button
                         type="button"
-                        onClick={() => { if(!editData) { setType('INCOME_INVOICE'); setErrors({}); } }}
-                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_INVOICE' ? 'bg-green-600 text-white' : (editData ? 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60' : 'hover:bg-slate-50 text-slate-500')}`}
-                        disabled={!!editData}
+                        onClick={() => { setType('INCOME_INVOICE'); setErrors({}); }}
+                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_INVOICE' ? 'bg-green-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         DOANH THU (HÓA ĐƠN)
                     </button>
                     <button
                         type="button"
-                        onClick={() => { if(!editData) { setType('INCOME_REAL'); setErrors({}); } }}
-                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_REAL' ? 'bg-emerald-600 text-white' : (editData ? 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60' : 'hover:bg-slate-50 text-slate-500')}`}
-                        disabled={!!editData}
+                        onClick={() => { setType('INCOME_REAL'); setErrors({}); }}
+                        className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_REAL' ? 'bg-emerald-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         DOANH THU (THỰC TẾ)
                     </button>
                     <button
                         type="button"
-                        onClick={() => { if(!editData) { setType('OFFICE_INCOME'); setErrors({}); } }}
-                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'OFFICE_INCOME' ? 'bg-amber-600 text-white' : (editData ? 'bg-slate-50 text-slate-400 cursor-not-allowed opacity-60' : 'hover:bg-slate-50 text-slate-500')}`}
-                        disabled={!!editData}
+                        onClick={() => { setType('OFFICE_INCOME'); setErrors({}); }}
+                        className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'OFFICE_INCOME' ? 'bg-amber-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         THU VĂN PHÒNG
                     </button>
