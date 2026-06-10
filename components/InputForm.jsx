@@ -884,6 +884,64 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     />
                                     {errorMsg('actual_received_amount')}
                                 </div>
+                                {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && (
+                                    <div className="md:col-span-2 mt-4">
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lịch sử các lần thu tiền (Thực tế) đợt này</label>
+                                        <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-emerald-50 border-b border-slate-200 text-emerald-800">
+                                                    <tr>
+                                                        <th className="p-3 font-bold">Ngày Thanh Toán</th>
+                                                        <th className="p-3 font-bold text-right">Số Tiền Thực Nhận</th>
+                                                        <th className="p-3 font-bold">Diễn Giải / Nội Dung</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 bg-white">
+                                                    {(() => {
+                                                        const historyReals = incomes.filter(i => 
+                                                            i.project_name === formData.project_name && 
+                                                            i.phase === formData.phase && 
+                                                            i.post_tax_amount === 0 && 
+                                                            i.amount === 0
+                                                        ).sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
+
+                                                        if (historyReals.length === 0) {
+                                                            return <tr><td colSpan="3" className="p-4 text-center text-slate-500 italic">Chưa có khoản thu thực tế nào được ghi nhận</td></tr>;
+                                                        }
+
+                                                        return historyReals.map((inc) => {
+                                                            let actAmt = 0;
+                                                            let text = inc.note;
+                                                            if (inc.note) {
+                                                                try {
+                                                                    const p = JSON.parse(inc.note);
+                                                                    actAmt = Number(p.actual_received_amount) || 0;
+                                                                    text = p.text || inc.note;
+                                                                } catch(e) {}
+                                                            }
+                                                            const isEditingThis = editData && editData.id === inc.id;
+                                                            return (
+                                                                <tr key={inc.id} className={isEditingThis ? "bg-amber-50" : "hover:bg-slate-50"}>
+                                                                    <td className="p-3 font-medium text-slate-700">
+                                                                        {inc.date ? new Date(inc.date).toLocaleDateString('vi-VN') : ''}
+                                                                        {isEditingThis && <span className="ml-2 text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold">Đang sửa</span>}
+                                                                    </td>
+                                                                    <td className="p-3 font-black text-emerald-600 text-right">{formatCurrency(actAmt)} VNĐ</td>
+                                                                    <td className="p-3 text-slate-600">
+                                                                        <div className="line-clamp-2" title={text}>{text}</div>
+                                                                    </td>
+                                                                </tr>
+                                                            );
+                                                        });
+                                                    })()}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <p className="text-[11px] text-slate-500 mt-2 font-medium">
+                                            * Lưu ý: Để SỬA hoặc XÓA một phiếu thu cũ, vui lòng sang menu <span className="font-bold text-slate-700">"LỊCH SỬ THU CHI"</span>.
+                                        </p>
+                                    </div>
+                                )}
                             </>
                         ) : type === 'OFFICE_INCOME' ? (
                             <>

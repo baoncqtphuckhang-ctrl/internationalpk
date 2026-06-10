@@ -11,7 +11,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [searchTerm, setSearchTerm] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
-    const [activeSubTab, setActiveSubTab] = useState('invoice');
+    const [activeSubTab, setActiveSubTab] = useState('customer_debt');
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -355,7 +355,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 if (invoice_date) {
                     const invDateObj = new Date(invoice_date);
                     if (!isNaN(invDateObj.getTime())) {
-                        const dueDateObj = new Date(invDateObj.getTime() + 15 * 24 * 60 * 60 * 1000);
+                        let dueDateObj = new Date(invDateObj.getTime());
+                        let added = 0;
+                        while (added < 15) {
+                            dueDateObj.setDate(dueDateObj.getDate() + 1);
+                            if (dueDateObj.getDay() !== 0 && dueDateObj.getDay() !== 6) {
+                                added++;
+                            }
+                        }
                         due_date_str = dueDateObj.toLocaleDateString('vi-VN');
                         
                         const now = new Date();
@@ -414,7 +421,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }, [activeSubTab, invoices, customerDebts, filterProject]);
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
+        <div className="w-full mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
             <header className="mb-8 flex justify-between items-center">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
@@ -459,6 +466,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <div className="flex gap-6 border-b border-slate-200 mb-6 overflow-x-auto hide-scrollbar">
                 <button 
+                    onClick={() => setActiveSubTab('customer_debt')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'customer_debt' ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    CÔNG NỢ KHÁCH HÀNG
+                </button>
+                <button 
                     onClick={() => setActiveSubTab('invoice')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
@@ -469,12 +482,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
                     GIÁ TRỊ TỔ ĐỘI
-                </button>
-                <button 
-                    onClick={() => setActiveSubTab('customer_debt')}
-                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'customer_debt' ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
-                >
-                    CÔNG NỢ KHÁCH HÀNG
                 </button>
             </div>
 
@@ -839,7 +846,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="7" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td colSpan="9" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
                                     <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>

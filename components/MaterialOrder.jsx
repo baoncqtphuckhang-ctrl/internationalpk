@@ -72,7 +72,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrder({ currentUser, projects, showToast, onCreateAccountingRequest }) {
+export default function MaterialOrder({ currentUser, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest }) {
     const [view, setView] = useState('list'); // 'list', 'create', 'detail'
     const [orders, setOrders] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -141,6 +141,25 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
     created_by TEXT
 );`;
+
+    const getMatchedRequest = (order) => {
+        if (!dnttList || dnttList.length === 0) return null;
+        return dnttList.find(d => {
+            if (d.doc_type !== 'Đơn Vật Tư') return false;
+            try {
+                const parsed = JSON.parse(d.reason);
+                if (parsed.material_order_id && parsed.material_order_id === order.id) return true;
+                
+                // Fallback matching
+                return d.project_name === order.project_name && 
+                       d.recipient === order.recipient && 
+                       parsed.date === order.order_date &&
+                       parsed.items?.length > 0;
+            } catch (e) {
+                return false;
+            }
+        }) || null;
+    };
 
     const fetchOrders = async () => {
         setIsLoading(true);
@@ -316,7 +335,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             }
 
             // Tự động chuyển tiếp đơn hàng vật tư sang cho kế toán hạch toán
-            if (onCreateAccountingRequest && !formData.id) {
+            if ((onCreateAccountingRequest || onUpdateAccountingRequest)) {
                 const itemsList = [];
                 formData.categories.forEach(cat => {
                     cat.items.forEach(it => {
@@ -347,10 +366,16 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             project: formData.project_name,
                             paymentMethod: 'chuyen_khoan',
                             orderPhase: formData.order_phase,
+                            material_order_id: formData.id,
                             items: itemsList
                         })
                     };
-                    await onCreateAccountingRequest(dnttPayload);
+                    
+                    if (onUpdateAccountingRequest && formData.id) {
+                        await onUpdateAccountingRequest(formData.id, dnttPayload);
+                    } else if (onCreateAccountingRequest) {
+                        await onCreateAccountingRequest(dnttPayload);
+                    }
                 }
             }
 
@@ -759,7 +784,12 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
         const matchesSearch = o.project_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               o.order_phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               o.recipient.toLowerCase().includes(searchTerm.toLowerCase());
-        return matchesProject && matchesSearch;
+        
+        // Hide orders whose DNTT was deleted
+        const req = getMatchedRequest(o);
+        const isDeleted = dnttList && dnttList.length > 0 && req === null && o.id && !o.id.toString().startsWith('local_');
+
+        return matchesProject && matchesSearch && !isDeleted;
     });
 
     return (
@@ -859,16 +889,25 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 const itemCount = Array.isArray(order.items) 
                                     ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
                                     : 0;
+                                const req = getMatchedRequest(order);
+                                const isRejected = req && req.status === 'Rejected';
                                 return (
                                     <div 
                                         key={order.id} 
-                                        className="bg-white rounded-3xl shadow-sm border border-slate-200 p-6 flex flex-col justify-between hover:shadow-md hover:border-blue-300 transition-all duration-300 group"
+                                        className={`bg-white rounded-3xl shadow-sm border ${isRejected ? 'border-red-300 bg-red-50/30' : 'border-slate-200'} p-6 flex flex-col justify-between hover:shadow-md hover:border-blue-300 transition-all duration-300 group`}
                                     >
                                         <div className="space-y-4">
                                             <div className="flex justify-between items-start">
-                                                <span className="px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black uppercase rounded-lg border border-blue-100 tracking-wider">
-                                                    {order.order_phase}
-                                                </span>
+                                                <div className="flex gap-2 items-center">
+                                                    <span className="px-3 py-1 bg-blue-50 text-blue-700 text-[10px] font-black uppercase rounded-lg border border-blue-100 tracking-wider">
+                                                        {order.order_phase}
+                                                    </span>
+                                                    {isRejected && (
+                                                        <span className="px-3 py-1 bg-red-100 text-red-700 text-[10px] font-black uppercase rounded-lg border border-red-200 tracking-wider">
+                                                            Bị Từ Chối
+                                                        </span>
+                                                    )}
+                                                </div>
                                                 <span className="text-xs text-slate-400 font-mono">
                                                     {formatDateVN(order.order_date)}
                                                 </span>
@@ -1508,7 +1547,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 disabled={isLoading} 
                                 className="bg-blue-600 text-white hover:bg-blue-700 font-black py-3.5 px-8 rounded-2xl flex-1 shadow-lg shadow-blue-600/20 hover:-translate-y-0.5 transition flex items-center justify-center gap-2"
                             >
-                                <Save size={18} /> LƯU ĐƠN ĐẶT HÀNG
+                                <Save size={18} /> {getMatchedRequest(formData)?.status === 'Rejected' ? 'ĐẶT LẠI ĐƠN HÀNG' : 'LƯU ĐƠN ĐẶT HÀNG'}
                             </button>
                         </div>
                     </form>

@@ -983,6 +983,58 @@ export default function Home() {
         }
     };
 
+    const handleUpdateAccountingRequest = async (orderId, dnttPayload) => {
+        setIsLoading(true);
+        try {
+            // Find existing request
+            const { data: existing } = await supabase.from('approval_requests')
+                .select('*')
+                .eq('project_name', dnttPayload.project_name)
+                .eq('recipient', dnttPayload.recipient)
+                .eq('doc_type', 'Đơn Vật Tư');
+
+            let targetId = null;
+            if (existing && existing.length > 0) {
+                // Try to find the one matching orderId in reason
+                const match = existing.find(e => {
+                    try {
+                        const parsed = JSON.parse(e.reason);
+                        return parsed.material_order_id === orderId || parsed.orderPhase === JSON.parse(dnttPayload.reason).orderPhase;
+                    } catch(err) {
+                        return false;
+                    }
+                });
+                if (match) targetId = match.id;
+            }
+
+            if (targetId) {
+                const { error } = await supabase.from('approval_requests').update({
+                    ...dnttPayload,
+                    status: 'Waiting QS', // Reset status when edited
+                    created_by: currentUser.username
+                }).eq('id', targetId);
+                if (error) throw error;
+                showToast('Đã cập nhật lại yêu cầu phê duyệt!');
+                logActivity('Sửa', 'Đề nghị thanh toán', `Sửa đơn đặt hàng vật tư: ${dnttPayload.doc_type}`, dnttPayload.project_name);
+            } else {
+                // If not found, create new
+                const { error } = await supabase.from('approval_requests').insert([{
+                    ...dnttPayload,
+                    created_by: currentUser.username
+                }]);
+                if (error) throw error;
+                showToast('Đơn đặt hàng đã được chuyển sang kế toán hạch toán!');
+                logActivity('Thêm', 'Đề nghị thanh toán', `Chuyển đơn đặt hàng sang kế toán: ${dnttPayload.doc_type}`, dnttPayload.project_name);
+            }
+            fetchData();
+        } catch (error) {
+            console.error('Error updating accounting request:', error);
+            showToast('Lỗi khi cập nhật yêu cầu phê duyệt!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleAddDebt = async (debtPayload) => {
         setIsLoading(true);
         try {
@@ -1389,17 +1441,19 @@ export default function Home() {
 
                 {activeTab === 'materials' && (
                     <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
-                        <div className="flex gap-4 border-b">
+                        <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm">
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
                         </div>
                         {materialSubTab === 'order' ? (
-                            <MaterialOrder 
-                                currentUser={currentUser}
-                                projects={allowedProjects}
-                                showToast={showToast}
-                                onCreateAccountingRequest={handleCreateAccountingRequest}
-                            />
+                                <MaterialOrder 
+                                    currentUser={currentUser}
+                                    projects={allowedProjects}
+                                    showToast={showToast}
+                                    onCreateAccountingRequest={handleCreateAccountingRequest}
+                                    dnttList={allowedDnttList}
+                                    onUpdateAccountingRequest={handleUpdateAccountingRequest}
+                                />
                         ) : (
                             <MaterialOrderManager 
                                 currentUser={currentUser}
