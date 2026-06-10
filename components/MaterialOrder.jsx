@@ -789,7 +789,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
         const req = getMatchedRequest(o);
         const isDeleted = dnttList && dnttList.length > 0 && req === null && o.id && !o.id.toString().startsWith('local_');
 
-        return matchesProject && matchesSearch && !isDeleted;
+        // Hide successfully placed orders (only show Rejected or Draft)
+        const isPlaced = req && req.status !== 'Rejected';
+
+        return matchesProject && matchesSearch && !isDeleted && !isPlaced;
     });
 
     return (
@@ -961,7 +964,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                                 >
                                                     <Edit3 size={18} />
                                                 </button>
-                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                {(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'KẾ TOÁN' || currentUser?.department?.toUpperCase() === 'KẾ TOÁN') && (
                                                     <button 
                                                         onClick={() => handleDelete(order.id)}
                                                         className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition"
