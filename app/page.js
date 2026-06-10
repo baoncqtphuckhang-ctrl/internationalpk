@@ -1166,13 +1166,13 @@ export default function Home() {
                 const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
                 
                 // Lấy giá trị HSTT duy nhất cho đợt này (từ bản ghi mới nhất có actual_received_amount)
-                let phaseHstt = 0;
+                let phaseHstt = undefined;
                 const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
                 for (const inv of sortedInvoices) {
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
                                 phaseHstt = Number(parsed.actual_received_amount) || 0;
                                 break; // Chỉ lấy giá trị mới nhất
                             }
@@ -1185,7 +1185,7 @@ export default function Home() {
                 if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
                     pExpected = Number(advanceValue) || 0;
                 } else {
-                    pExpected = phaseHstt > 0 
+                    pExpected = phaseHstt !== undefined 
                         ? phaseHstt 
                         : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
                 }
@@ -1525,8 +1525,8 @@ export default function Home() {
                                                             if (inv.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inv.note);
-                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                        expectedForPhase = Number(parsed.actual_received_amount);
+                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                        expectedForPhase = Number(parsed.actual_received_amount) || 0;
                                                                         break;
                                                                     }
                                                                 } catch(e) {}
@@ -1543,8 +1543,8 @@ export default function Home() {
                                                             if (inv.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inv.note);
-                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                        expectedForPhase = Number(parsed.actual_received_amount);
+                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                        expectedForPhase = Number(parsed.actual_received_amount) || 0;
                                                                         break;
                                                                     }
                                                                 } catch(e) {}
@@ -1643,8 +1643,8 @@ export default function Home() {
                                                                                 if (inv.note) {
                                                                                     try {
                                                                                         const parsed = JSON.parse(inv.note);
-                                                                                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                                            expected = Number(parsed.actual_received_amount);
+                                                                                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                                                                            expected = Number(parsed.actual_received_amount) || 0;
                                                                                             break;
                                                                                         }
                                                                                     } catch(e) {}

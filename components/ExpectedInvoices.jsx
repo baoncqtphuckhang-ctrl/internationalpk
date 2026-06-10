@@ -297,7 +297,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
                 const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
                 
-                let phaseHstt = 0;
+                let phaseHstt = undefined;
                 let invoice_no = '';
                 let invoice_date = '';
                 let voucher_nos = [];
@@ -314,7 +314,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
                                 phaseHstt = Number(parsed.actual_received_amount) || 0;
                                 if (inv.invoice_no) invoice_no = inv.invoice_no;
                                 if (inv.invoice_date || inv.date) invoice_date = inv.invoice_date || inv.date;
@@ -328,7 +328,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
                     pExpected = Number(advanceValue) || 0;
                 } else {
-                    pExpected = phaseHstt > 0 
+                    pExpected = phaseHstt !== undefined 
                         ? phaseHstt 
                         : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
                 }
@@ -339,7 +339,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (i.note) {
                         try {
                             const parsed = JSON.parse(i.note);
-                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
                                 actual = Number(parsed.actual_received_amount) || 0;
                             }
                         } catch(e) {}

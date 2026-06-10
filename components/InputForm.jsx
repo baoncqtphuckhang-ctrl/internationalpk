@@ -152,15 +152,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
                                 expected = Number(parsed.actual_received_amount) || 0;
                                 break;
                             }
                         } catch(e) {}
                     }
-                }
-                if (expected === 0) {
-                    expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
                 }
             }
             
@@ -204,16 +201,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 if (inv.note) {
                     try {
                         const parsed = JSON.parse(inv.note);
-                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
+                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
                             expected = Number(parsed.actual_received_amount) || 0;
                             break; // Chỉ lấy giá trị mới nhất
                         }
                     } catch(e) {}
                 }
-            }
-            // Nếu không có HSTT, dùng tổng post_tax_amount
-            if (expected === 0) {
-                expected = invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
             }
         }
         
