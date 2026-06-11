@@ -264,7 +264,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             if (!formData.post_tax_amount || formData.post_tax_amount <= 0) newErrors.post_tax_amount = 'Số tiền thu phải lớn hơn 0';
         } else if (type === 'INCOME_REAL') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
-            if (!formData.actual_received_amount || formData.actual_received_amount <= 0) newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận';
+            
+            const valReal = Number(formData.actual_received_amount) || 0;
+            const valDed = Number(formData.deduction_amount) || 0;
+            if (valReal <= 0 && valDed <= 0) {
+                newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận hoặc cấn trừ';
+            }
             
             if (selectedPhaseStats && selectedPhaseStats.expected > 0) {
                 let originalRealAmount = 0;
