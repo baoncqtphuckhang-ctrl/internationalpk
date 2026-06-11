@@ -909,6 +909,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                     actAmt = Number(p.actual_received_amount) || 0;
                                                                     dedAmt = Number(p.deduction_amount) || 0;
                                                                     text = p.text !== undefined ? p.text : inc.note;
+                                                                    // Fix double stringified JSON (nội dung tùm lum)
+                                                                    if (typeof text === 'string' && text.startsWith('{')) {
+                                                                        try {
+                                                                            const p2 = JSON.parse(text);
+                                                                            if (p2.text !== undefined) text = p2.text;
+                                                                        } catch(e) {}
+                                                                    }
                                                                 } catch(e) {}
                                                             }
                                                             const isEditingThis = editData && editData.id === inc.id;
@@ -921,7 +928,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                     <td className="p-3 font-black text-emerald-600 text-right">{formatCurrency(actAmt)} VNĐ</td>
                                                                     <td className="p-3 font-black text-amber-600 text-right">{dedAmt > 0 ? formatCurrency(dedAmt) + ' VNĐ' : '-'}</td>
                                                                     <td className="p-3 text-slate-600">
-                                                                        <div className="line-clamp-2" title={text}>{text}</div>
+                                                                        <div className="line-clamp-2 break-all" title={text}>{text}</div>
                                                                     </td>
                                                                     <td className="p-3 text-center">
                                                                         <div className="flex items-center justify-center gap-2">
