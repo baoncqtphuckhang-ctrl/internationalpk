@@ -339,8 +339,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (i.note) {
                         try {
                             const parsed = JSON.parse(i.note);
-                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                actual = Number(parsed.actual_received_amount) || 0;
+                            if (parsed && typeof parsed === 'object') {
+                                const act = Number(parsed.actual_received_amount) || 0;
+                                const ded = Number(parsed.deduction_amount) || 0;
+                                actual = act + ded;
                             }
                         } catch(e) {}
                     }

@@ -59,9 +59,9 @@ export default function CustomerDebts({ incomes, projects }) {
                 try {
                     const parsed = JSON.parse(inc.note);
                     if (parsed && typeof parsed === 'object') {
-                        if (parsed.actual_received_amount) {
-                            actual = parseFloat(parsed.actual_received_amount) || 0;
-                        }
+                        const act = parseFloat(parsed.actual_received_amount) || 0;
+                        const ded = parseFloat(parsed.deduction_amount) || 0;
+                        actual = act + ded;
                         if (parsed.invoice_no && !grouped[key].invoiceNo.includes(parsed.invoice_no)) {
                             grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
                         }
