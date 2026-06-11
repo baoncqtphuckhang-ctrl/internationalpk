@@ -7,7 +7,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import RecipientInput from './RecipientInput';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
-export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser }) {
+export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
     const [isCustomAccount, setIsCustomAccount] = useState(false);
@@ -27,7 +27,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         vat_rate: 8,
         vat_amount: 0,
         post_tax_amount: 0,
+        post_tax_amount: 0,
         actual_received_amount: 0,
+        deduction_amount: 0,
         creator: ''
     });
 
@@ -92,6 +94,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     }
                     return 0;
                 })(),
+                deduction_amount: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && 'deduction_amount' in parsed) {
+                                return parsed.deduction_amount;
+                            }
+                        } catch(e) {}
+                    }
+                    return 0;
+                })(),
                 invoice_no: (() => {
                     if (editData.note) {
                         try {
@@ -135,53 +148,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             });
         }
         
-        const allPhases = Array.from(phases);
-        const proj = projects.find(p => p.name === formData.project_name);
-        
-        return allPhases.filter(p => {
-            // Keep if we are editing it
-            if (editData && editData.phase === p) return true;
-            
-            const phaseIncs = incomes ? incomes.filter(i => i.project_name === formData.project_name && i.phase === p) : [];
-            let expected = 0;
-            
-            if (p === 'Tạm ứng') {
-                expected = Number(proj?.advance_value) || 0;
-            } else {
-                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
-                const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
-                for (const inv of sortedInvoices) {
-                    if (inv.note) {
-                        try {
-                            const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                expected = Number(parsed.actual_received_amount) || 0;
-                                break;
-                            }
-                        } catch(e) {}
-                    }
-                }
-            }
-            
-            const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
-                let actual = 0;
-                if (i.note) {
-                    try {
-                        const parsed = JSON.parse(i.note);
-                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                            actual = Number(parsed.actual_received_amount) || 0;
-                        }
-                    } catch(e) {}
-                }
-                return sum + actual;
-            }, 0);
-            
-            if (expected > 0 && received >= expected) {
-                return false;
-            }
-            return true;
-        });
-    }, [formData.project_name, incomes, editData, projects]);
+        return Array.from(phases);
+    }, [formData.project_name, incomes]);
 
     const selectedPhaseStats = useMemo(() => {
         if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;
@@ -217,8 +185,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             if (i.note) {
                 try {
                     const parsed = JSON.parse(i.note);
-                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                        actual = Number(parsed.actual_received_amount) || 0;
+                    if (parsed && typeof parsed === 'object') {
+                        const act = Number(parsed.actual_received_amount) || 0;
+                        const ded = Number(parsed.deduction_amount) || 0;
+                        actual = act + ded;
                     }
                 } catch(e) {}
             }
@@ -302,15 +272,16 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     if (editData.note) {
                         try {
                             const p = JSON.parse(editData.note);
-                            if (p && typeof p === 'object' && p.actual_received_amount) {
-                                originalRealAmount = Number(p.actual_received_amount) || 0;
+                            if (p && typeof p === 'object') {
+                                originalRealAmount = (Number(p.actual_received_amount) || 0) + (Number(p.deduction_amount) || 0);
                             }
                         } catch(e) {}
                     }
                 }
                 const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received + originalRealAmount;
-                if (formData.actual_received_amount > maxAllowed) {
-                    newErrors.actual_received_amount = `Vượt quá giới hạn (tối đa: ${formatCurrency(maxAllowed)})`;
+                const newTotal = (Number(formData.actual_received_amount) || 0) + (Number(formData.deduction_amount) || 0);
+                if (newTotal > maxAllowed) {
+                    newErrors.actual_received_amount = `Tổng thu và cấn trừ vượt quá giới hạn (tối đa còn lại: ${formatCurrency(maxAllowed)})`;
                 }
             }
         } else if (type === 'OFFICE_INCOME') {
@@ -414,7 +385,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             vat_rate: 8,
             vat_amount: 0,
             post_tax_amount: 0,
-            actual_received_amount: 0
+            actual_received_amount: 0,
+            deduction_amount: 0
         }));
         setIsCustomCode(false);
     };
@@ -884,6 +856,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     />
                                     {errorMsg('actual_received_amount')}
                                 </div>
+                                {/* Cấn trừ trực tiếp */}
+                                <div>
+                                    <label className={labelCls}>Cấn trừ trực tiếp (Nếu có)</label>
+                                    <input
+                                        type="text"
+                                        value={formData.deduction_amount ? formatCurrency(formData.deduction_amount) : ''}
+                                        onChange={(e) => handleChange('deduction_amount', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập giá trị cấn trừ..."
+                                        className={`${inputCls('deduction_amount')} font-bold text-amber-600`}
+                                    />
+                                </div>
                                 {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && (
                                     <div className="md:col-span-2 mt-4">
                                         <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lịch sử các lần thu tiền (Thực tế) đợt này</label>
@@ -893,7 +876,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                     <tr>
                                                         <th className="p-3 font-bold">Ngày Thanh Toán</th>
                                                         <th className="p-3 font-bold text-right">Số Tiền Thực Nhận</th>
+                                                        <th className="p-3 font-bold text-right text-amber-700">Tiền Cấn Trừ</th>
                                                         <th className="p-3 font-bold">Diễn Giải / Nội Dung</th>
+                                                        <th className="p-3 font-bold text-center">Thao tác</th>
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -906,17 +891,19 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                         ).sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
                                                         if (historyReals.length === 0) {
-                                                            return <tr><td colSpan="3" className="p-4 text-center text-slate-500 italic">Chưa có khoản thu thực tế nào được ghi nhận</td></tr>;
+                                                            return <tr><td colSpan="5" className="p-4 text-center text-slate-500 italic">Chưa có khoản thu thực tế nào được ghi nhận</td></tr>;
                                                         }
 
                                                         return historyReals.map((inc) => {
                                                             let actAmt = 0;
+                                                            let dedAmt = 0;
                                                             let text = inc.note;
                                                             if (inc.note) {
                                                                 try {
                                                                     const p = JSON.parse(inc.note);
                                                                     actAmt = Number(p.actual_received_amount) || 0;
-                                                                    text = p.text || inc.note;
+                                                                    dedAmt = Number(p.deduction_amount) || 0;
+                                                                    text = p.text !== undefined ? p.text : inc.note;
                                                                 } catch(e) {}
                                                             }
                                                             const isEditingThis = editData && editData.id === inc.id;
@@ -927,8 +914,33 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                         {isEditingThis && <span className="ml-2 text-[10px] bg-amber-200 text-amber-800 px-2 py-0.5 rounded-full font-bold">Đang sửa</span>}
                                                                     </td>
                                                                     <td className="p-3 font-black text-emerald-600 text-right">{formatCurrency(actAmt)} VNĐ</td>
+                                                                    <td className="p-3 font-black text-amber-600 text-right">{dedAmt > 0 ? formatCurrency(dedAmt) + ' VNĐ' : '-'}</td>
                                                                     <td className="p-3 text-slate-600">
                                                                         <div className="line-clamp-2" title={text}>{text}</div>
+                                                                    </td>
+                                                                    <td className="p-3 text-center">
+                                                                        <div className="flex items-center justify-center gap-2">
+                                                                            {onEditIncome && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => onEditIncome(inc)}
+                                                                                    className="text-blue-500 hover:text-blue-700 p-1 font-bold text-[13px]"
+                                                                                    title="Sửa"
+                                                                                >
+                                                                                    Sửa
+                                                                                </button>
+                                                                            )}
+                                                                            {onDeleteIncome && (
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => onDeleteIncome(inc.id)}
+                                                                                    className="text-red-500 hover:text-red-700 p-1"
+                                                                                    title="Xóa"
+                                                                                >
+                                                                                    <Trash2 size={16} />
+                                                                                </button>
+                                                                            )}
+                                                                        </div>
                                                                     </td>
                                                                 </tr>
                                                             );

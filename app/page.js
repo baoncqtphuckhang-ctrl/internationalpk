@@ -25,7 +25,7 @@ import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import Trash from '@/components/Trash';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
-import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
 const ROLES = {
@@ -318,6 +318,19 @@ export default function Home() {
     }, [currentUser]);
 
     const [editTransaction, setEditTransaction] = useState(null);
+    const [incomeTableCols, setIncomeTableCols] = useState({
+        ngayHd: true,
+        ngayTt: true,
+        dot: true,
+        soHd: true,
+        truocThue: true,
+        vat: true,
+        sauThue: true,
+        thucNhanHstt: true,
+        canTru: true,
+        thucNhanThucTe: true,
+        thucNhanGomCanTru: true
+    });
 
     const [isPasting, setIsPasting] = useState(false);
     const [pasteText, setPasteText] = useState('');
@@ -380,7 +393,7 @@ export default function Home() {
                     vat_amount: isReal ? 0 : (data.vat_amount || 0),
                     post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0),
                     is_paid: isReal ? true : false,
-                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }),
+                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }),
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
@@ -738,7 +751,8 @@ export default function Home() {
             }
 
             showToast('Đã chuyển khoản chi và công nợ liên quan vào thùng rác!');
-            logActivity('Xóa', 'Chi phí', `Xóa giao dịch chi (ID: ${id})`);
+            const amount = txData ? txData.debit : 0;
+            logActivity('Xóa', 'Chi phí', `Xóa giao dịch chi (ID: ${id}) - Số tiền: ${new Intl.NumberFormat('vi-VN').format(amount)}`, txData ? txData.project_name : null);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu!', 'error');
@@ -750,11 +764,23 @@ export default function Home() {
     const handleDeleteIncome = async (id) => {
         setIsLoading(true);
         try {
+            const incomeToTrash = incomes.find(i => i.id === id);
+            const projectName = incomeToTrash ? incomeToTrash.project_name : null;
+            const phase = incomeToTrash ? incomeToTrash.phase : '';
+
             await moveToTrash('incomes', 'id', id);
             const { error } = await supabase.from('incomes').delete().eq('id', id);
             if (error) throw error;
             showToast('Đã chuyển khoản thu vào thùng rác!');
-            logActivity('Xóa', 'Thu tiền', `Xóa giao dịch thu (ID: ${id})`);
+            let amountStr = 0;
+            if (incomeToTrash) {
+                if (incomeToTrash.post_tax_amount === 0 && incomeToTrash.amount === 0) {
+                    try { amountStr = JSON.parse(incomeToTrash.note || '{}').actual_received_amount || 0; } catch(e) {}
+                } else {
+                    amountStr = incomeToTrash.post_tax_amount || incomeToTrash.amount || 0;
+                }
+            }
+            logActivity('Xóa', 'Thu tiền', `Xóa giao dịch thu ${phase ? `đợt ${phase} ` : ''}(ID: ${id}) - Số tiền: ${new Intl.NumberFormat('vi-VN').format(amountStr)}`, projectName);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa dữ liệu thu!', 'error');
@@ -1403,7 +1429,7 @@ export default function Home() {
                 
                 {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} />}
                 
-                {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} />}
+                {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} />}
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
@@ -1515,6 +1541,13 @@ export default function Home() {
                                             }} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
                                                 <Printer size={14} /> In
                                             </button>
+                                            {Object.values(incomeTableCols).some(v => !v) && (
+                                                <button onClick={() => setIncomeTableCols({
+                                                    ngayHd: true, ngayTt: true, dot: true, soHd: true, truocThue: true, vat: true, sauThue: true, thucNhanHstt: true, canTru: true, thucNhanThucTe: true, thucNhanGomCanTru: true
+                                                })} className="bg-slate-700 hover:bg-slate-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
+                                                    <Eye size={14} /> Khôi phục cột
+                                                </button>
+                                            )}
                                             <button onClick={() => exportTableToExcel('income-table', `Chi_tiet_thu_${selectedProject}`)} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
                                                 <Download size={14} /> Xuất Excel
                                             </button>
@@ -1523,17 +1556,19 @@ export default function Home() {
                                     <div className="overflow-x-auto">
                                         <table id="income-table" className="w-full text-left min-w-[600px]">
                                             <thead>
-                                                <tr className="bg-slate-50 border-b">
-                                                    <th className="p-3 font-bold text-slate-700">Ngày HĐ</th>
-                                                    <th className="p-3 font-bold text-slate-700">Ngày TT</th>
-                                                    <th className="p-3 font-bold text-slate-700">Đợt</th>
-                                                    <th className="p-3 font-bold text-slate-700">Số HĐ</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">Trước thuế</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">VAT</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">Sau thuế</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-right">Thực nhận theo HSTT</th>
-                                                    <th className="p-3 font-bold text-slate-700 text-center w-64">Thực nhận thực tế</th>
-                                                    {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Thao tác</th>}
+                                                <tr className="bg-slate-50 border-b whitespace-nowrap">
+                                                    {incomeTableCols.ngayHd && <th className="p-3 font-bold text-slate-700 text-center relative group">Ngày HĐ<button onClick={() => setIncomeTableCols(prev => ({...prev, ngayHd: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.ngayTt && <th className="p-3 font-bold text-slate-700 text-center relative group">Ngày TT<button onClick={() => setIncomeTableCols(prev => ({...prev, ngayTt: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.dot && <th className="p-3 font-bold text-slate-700 text-center relative group">Đợt<button onClick={() => setIncomeTableCols(prev => ({...prev, dot: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.soHd && <th className="p-3 font-bold text-slate-700 text-center relative group">Số HĐ<button onClick={() => setIncomeTableCols(prev => ({...prev, soHd: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.truocThue && <th className="p-3 font-bold text-slate-700 text-right relative group">Trước thuế<button onClick={() => setIncomeTableCols(prev => ({...prev, truocThue: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.vat && <th className="p-3 font-bold text-slate-700 text-right relative group">VAT<button onClick={() => setIncomeTableCols(prev => ({...prev, vat: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.sauThue && <th className="p-3 font-bold text-slate-700 text-right relative group">Sau thuế<button onClick={() => setIncomeTableCols(prev => ({...prev, sauThue: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.thucNhanHstt && <th className="p-3 font-bold text-slate-700 text-right relative group">HSTT<button onClick={() => setIncomeTableCols(prev => ({...prev, thucNhanHstt: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.canTru && <th className="p-3 font-bold text-slate-700 text-right text-amber-600 relative group">Cấn trừ<button onClick={() => setIncomeTableCols(prev => ({...prev, canTru: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.thucNhanThucTe && <th className="p-3 font-bold text-slate-700 text-center relative group">Thực tế<button onClick={() => setIncomeTableCols(prev => ({...prev, thucNhanThucTe: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {incomeTableCols.thucNhanGomCanTru && <th className="p-3 font-bold text-slate-700 text-center w-64 relative group">TN HSTT<button onClick={() => setIncomeTableCols(prev => ({...prev, thucNhanGomCanTru: false}))} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded" title="Ẩn cột này"><EyeOff size={14} /></button></th>}
+                                                    {(canManageSystem || role === 'ADMIN') && <th className="p-3 font-bold text-slate-700 text-center">Fix</th>}
                                                 </tr>
                                             </thead>
                                             <tbody>
@@ -1552,7 +1587,7 @@ export default function Home() {
                                                     if (uniquePhases.length === 0) {
                                                         return (
                                                             <tr>
-                                                                <td colSpan={canManageSystem || role === 'ADMIN' ? 9 : 8} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
+                                                                <td colSpan={12} className="p-4 text-center text-slate-500">Chưa có dữ liệu thu</td>
                                                             </tr>
                                                         );
                                                     }
@@ -1604,6 +1639,23 @@ export default function Home() {
                                                         return sum + expectedForPhase;
                                                     }, 0);
 
+                                                    const totalDeduction = uniquePhases.reduce((sum, phase) => {
+                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && i.post_tax_amount === 0 && i.amount === 0);
+                                                        const deductionForPhase = phaseReals.reduce((acc, inc) => {
+                                                            let val = 0;
+                                                            if (inc.note) {
+                                                                try {
+                                                                    const parsed = JSON.parse(inc.note);
+                                                                    if (parsed && typeof parsed === 'object' && parsed.deduction_amount) {
+                                                                        val = Number(parsed.deduction_amount);
+                                                                    }
+                                                                } catch(e) {}
+                                                            }
+                                                            return acc + val;
+                                                        }, 0);
+                                                        return sum + deductionForPhase;
+                                                    }, 0);
+
                                                     const totalExpected = uniquePhases.reduce((sum, phase) => {
                                                         const phaseInvs = invoiceRecords.filter(i => i.phase === phase);
                                                         const sorted = [...phaseInvs].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
@@ -1633,14 +1685,33 @@ export default function Home() {
                                                             if (inc.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inc.note);
-                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                        val = Number(parsed.actual_received_amount);
+                                                                    if (parsed && typeof parsed === 'object') {
+                                                                        const act = Number(parsed.actual_received_amount) || 0;
+                                                                        const ded = Number(parsed.deduction_amount) || 0;
+                                                                        val = act + ded;
                                                                     }
                                                                 } catch(e) {}
                                                             }
                                                             return s + val;
                                                         }, 0);
                                                         return sum + realSum;
+                                                    }, 0);
+                                                    
+                                                    const totalRealCash = uniquePhases.reduce((sum, phase) => {
+                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                        const realCashSum = realRows.reduce((s, inc) => {
+                                                            let val = 0;
+                                                            if (inc.note) {
+                                                                try {
+                                                                    const parsed = JSON.parse(inc.note);
+                                                                    if (parsed && typeof parsed === 'object') {
+                                                                        val = Number(parsed.actual_received_amount) || 0;
+                                                                    }
+                                                                } catch(e) {}
+                                                            }
+                                                            return s + val;
+                                                        }, 0);
+                                                        return sum + realCashSum;
                                                     }, 0);
 
                                                     const totalCount = invoiceRecords.length;
@@ -1649,12 +1720,13 @@ export default function Home() {
                                                         <>
                                                             {phaseRows.map(i => (
                                                                 <tr key={i.id} className={`border-b hover:bg-slate-50 ${i._isRealOnly ? 'bg-amber-50/50' : ''}`}>
-                                                                    <td className="p-3">{i._isRealOnly ? '-' : formatDateVN(i.date)}</td>
-                                                                    <td className="p-3 font-bold text-emerald-600">{
-                                                                        i._phaseReals && i._phaseReals.length > 0 
-                                                                            ? (() => {
-                                                                                const dateMap = {};
-                                                                                i._phaseReals.forEach(r => {
+                                                                    {incomeTableCols.ngayHd && <td className="p-3 text-center">{i._isRealOnly ? '-' : formatDateVN(i.date)}</td>}
+                                                                    {incomeTableCols.ngayTt && <td className="p-3 text-center">
+                                                                        <div className="flex flex-col items-center gap-1 font-bold text-emerald-600">
+                                                                            {i._phaseReals && i._phaseReals.length > 0 
+                                                                                ? (() => {
+                                                                                    const dateMap = {};
+                                                                                    i._phaseReals.forEach(r => {
                                                                                     const dt = formatDateVN(r.date);
                                                                                     let amt = 0;
                                                                                     if (r.note) {
@@ -1668,13 +1740,20 @@ export default function Home() {
                                                                                     if (dt) {
                                                                                         dateMap[dt] = (dateMap[dt] || 0) + amt;
                                                                                     }
-                                                                                });
-                                                                                return Object.entries(dateMap).map(([dt, amt]) => `${dt} (${formatCurrency(amt)})`).join(', ');
-                                                                            })()
-                                                                            : '-'
-                                                                    }</td>
-                                                                    <td className="p-3 font-bold text-slate-700">{i.phase}</td>
-                                                                    <td className="p-3 font-bold text-slate-600">{(() => {
+                                                                                    });
+                                                                                    return Object.entries(dateMap).map(([dt, amt], idx) => (
+                                                                                        <div key={idx} className="flex flex-col items-center">
+                                                                                            <span>{dt}</span>
+                                                                                            <span className="text-[10px] opacity-80 text-emerald-700">({formatCurrency(amt)})</span>
+                                                                                        </div>
+                                                                                    ));
+                                                                                })()
+                                                                                : '-'
+                                                                            }
+                                                                        </div>
+                                                                    </td>}
+                                                                    {incomeTableCols.dot && <td className="p-3 font-bold text-slate-700 text-center">{i.phase}</td>}
+                                                                    {incomeTableCols.soHd && <td className="p-3 font-bold text-slate-600 text-center">{(() => {
                                                                         if (i._isRealOnly) return '-';
                                                                         if (i.note) {
                                                                             try {
@@ -1683,11 +1762,11 @@ export default function Home() {
                                                                             } catch(e) {}
                                                                         }
                                                                         return '-';
-                                                                    })()}</td>
-                                                                    <td className="p-3 text-right font-black text-slate-600">{i._isRealOnly ? '-' : formatCurrency(i.amount)}</td>
-                                                                    <td className="p-3 text-right font-black text-slate-500">{i._isRealOnly ? '-' : formatCurrency(i.vat_amount || 0)}</td>
-                                                                    <td className="p-3 text-right font-black text-blue-600">{i._isRealOnly ? '-' : formatCurrency(i.post_tax_amount || i.amount)}</td>
-                                                                    <td className="p-3 text-right font-black text-emerald-600">
+                                                                    })()}</td>}
+                                                                    {incomeTableCols.truocThue && <td className="p-3 text-right font-black text-slate-600">{i._isRealOnly ? '-' : formatCurrency(i.amount)}</td>}
+                                                                    {incomeTableCols.vat && <td className="p-3 text-right font-black text-slate-500">{i._isRealOnly ? '-' : formatCurrency(i.vat_amount || 0)}</td>}
+                                                                    {incomeTableCols.sauThue && <td className="p-3 text-right font-black text-blue-600">{i._isRealOnly ? '-' : formatCurrency(i.post_tax_amount || i.amount)}</td>}
+                                                                    {incomeTableCols.thucNhanHstt && <td className="p-3 text-right font-black text-emerald-600">
                                                                         {(() => {
                                                                             if (i._isRealOnly) return '-';
                                                                             let hstt = 0;
@@ -1701,9 +1780,27 @@ export default function Home() {
                                                                             }
                                                                             return hstt > 0 ? formatCurrency(hstt) : '-';
                                                                         })()}
-                                                                    </td>
-                                                                    <td className="p-3 text-center">
+                                                                    </td>}
+                                                                    {incomeTableCols.canTru && <td className="p-3 text-right font-black text-amber-600">
                                                                         {(() => {
+                                                                            let deduction = 0;
+                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            deduction = realRows.reduce((acc, inc) => {
+                                                                                let val = 0;
+                                                                                if (inc.note) {
+                                                                                    try {
+                                                                                        const parsed = JSON.parse(inc.note);
+                                                                                        if (parsed && typeof parsed === 'object' && parsed.deduction_amount) {
+                                                                                            val = Number(parsed.deduction_amount);
+                                                                                        }
+                                                                                    } catch(e) {}
+                                                                                }
+                                                                                return acc + val;
+                                                                            }, 0);
+                                                                            return deduction > 0 ? formatCurrency(deduction) : '-';
+                                                                        })()}
+                                                                    </td>}
+                                                                    {(() => {
                                                                             // Bug 2 fix: Lấy HSTT duy nhất cho đợt này
                                                                             let expected = 0;
                                                                             const phaseInvoices = i._allPhaseInvoices || [i];
@@ -1726,13 +1823,28 @@ export default function Home() {
                                                                             }
                                                                             
                                                                             const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            const actualCash = realRows.reduce((sum, inc) => {
+                                                                                let val = 0;
+                                                                                if (inc.note) {
+                                                                                    try {
+                                                                                        const parsed = JSON.parse(inc.note);
+                                                                                        if (parsed && typeof parsed === 'object') {
+                                                                                            val = Number(parsed.actual_received_amount) || 0;
+                                                                                        }
+                                                                                    } catch(e) {}
+                                                                                }
+                                                                                return sum + val;
+                                                                            }, 0);
+                                                                            
                                                                             const actual = realRows.reduce((sum, inc) => {
                                                                                 let val = 0;
                                                                                 if (inc.note) {
                                                                                     try {
                                                                                         const parsed = JSON.parse(inc.note);
-                                                                                        if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                                            val = Number(parsed.actual_received_amount);
+                                                                                        if (parsed && typeof parsed === 'object') {
+                                                                                            const act = Number(parsed.actual_received_amount) || 0;
+                                                                                            const ded = Number(parsed.deduction_amount) || 0;
+                                                                                            val = act + ded;
                                                                                         }
                                                                                     } catch(e) {}
                                                                                 }
@@ -1742,19 +1854,29 @@ export default function Home() {
                                                                             const percentage = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0;
                                                                             const isFull = actual >= expected && expected > 0;
                                                                             
+                                                                            const isFullCash = actualCash >= expected && expected > 0;
+                                                                            
                                                                             return (
-                                                                                <div className="relative w-full min-w-[120px] h-7 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner">
-                                                                                    <div 
-                                                                                        className={`absolute top-0 left-0 h-full transition-all duration-500 ${isFull ? 'bg-emerald-500' : 'bg-amber-400'}`}
-                                                                                        style={{ width: `${percentage}%` }}
-                                                                                    ></div>
-                                                                                    <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wide text-slate-800 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] z-10">
-                                                                                        {formatCurrency(actual)} / {expected > 0 ? formatCurrency(expected) : '0'}
-                                                                                    </div>
-                                                                                </div>
+                                                                                <>
+                                                                                    {incomeTableCols.thucNhanThucTe && <td className="p-3 text-center">
+                                                                                        <div className={`w-full min-w-[100px] h-7 rounded-lg flex items-center justify-center text-[11px] font-black tracking-wide ${actualCash > 0 ? (isFullCash ? 'bg-emerald-500 text-white shadow-sm' : 'bg-amber-400 text-white shadow-sm') : 'bg-slate-100 text-slate-400 border border-slate-200 shadow-inner'}`}>
+                                                                                            {actualCash > 0 ? formatCurrency(actualCash) : '-'}
+                                                                                        </div>
+                                                                                    </td>}
+                                                                                    {incomeTableCols.thucNhanGomCanTru && <td className="p-3 text-center">
+                                                                                        <div className="relative w-full min-w-[120px] h-7 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shadow-inner">
+                                                                                            <div 
+                                                                                                className={`absolute top-0 left-0 h-full transition-all duration-500 ${isFull ? 'bg-emerald-500' : 'bg-amber-400'}`}
+                                                                                                style={{ width: `${percentage}%` }}
+                                                                                            ></div>
+                                                                                            <div className="absolute inset-0 flex items-center justify-center text-[11px] font-black tracking-wide text-slate-800 drop-shadow-[0_1px_1px_rgba(255,255,255,0.9)] z-10">
+                                                                                                {formatCurrency(actual)} / {expected > 0 ? formatCurrency(expected) : '0'}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </td>}
+                                                                                </>
                                                                             );
                                                                         })()}
-                                                                    </td>
                                                                     {(canManageSystem || role === 'ADMIN') && (
                                                                         <td className="p-3 text-center">
                                                                             <div className="flex items-center justify-center gap-2">
@@ -1779,18 +1901,29 @@ export default function Home() {
                                                                 </tr>
                                                             ))}
                                                             <tr className="bg-slate-200 font-bold border-t-2 border-slate-300">
-                                                                <td className="p-3 text-slate-800" colSpan={3}>TỔNG CỘNG</td>
-                                                                <td className="p-3"></td>
-                                                                <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>
-                                                                <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>
-                                                                <td className="p-3 text-right text-blue-700">{formatCurrency(totalSauThue)}</td>
-                                                                <td className="p-3 text-right text-emerald-700">{totalHstt > 0 ? formatCurrency(totalHstt) : '-'}</td>
-                                                                <td className="p-3 text-center">
-                                                                    <div className="flex items-center justify-center gap-2">
-                                                                        <span className="text-emerald-800 font-bold">{formatCurrency(totalReal)}</span>
-                                                                        <span className="text-slate-500 font-normal">/ {totalExpected > 0 ? formatCurrency(totalExpected) : '0'}</span>
+                                                                {incomeTableCols.ngayHd && <td className="p-3 text-slate-800 font-bold">TỔNG CỘNG</td>}
+                                                                {incomeTableCols.ngayTt && !incomeTableCols.ngayHd && <td className="p-3 text-slate-800 font-bold">TỔNG CỘNG</td>}
+                                                                {incomeTableCols.dot && !incomeTableCols.ngayHd && !incomeTableCols.ngayTt && <td className="p-3 text-slate-800 font-bold">TỔNG CỘNG</td>}
+                                                                {incomeTableCols.soHd && !incomeTableCols.ngayHd && !incomeTableCols.ngayTt && !incomeTableCols.dot && <td className="p-3 text-slate-800 font-bold">TỔNG CỘNG</td>}
+                                                                
+                                                                {incomeTableCols.ngayTt && incomeTableCols.ngayHd && <td className="p-3"></td>}
+                                                                {incomeTableCols.dot && (incomeTableCols.ngayHd || incomeTableCols.ngayTt) && <td className="p-3"></td>}
+                                                                {incomeTableCols.soHd && (incomeTableCols.ngayHd || incomeTableCols.ngayTt || incomeTableCols.dot) && <td className="p-3"></td>}
+
+                                                                {incomeTableCols.truocThue && <td className="p-3 text-right text-slate-800">{formatCurrency(totalTruocThue)}</td>}
+                                                                {incomeTableCols.vat && <td className="p-3 text-right text-slate-800">{formatCurrency(totalVat)}</td>}
+                                                                {incomeTableCols.sauThue && <td className="p-3 text-right text-blue-700">{formatCurrency(totalSauThue)}</td>}
+                                                                {incomeTableCols.thucNhanHstt && <td className="p-3 text-right text-emerald-700">{totalHstt > 0 ? formatCurrency(totalHstt) : '-'}</td>}
+                                                                {incomeTableCols.canTru && <td className="p-3 text-right text-amber-700">{totalDeduction > 0 ? formatCurrency(totalDeduction) : '-'}</td>}
+                                                                {incomeTableCols.thucNhanThucTe && <td className="p-3 text-center">
+                                                                    <div className={`w-full h-7 rounded-lg flex items-center justify-center text-[11px] font-black tracking-wide ${totalRealCash > 0 ? 'bg-emerald-500 text-white shadow-sm' : 'bg-slate-100 text-slate-400 border border-slate-200'}`}>
+                                                                        {totalRealCash > 0 ? formatCurrency(totalRealCash) : '-'}
                                                                     </div>
-                                                                </td>
+                                                                </td>}
+                                                                {incomeTableCols.thucNhanGomCanTru && <td className="p-3 text-center">
+                                                                    <div className="font-black text-blue-800">{formatCurrency(totalReal)} / {formatCurrency(totalExpected)}</div>
+                                                                    <div className="text-[10px] text-slate-500 uppercase">{totalExpected > 0 ? ((totalReal/totalExpected)*100).toFixed(1) : 0}% Tiến độ</div>
+                                                                </td>}
                                                                 {(canManageSystem || role === 'ADMIN') && <td className="p-3"></td>}
                                                             </tr>
                                                         </>
