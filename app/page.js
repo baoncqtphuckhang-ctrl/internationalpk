@@ -1722,31 +1722,43 @@ export default function Home() {
                                                                 <tr key={i.id} className={`border-b hover:bg-slate-50 ${i._isRealOnly ? 'bg-amber-50/50' : ''}`}>
                                                                     {incomeTableCols.ngayHd && <td className="p-3 text-center">{i._isRealOnly ? '-' : formatDateVN(i.date)}</td>}
                                                                     {incomeTableCols.ngayTt && <td className="p-3 text-center">
-                                                                        <div className="flex flex-col items-center gap-1 font-bold text-emerald-600">
+                                                                        <div className="flex flex-col items-center gap-1 font-bold">
                                                                             {i._phaseReals && i._phaseReals.length > 0 
                                                                                 ? (() => {
                                                                                     const dateMap = {};
                                                                                     i._phaseReals.forEach(r => {
                                                                                     const dt = formatDateVN(r.date);
-                                                                                    let amt = 0;
+                                                                                    let actAmt = 0;
+                                                                                    let dedAmt = 0;
                                                                                     if (r.note) {
                                                                                         try {
                                                                                             const parsed = JSON.parse(r.note);
-                                                                                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                                                amt = Number(parsed.actual_received_amount);
+                                                                                            if (parsed && typeof parsed === 'object') {
+                                                                                                actAmt = Number(parsed.actual_received_amount) || 0;
+                                                                                                dedAmt = Number(parsed.deduction_amount) || 0;
                                                                                             }
                                                                                         } catch(e) {}
                                                                                     }
                                                                                     if (dt) {
-                                                                                        dateMap[dt] = (dateMap[dt] || 0) + amt;
+                                                                                        if (!dateMap[dt]) dateMap[dt] = { act: 0, ded: 0 };
+                                                                                        dateMap[dt].act += actAmt;
+                                                                                        dateMap[dt].ded += dedAmt;
                                                                                     }
                                                                                     });
-                                                                                    return Object.entries(dateMap).map(([dt, amt], idx) => (
-                                                                                        <div key={idx} className="flex flex-col items-center">
-                                                                                            <span>{dt}</span>
-                                                                                            <span className="text-[10px] opacity-80 text-emerald-700">({formatCurrency(amt)})</span>
-                                                                                        </div>
-                                                                                    ));
+                                                                                    return Object.entries(dateMap).map(([dt, totals], idx) => {
+                                                                                        const hasAct = totals.act > 0;
+                                                                                        const hasDed = totals.ded > 0;
+                                                                                        let colorClass = 'text-emerald-600';
+                                                                                        if (hasDed && !hasAct) colorClass = 'text-amber-500';
+                                                                                        else if (hasAct && !hasDed) colorClass = 'text-blue-600';
+                                                                                        
+                                                                                        return (
+                                                                                            <div key={idx} className={`flex flex-col items-center ${colorClass}`}>
+                                                                                                <span>{dt}</span>
+                                                                                                <span className="text-[10px] opacity-80">({formatCurrency(totals.act)})</span>
+                                                                                            </div>
+                                                                                        );
+                                                                                    });
                                                                                 })()
                                                                                 : '-'
                                                                             }
