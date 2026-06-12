@@ -401,6 +401,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         </tbody>
                     </table>
                 </div>
+            </div>
             <ConfirmModal 
                 isOpen={confirmDelete.isOpen}
                 title="Xóa hóa đơn PDF"
