@@ -835,7 +835,7 @@ export default function Home() {
     };
 
     const handleSaveTransactionValue = async (projectName, valueStr, code, note) => {
-        const val = parseFloat(valueStr.toString().replace(/\./g, '')) || 0;
+        const val = Number(parseVietnameseNumber(valueStr)) || 0;
         const existing = transactions.find(t => t.project_name === projectName && t.code === code);
         setIsLoading(true);
         try {
@@ -862,14 +862,6 @@ export default function Home() {
 
     const handleSaveRemainingCost = async (projectName, valueStr) => {
         await handleSaveTransactionValue(projectName, valueStr, 'EXPECTED_COST', 'Chi phí còn lại (Dự trù)');
-    };
-
-    const handleSaveRecoveredAdvance = async (projectName, valueStr) => {
-        await handleSaveTransactionValue(projectName, valueStr, 'RECOVERED_ADVANCE', 'Giá trị thu hồi tạm ứng');
-    };
-
-    const handleSaveUtilityValue = async (projectName, valueStr) => {
-        await handleSaveTransactionValue(projectName, valueStr, 'UTILITY_VALUE', 'Giá trị tiện ích');
     };
 
     const handleAddDNTT = async (data) => {
@@ -1208,10 +1200,8 @@ export default function Home() {
     }, [currentUser, projects, projectDetails, role]);
 
     const allowedProjects = useMemo(() => projects.filter(p => assignedProjectNames.includes(p.name)), [projects, assignedProjectNames]);
-    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST', 'RECOVERED_ADVANCE', 'UTILITY_VALUE'].includes(t.code)), [transactions, assignedProjectNames]);
+    const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code)), [transactions, assignedProjectNames]);
     const expectedCosts = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'EXPECTED_COST'), [transactions, assignedProjectNames]);
-    const recoveredAdvances = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'RECOVERED_ADVANCE'), [transactions, assignedProjectNames]);
-    const utilityValues = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'UTILITY_VALUE'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
     const allowedPartnerDebts = useMemo(() => partnerDebts.filter(d => assignedProjectNames.includes(d.project_name)), [partnerDebts, assignedProjectNames]);
@@ -1244,14 +1234,11 @@ export default function Home() {
             const actInc = Math.round(totalSanLuong);
             const remainingCostRow = expectedCosts.find(t => t.project_name === name);
             const remainingCost = remainingCostRow ? remainingCostRow.debit : 0;
-            const recoveredAdvanceRow = recoveredAdvances.find(t => t.project_name === name);
-            const recoveredAdvance = recoveredAdvanceRow ? recoveredAdvanceRow.debit : 0;
-            const utilityValueRow = utilityValues.find(t => t.project_name === name);
-            const utilityValue = utilityValueRow ? utilityValueRow.debit : 0;
             const advanceValue = details.advanceValue || 0;
             
             let calculatedDebtToCollect = 0;
             let totalPhaseReceived = 0;
+            let totalUnreceivedPhase = 0;
             let actualAdvanceReceived = 0;
             
             const phaseData = {};
@@ -1292,8 +1279,10 @@ export default function Home() {
                     if (i.note) {
                         try {
                             const parsed = JSON.parse(i.note);
-                            if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                actual = Number(parsed.actual_received_amount) || 0;
+                            if (parsed && typeof parsed === 'object') {
+                                const act = Number(parsed.actual_received_amount) || 0;
+                                const ded = Number(parsed.deduction_amount) || 0;
+                                actual = act + ded;
                             }
                         } catch(e) {}
                     }
@@ -1304,6 +1293,9 @@ export default function Home() {
                     actualAdvanceReceived += pActual;
                 } else {
                     totalPhaseReceived += pActual;
+                    if (pExpected > pActual) {
+                        totalUnreceivedPhase += (pExpected - pActual);
+                    }
                 }
 
                 calculatedDebtToCollect += (pExpected - pActual);
@@ -1320,9 +1312,15 @@ export default function Home() {
 
             const hasAdvanceIncome = projIncomes.some(i => i.phase === 'Tạm ứng' || i.phase?.toLowerCase() === 'tạm ứng');
             const totalReceivedAmount = totalPhaseReceived + (hasAdvanceIncome ? actualAdvanceReceived : advanceValue);
+            const totalReceivedBeforeVat = Math.round(totalReceivedAmount / 1.08);
+            const receivedPhaseBeforeVat = Math.round(totalPhaseReceived / 1.08);
+            const unreceivedPhaseBeforeVat = Math.round(totalUnreceivedPhase / 1.08);
+            
+            const totalAllBeforeVat = Math.round((totalReceivedAmount + totalUnreceivedPhase) / 1.08);
             
             const totalExp = exp + remainingCost;
-            const profit = totalReceivedAmount - totalExp;
+            const uncollectedProfit = totalReceivedBeforeVat - totalExp;
+            const profit = totalAllBeforeVat - totalExp;
 
             return {
                 project: name,
@@ -1333,14 +1331,18 @@ export default function Home() {
                 totalActualIncome: actInc,
                 advanceValue: advanceValue,
                 totalPhaseReceived: totalPhaseReceived,
+                totalUnreceivedPhase: totalUnreceivedPhase,
+                receivedPhaseBeforeVat: receivedPhaseBeforeVat,
+                unreceivedPhaseBeforeVat: unreceivedPhaseBeforeVat,
+                totalReceivedBeforeVat: totalReceivedBeforeVat,
+                totalAllBeforeVat: totalAllBeforeVat,
                 totalReceivedAmount: totalReceivedAmount,
+                uncollectedProfit: uncollectedProfit,
                 profit: profit,
-                recoveredAdvance: recoveredAdvance,
-                utilityValue: utilityValue,
                 phases: phaseData
             };
         });
-    }, [allowedProjects, projectDetails, allowedTransactions, allowedIncomes, allPhases, expectedCosts, recoveredAdvances, utilityValues]);
+    }, [allowedProjects, projectDetails, allowedTransactions, allowedIncomes, allPhases, expectedCosts]);
 
     const totals = useMemo(() => {
         return dashboardData.reduce((acc, row) => ({
@@ -1351,11 +1353,15 @@ export default function Home() {
             totalActualIncome: acc.totalActualIncome + row.totalActualIncome,
             advanceValue: acc.advanceValue + (row.advanceValue || 0),
             totalPhaseReceived: acc.totalPhaseReceived + (row.totalPhaseReceived || 0),
+            totalUnreceivedPhase: acc.totalUnreceivedPhase + (row.totalUnreceivedPhase || 0),
+            receivedPhaseBeforeVat: acc.receivedPhaseBeforeVat + (row.receivedPhaseBeforeVat || 0),
+            unreceivedPhaseBeforeVat: acc.unreceivedPhaseBeforeVat + (row.unreceivedPhaseBeforeVat || 0),
+            totalReceivedBeforeVat: acc.totalReceivedBeforeVat + (row.totalReceivedBeforeVat || 0),
+            totalAllBeforeVat: acc.totalAllBeforeVat + (row.totalAllBeforeVat || 0),
             totalReceivedAmount: acc.totalReceivedAmount + row.totalReceivedAmount,
-            recoveredAdvance: acc.recoveredAdvance + (row.recoveredAdvance || 0),
-            utilityValue: acc.utilityValue + (row.utilityValue || 0),
+            uncollectedProfit: acc.uncollectedProfit + (row.uncollectedProfit || 0),
             profit: acc.profit + row.profit
-        }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalReceivedAmount: 0, recoveredAdvance: 0, utilityValue: 0, profit: 0 });
+        }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalUnreceivedPhase: 0, receivedPhaseBeforeVat: 0, unreceivedPhaseBeforeVat: 0, totalReceivedBeforeVat: 0, totalAllBeforeVat: 0, totalReceivedAmount: 0, uncollectedProfit: 0, profit: 0 });
     }, [dashboardData]);
 
     const filteredUsers = usersList.filter(u => {
@@ -1427,7 +1433,7 @@ export default function Home() {
                     />
                 )}
 
-                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleSaveRecoveredAdvance={handleSaveRecoveredAdvance} handleSaveUtilityValue={handleSaveUtilityValue} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
+                {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} systemConfig={systemConfig} onSaveConfig={handleSaveSystemConfig} currentUser={currentUser} />}
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 

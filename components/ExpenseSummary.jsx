@@ -107,7 +107,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                 </div>
             </header>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: 'calc(100vh - 220px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: 'calc(100vh - 160px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
                 <div className="p-4 border-b bg-slate-50 flex flex-col gap-3 flex-shrink-0">
                     <div className="flex items-center gap-3">
                         <Search size={18} className="text-slate-400" />
@@ -134,7 +134,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                     <table id="expense-table" className="w-full text-left text-sm border-collapse min-w-[2000px]">
                         <thead>
                             <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wider">
-                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-30 w-[160px] min-w-[160px] max-w-[160px]">
+                                <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-30 w-[180px] min-w-[180px] max-w-[180px]">
                                     Chi tiết
                                 </th>
                                 {filteredData.map(d => (
@@ -166,7 +166,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     key={row.category.code} 
                                     className={`border-b transition bg-white odd:bg-slate-50 hover:bg-blue-50`}
                                 >
-                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 w-[160px] min-w-[160px] max-w-[160px]" title={row.category.name}>
+                                    <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 w-[180px] min-w-[180px] max-w-[180px]" title={row.category.name}>
                                         {row.category.code}
                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{row.category.name}</div>
                                     </td>
@@ -179,8 +179,8 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                             ))}
                         </tbody>
                         <tfoot className="bg-black text-white font-bold sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                            <tr className="border-t-[60px] border-white bg-black">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">TỔNG CHI PHÍ</td>
+                            <tr className="border-t-[3px] border-slate-400 bg-black">
+                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">TỔNG CHI PHÍ</td>
                                 {filteredData.map(d => (
                                     <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
                                         {renderExpense(transposedTotals[d.project])}
@@ -188,19 +188,47 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 ))}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase whitespace-nowrap text-[11px] md:text-sm w-[160px] min-w-[160px] max-w-[160px]">TỔNG THỰC NHẬN</td>
+                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">ĐÃ THU</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
-                                    const totalReceived = projData ? projData.totalReceivedAmount : 0;
+                                    const totalReceivedBeforeVat = projData ? projData.totalReceivedBeforeVat : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={totalReceived !== 0 ? totalReceived : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
-                                            {totalReceived !== 0 ? <span className="text-emerald-400 font-bold">{formatCurrency(totalReceived)}</span> : '-'}
+                                        <td key={d.project} data-excel-value={totalReceivedBeforeVat !== 0 ? totalReceivedBeforeVat : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                            {totalReceivedBeforeVat !== 0 ? <span className="text-sky-400 font-bold">{formatCurrency(totalReceivedBeforeVat)}</span> : '-'}
                                         </td>
                                     );
                                 })}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[160px] min-w-[160px] max-w-[160px]">LỢI NHUẬN</td>
+                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">CHƯA THU</td>
+                                {filteredData.map(d => {
+                                    const projData = dashboardData.find(item => item.project === d.project);
+                                    const unreceivedPhaseBeforeVat = projData ? projData.unreceivedPhaseBeforeVat : 0;
+                                    return (
+                                        <td key={d.project} data-excel-value={unreceivedPhaseBeforeVat !== 0 ? unreceivedPhaseBeforeVat : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                            {unreceivedPhaseBeforeVat !== 0 ? <span className="text-purple-300 font-bold">{formatCurrency(unreceivedPhaseBeforeVat)}</span> : '-'}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                            <tr className="bg-black border-t border-slate-800">
+                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">LỢI NHUẬN CHƯA THU</td>
+                                {filteredData.map(d => {
+                                    const projData = dashboardData.find(item => item.project === d.project);
+                                    const uncollectedProfit = projData ? projData.uncollectedProfit : 0;
+                                    return (
+                                        <td key={d.project} data-excel-value={uncollectedProfit !== 0 ? uncollectedProfit : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                            {uncollectedProfit !== 0 ? (
+                                                <span className={`font-bold ${uncollectedProfit > 0 ? 'text-blue-400' : 'text-red-400'}`}>
+                                                    {uncollectedProfit > 0 ? formatCurrency(uncollectedProfit) : `(${formatCurrency(Math.abs(uncollectedProfit))})`}
+                                                </span>
+                                            ) : '-'}
+                                        </td>
+                                    );
+                                })}
+                            </tr>
+                            <tr className="bg-black border-t border-slate-800">
+                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">LỢI NHUẬN</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const profit = projData ? projData.profit : 0;
@@ -215,9 +243,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     );
                                 })}
                             </tr>
-                            <tr className="bg-white border-none h-[24px]">
-                                <td colSpan={filteredData.length + 1} className="bg-white border-none p-0"></td>
-                            </tr>
+
                         </tfoot>
                     </table>
                 </div>

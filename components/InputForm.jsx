@@ -7,6 +7,48 @@ import ConfirmModal from '@/components/ConfirmModal';
 import RecipientInput from './RecipientInput';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
+const getCommonNotes = (type, phase, code) => {
+    const ph = phase || 'Đợt 1';
+    const cat = EXPENSE_CATEGORIES.find(c => c.code === code);
+    const catName = cat ? cat.name : '';
+    
+    if (type === 'INCOME_INVOICE') {
+        return [
+            `Đề nghị thanh toán ${ph}`,
+            `Hồ sơ đề nghị thanh toán ${ph}`,
+            `Xuất hóa đơn ${ph}`,
+            `Tạm ứng hợp đồng`
+        ];
+    }
+    if (type === 'INCOME_REAL') {
+        return [
+            `Thu tiền ${ph}`,
+            `Cấn trừ ${ph}`,
+            `Thu tiền và cấn trừ ${ph}`,
+            `Thu hồi tạm ứng ${ph}`
+        ];
+    }
+    if (type === 'EXPENSE') {
+        const list = [];
+        if (catName) {
+            list.push(`Thanh toán ${catName}`);
+            list.push(`Tạm ứng ${catName}`);
+            list.push(`Chi phí ${catName}`);
+        }
+        list.push(`Thanh toán chi phí ${ph}`);
+        list.push(`Chi mua vật tư thiết bị`);
+        return list;
+    }
+    if (type === 'OFFICE_INCOME') {
+        return [
+            'Thu văn phòng',
+            'Hoàn ứng văn phòng',
+            'Thu nhập khác văn phòng'
+        ];
+    }
+    return [];
+};
+
 export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
@@ -39,6 +81,11 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     const [thanhToanStatus, setThanhToanStatus] = useState('CHƯA XONG');
     const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, mode: 'PAY_ONLY', thuStatus: 'CHƯA XONG', chiStatus: 'CHƯA XONG' });
     const [confirmReset, setConfirmReset] = useState(false);
+    const [isCustomNote, setIsCustomNote] = useState(false);
+
+    useEffect(() => {
+        setIsCustomNote(false);
+    }, [type, formData.phase, formData.code]);
 
     useEffect(() => {
         if (editData) {
@@ -132,6 +179,20 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             
             const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "131 - Công nợ phải thu", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
             setIsCustomAccount(editData.corresponding_account && !commonAccounts.includes(editData.corresponding_account));
+            
+            const rawNote = (() => {
+                if (editData.note) {
+                    try {
+                        const p = JSON.parse(editData.note);
+                        if (p && typeof p === 'object' && p.text !== undefined) {
+                            return p.text;
+                        }
+                    } catch(e) {}
+                }
+                return editData.note || '';
+            })();
+            const currentTemplates = getCommonNotes(editData.type || 'EXPENSE', editData.phase || 'Đợt 1', editData.code);
+            setIsCustomNote(rawNote !== '' && !currentTemplates.includes(rawNote));
             
             setErrors({});
         }
@@ -1064,13 +1125,45 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                             Nội dung / Diễn giải
                             {type === 'EXPENSE' && <span className="text-red-500"> *</span>}
                         </label>
-                        <textarea
-                            value={formData.note}
-                            onChange={(e) => handleChange('note', e.target.value)}
-                            rows="3"
-                            className={inputCls('note')}
-                            placeholder="Nhập chi tiết nội dung..."
-                        />
+                        <div className="space-y-2">
+                            {(() => {
+                                const commonNotes = getCommonNotes(type, formData.phase, formData.code);
+                                const showCustomTextarea = isCustomNote || !commonNotes.includes(formData.note);
+                                return (
+                                    <>
+                                        <select
+                                            value={commonNotes.includes(formData.note) ? formData.note : formData.note === '' ? '' : 'CUSTOM'}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                if (val === 'CUSTOM') {
+                                                    setIsCustomNote(true);
+                                                } else {
+                                                    setIsCustomNote(false);
+                                                    handleChange('note', val);
+                                                }
+                                            }}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition"
+                                        >
+                                            <option value="">-- Chọn diễn giải mẫu --</option>
+                                            {commonNotes.map((noteOpt) => (
+                                                <option key={noteOpt} value={noteOpt}>{noteOpt}</option>
+                                            ))}
+                                            <option value="CUSTOM">Khác (Tự nhập)...</option>
+                                        </select>
+
+                                        {showCustomTextarea && (
+                                            <textarea
+                                                value={formData.note}
+                                                onChange={(e) => handleChange('note', e.target.value)}
+                                                rows="3"
+                                                className={inputCls('note')}
+                                                placeholder="Nhập chi tiết nội dung diễn giải..."
+                                            />
+                                        )}
+                                    </>
+                                );
+                            })()}
+                        </div>
                         {errorMsg('note')}
                     </div>
 
