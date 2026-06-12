@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
-import { FileText, Save, Search, Filter, Upload, Eye, Download, Trash2 } from 'lucide-react';
+import { FileText, Save, Search, Filter, Upload, Eye, Download, Trash2, Edit3, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
+import CurrencyInput from './CurrencyInput';
 
 export default function CustomerDebts({ incomes, projects, showToast, refreshData }) {
     const [searchTerm, setSearchTerm] = useState('');
@@ -10,6 +11,18 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     const [monthFilter, setMonthFilter] = useState('');
     const [uploadingId, setUploadingId] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, debt: null });
+    const [editModal, setEditModal] = useState({
+        isOpen: false,
+        debt: null,
+        invoiceNo: '',
+        invoiceDate: '',
+        voucherNo: '',
+        amount: 0,
+        vatAmount: 0,
+        postTaxAmount: 0
+    });
+    const [isSaving, setIsSaving] = useState(false);
+
 
     const projectColors = useMemo(() => {
         const colors = [
@@ -39,6 +52,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         
         incomes.forEach(inc => {
             const key = `${inc.project_name}_${inc.phase}`;
+            const isInvoice = (inc.amount || 0) > 0 || (inc.post_tax_amount || 0) > 0;
             if (!grouped[key]) {
                 grouped[key] = {
                     id: key,
@@ -53,8 +67,17 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     voucherNo: '',
                     invoiceDate: '',
                     invoicePdf: null,
-                    noteRaw: inc.note
+                    noteRaw: inc.note,
+                    invoice_id: isInvoice ? inc.id : null,
+                    invoice_noteRaw: isInvoice ? inc.note : null,
+                    invoice_date_col: isInvoice ? inc.date : null
                 };
+            } else {
+                if (isInvoice && !grouped[key].invoice_id) {
+                    grouped[key].invoice_id = inc.id;
+                    grouped[key].invoice_noteRaw = inc.note;
+                    grouped[key].invoice_date_col = inc.date;
+                }
             }
             
             grouped[key].amount += (inc.amount || 0);
@@ -69,10 +92,10 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         const act = parseFloat(parsed.actual_received_amount) || 0;
                         const ded = parseFloat(parsed.deduction_amount) || 0;
                         actual = act + ded;
-                        if (parsed.invoice_no && !grouped[key].invoiceNo.includes(parsed.invoice_no)) {
+                        if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
                             grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
                         }
-                        if (parsed.voucher_no && !grouped[key].voucherNo.includes(parsed.voucher_no)) {
+                        if (parsed.voucher_no && !grouped[key].voucherNo.split(', ').includes(parsed.voucher_no)) {
                             grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
                         }
                         
@@ -81,7 +104,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                             invDate = inc.date;
                         }
                         
-                        if (invDate && !grouped[key].invoiceDate.includes(invDate)) {
+                        if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
                             grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
                         }
                         
@@ -104,6 +127,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             return numA - numB;
         });
     }, [incomes]);
+
 
     const filteredDebtData = useMemo(() => {
         return debtData.filter(d => {
@@ -226,7 +250,88 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         }
     };
 
+    const handleOpenEditModal = (debt) => {
+        let parsedNote = {};
+        const noteToParse = debt.invoice_noteRaw || debt.noteRaw;
+        if (noteToParse) {
+            try {
+                parsedNote = JSON.parse(noteToParse);
+            } catch(e){}
+        }
+        
+        let defaultDate = parsedNote.invoice_date || '';
+        if (!defaultDate && debt.invoice_date_col) {
+            defaultDate = debt.invoice_date_col;
+        }
+        
+        setEditModal({
+            isOpen: true,
+            debt,
+            invoiceNo: parsedNote.invoice_no || '',
+            invoiceDate: defaultDate,
+            voucherNo: parsedNote.voucher_no || '',
+            amount: debt.amount || 0,
+            vatAmount: debt.vatAmount || 0,
+            postTaxAmount: debt.invoiceAmount || 0
+        });
+    };
+
+    const handleSaveEdit = async () => {
+        if (!editModal.debt) return;
+        setIsSaving(true);
+        try {
+            const targetId = editModal.debt.invoice_id || editModal.debt.first_income_id;
+            
+            let parsedNote = {};
+            const noteToParse = editModal.debt.invoice_noteRaw || editModal.debt.noteRaw;
+            if (noteToParse) {
+                try {
+                    parsedNote = JSON.parse(noteToParse);
+                } catch(e){}
+            }
+            
+            parsedNote.invoice_no = editModal.invoiceNo;
+            parsedNote.invoice_date = editModal.invoiceDate;
+            parsedNote.voucher_no = editModal.voucherNo;
+            
+            const { error } = await supabase.from('incomes')
+                .update({
+                    amount: editModal.amount,
+                    vat_amount: editModal.vatAmount,
+                    post_tax_amount: editModal.postTaxAmount,
+                    date: editModal.invoiceDate || null,
+                    note: JSON.stringify(parsedNote)
+                })
+                .eq('id', targetId);
+                
+            if (error) throw error;
+            
+            if (showToast) {
+                showToast('Cập nhật thông tin hóa đơn thành công!', 'success');
+            }
+            setEditModal({
+                isOpen: false,
+                debt: null,
+                invoiceNo: '',
+                invoiceDate: '',
+                voucherNo: '',
+                amount: 0,
+                vatAmount: 0,
+                postTaxAmount: 0
+            });
+            if (refreshData) refreshData();
+        } catch (err) {
+            console.error('Lỗi khi cập nhật hóa đơn:', err);
+            if (showToast) {
+                showToast(err.message || 'Lỗi khi cập nhật hóa đơn!', 'error');
+            }
+        } finally {
+            setIsSaving(false);
+        }
+    };
+
     return (
+
         <div className="w-full animate-in fade-in duration-500">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
@@ -325,7 +430,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 <th className="py-3.5 px-3 font-bold text-right">Sau Thuế</th>
                                 <th className="py-3.5 px-3 font-bold text-right">Giá Trị HSTT</th>
                                 <th className="py-3.5 px-3 font-bold text-right text-red-600">Công Nợ</th>
-                                <th className="py-3.5 px-4 font-bold text-center">PDF</th>
+                                <th className="py-3.5 px-4 font-bold text-center">Thao Tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -367,33 +472,42 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                             )}
                                         </td>
                                         <td className="py-3.5 px-4 align-middle text-center">
-                                            {debt.invoicePdf ? (
-                                                <div className="flex items-center justify-center gap-1.5">
-                                                    <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600" title="Xem PDF">
-                                                        <Eye size={15} />
-                                                    </a>
-                                                    <a href={debt.invoicePdf} download className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-emerald-100 hover:border-emerald-600" title="Tải xuống">
-                                                        <Download size={15} />
-                                                    </a>
-                                                    <button onClick={() => setConfirmDelete({ isOpen: true, debt })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
-                                                        <Trash2 size={15} />
-                                                    </button>
-                                                </div>
-                                            ) : (
-                                                <div className="flex items-center justify-center relative group/upload">
-                                                    <input 
-                                                        type="file" 
-                                                        accept=".pdf"
-                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                        onChange={(e) => handleUpload(e, debt)}
-                                                        disabled={uploadingId === debt.id}
-                                                        title="Tải lên PDF"
-                                                    />
-                                                    <button className={`p-1.5 ${uploadingId === debt.id ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên PDF">
-                                                        <Upload size={15} className={uploadingId === debt.id ? 'animate-bounce' : ''} />
-                                                    </button>
-                                                </div>
-                                            )}
+                                            <div className="flex items-center justify-center gap-1.5">
+                                                <button 
+                                                    onClick={() => handleOpenEditModal(debt)} 
+                                                    className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600 cursor-pointer" 
+                                                    title="Sửa thông tin hóa đơn"
+                                                >
+                                                    <Edit3 size={15} />
+                                                </button>
+                                                {debt.invoicePdf ? (
+                                                    <>
+                                                        <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600" title="Xem PDF">
+                                                            <Eye size={15} />
+                                                        </a>
+                                                        <a href={debt.invoicePdf} download className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-emerald-100 hover:border-emerald-600" title="Tải xuống">
+                                                            <Download size={15} />
+                                                        </a>
+                                                        <button onClick={() => setConfirmDelete({ isOpen: true, debt })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
+                                                            <Trash2 size={15} />
+                                                        </button>
+                                                    </>
+                                                ) : (
+                                                    <div className="relative group/upload flex items-center justify-center">
+                                                        <input 
+                                                            type="file" 
+                                                            accept=".pdf"
+                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                            onChange={(e) => handleUpload(e, debt)}
+                                                            disabled={uploadingId === debt.id}
+                                                            title="Tải lên PDF"
+                                                        />
+                                                        <button className={`p-1.5 ${uploadingId === debt.id ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên PDF">
+                                                            <Upload size={15} className={uploadingId === debt.id ? 'animate-bounce' : ''} />
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
@@ -417,6 +531,151 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 }}
                 onCancel={() => setConfirmDelete({ isOpen: false, debt: null })}
             />
+
+            {/* Modal chỉnh sửa thông tin hóa đơn */}
+            {editModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg border border-slate-200 overflow-hidden transform transition-all animate-in scale-in duration-200">
+                        <header className="px-6 py-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
+                            <div>
+                                <h3 className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                    <Edit3 className="text-blue-600" size={18} /> Điều Chỉnh Thông Tin Hóa Đơn
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Công trình: <span className="font-semibold text-slate-700">{editModal.debt?.project_name}</span> | <span className="font-semibold text-slate-700">{editModal.debt?.phase}</span>
+                                </p>
+                            </div>
+                            <button 
+                                onClick={() => setEditModal(prev => ({ ...prev, isOpen: false, debt: null }))}
+                                className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition"
+                            >
+                                <X size={18} />
+                            </button>
+                        </header>
+                        
+                        <div className="p-6 space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Số Hóa Đơn</label>
+                                    <input 
+                                        type="text"
+                                        placeholder="Nhập số hóa đơn..."
+                                        value={editModal.invoiceNo}
+                                        onChange={(e) => setEditModal(prev => ({ ...prev, invoiceNo: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Ngày Hóa Đơn</label>
+                                    <input 
+                                        type="date"
+                                        value={editModal.invoiceDate}
+                                        onChange={(e) => setEditModal(prev => ({ ...prev, invoiceDate: e.target.value }))}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Số Chứng Từ</label>
+                                <input 
+                                    type="text"
+                                    placeholder="Nhập số chứng từ..."
+                                    value={editModal.voucherNo}
+                                    onChange={(e) => setEditModal(prev => ({ ...prev, voucherNo: e.target.value }))}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-medium outline-none focus:border-blue-500 focus:bg-white transition"
+                                />
+                            </div>
+
+                            <hr className="border-slate-100 my-2" />
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Trước Thuế</label>
+                                    <CurrencyInput 
+                                        placeholder="Nhập số tiền..."
+                                        value={editModal.amount}
+                                        onChange={(val) => {
+                                            setEditModal(prev => {
+                                                const vat = prev.vatAmount;
+                                                return {
+                                                    ...prev,
+                                                    amount: val,
+                                                    postTaxAmount: val + vat
+                                                };
+                                            });
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold text-green-600 outline-none focus:border-blue-500 focus:bg-white transition text-right"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-600 mb-1">Thuế VAT</label>
+                                    <CurrencyInput 
+                                        placeholder="Nhập VAT..."
+                                        value={editModal.vatAmount}
+                                        onChange={(val) => {
+                                            setEditModal(prev => {
+                                                const amt = prev.amount;
+                                                return {
+                                                    ...prev,
+                                                    vatAmount: val,
+                                                    postTaxAmount: amt + val
+                                                };
+                                            });
+                                        }}
+                                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold text-slate-600 outline-none focus:border-blue-500 focus:bg-white transition text-right"
+                                    />
+                                </div>
+                            </div>
+
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Sau Thuế</label>
+                                <CurrencyInput 
+                                    placeholder="Nhập số tiền sau thuế..."
+                                    value={editModal.postTaxAmount}
+                                    onChange={(val) => {
+                                        setEditModal(prev => ({
+                                            ...prev,
+                                            postTaxAmount: val,
+                                            amount: val - prev.vatAmount
+                                        }));
+                                    }}
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-sm font-bold text-blue-600 outline-none focus:border-blue-500 focus:bg-white transition text-right"
+                                />
+                            </div>
+                        </div>
+
+                        <footer className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setEditModal(prev => ({ ...prev, isOpen: false, debt: null }))}
+                                className="px-4 py-2 border border-slate-200 rounded-xl text-slate-600 font-semibold text-sm hover:bg-slate-100 transition cursor-pointer"
+                                disabled={isSaving}
+                            >
+                                Hủy
+                            </button>
+                            <button 
+                                onClick={handleSaveEdit}
+                                className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-sm transition flex items-center gap-1.5 cursor-pointer disabled:bg-blue-400"
+                                disabled={isSaving}
+                            >
+                                {isSaving ? (
+                                    <>
+                                        <svg className="animate-spin -ml-1 mr-1.5 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                                        </svg>
+                                        Đang lưu...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={16} /> Lưu Thay Đổi
+                                    </>
+                                )}
+                            </button>
+                        </footer>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
