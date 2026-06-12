@@ -2,12 +2,14 @@ import React, { useMemo, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
 import { FileText, Save, Search, Filter, Upload, Eye, Download, Trash2 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import ConfirmModal from './ConfirmModal';
 
 export default function CustomerDebts({ incomes, projects, showToast, refreshData }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
     const [monthFilter, setMonthFilter] = useState('');
     const [uploadingId, setUploadingId] = useState(null);
+    const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, debt: null });
 
     const projectColors = useMemo(() => {
         const colors = [
@@ -186,8 +188,6 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     };
 
     const handleDeletePdf = async (debt) => {
-        if (!confirm('Bạn có chắc chắn muốn xóa file PDF hóa đơn này không?')) return;
-
         try {
             let parsedNote = {};
             if (debt.noteRaw) {
@@ -375,7 +375,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                                     <a href={debt.invoicePdf} download className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-emerald-100 hover:border-emerald-600" title="Tải xuống">
                                                         <Download size={15} />
                                                     </a>
-                                                    <button onClick={() => handleDeletePdf(debt)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
+                                                    <button onClick={() => setConfirmDelete({ isOpen: true, debt })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
                                                         <Trash2 size={15} />
                                                     </button>
                                                 </div>
@@ -401,7 +401,21 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         </tbody>
                     </table>
                 </div>
-            </div>
+            <ConfirmModal 
+                isOpen={confirmDelete.isOpen}
+                title="Xóa hóa đơn PDF"
+                message="Bạn có chắc chắn muốn xóa file PDF hóa đơn này khỏi hệ thống không?"
+                confirmText="Xóa tệp"
+                type="danger"
+                onConfirm={async () => {
+                    const debt = confirmDelete.debt;
+                    setConfirmDelete({ isOpen: false, debt: null });
+                    if (debt) {
+                        await handleDeletePdf(debt);
+                    }
+                }}
+                onCancel={() => setConfirmDelete({ isOpen: false, debt: null })}
+            />
         </div>
     );
 }
