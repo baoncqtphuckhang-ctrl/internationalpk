@@ -1,11 +1,13 @@
 import React, { useMemo, useState } from 'react';
 import { formatCurrency } from '@/lib/utils';
-import { FileText, Save, Search, Filter } from 'lucide-react';
+import { FileText, Save, Search, Filter, Upload, Eye, Download, Trash2 } from 'lucide-react';
+import { supabase } from '@/lib/supabase';
 
-export default function CustomerDebts({ incomes, projects }) {
+export default function CustomerDebts({ incomes, projects, showToast, refreshData }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
     const [monthFilter, setMonthFilter] = useState('');
+    const [uploadingId, setUploadingId] = useState(null);
 
     const projectColors = useMemo(() => {
         const colors = [
@@ -38,6 +40,7 @@ export default function CustomerDebts({ incomes, projects }) {
             if (!grouped[key]) {
                 grouped[key] = {
                     id: key,
+                    first_income_id: inc.id,
                     project_name: inc.project_name,
                     phase: inc.phase,
                     amount: 0,
@@ -46,7 +49,9 @@ export default function CustomerDebts({ incomes, projects }) {
                     receivedAmount: 0,
                     invoiceNo: '',
                     voucherNo: '',
-                    invoiceDate: ''
+                    invoiceDate: '',
+                    invoicePdf: null,
+                    noteRaw: inc.note
                 };
             }
             
@@ -76,6 +81,10 @@ export default function CustomerDebts({ incomes, projects }) {
                         
                         if (invDate && !grouped[key].invoiceDate.includes(invDate)) {
                             grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
+                        }
+                        
+                        if (parsed.invoice_pdf && !grouped[key].invoicePdf) {
+                            grouped[key].invoicePdf = parsed.invoice_pdf;
                         }
                     }
                 } catch(e) {}
@@ -112,6 +121,83 @@ export default function CustomerDebts({ incomes, projects }) {
     }, [debtData, searchTerm, projectFilter, monthFilter]);
 
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
+
+    const handleUpload = async (e, debt) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        setUploadingId(debt.id);
+        try {
+            const formData = new FormData();
+            formData.append('file', file);
+            
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                body: formData
+            });
+            const data = await res.json();
+            
+            if (data.url) {
+                let parsedNote = {};
+                if (debt.noteRaw) {
+                    try {
+                        parsedNote = JSON.parse(debt.noteRaw);
+                    } catch(e){}
+                }
+                parsedNote.invoice_pdf = data.url;
+                
+                const { error } = await supabase.from('incomes')
+                    .update({ note: JSON.stringify(parsedNote) })
+                    .eq('id', debt.first_income_id);
+                
+                if (error) throw error;
+                
+                if (showToast) {
+                    showToast('Tải lên PDF thành công!', 'success');
+                }
+                if (refreshData) refreshData();
+            } else {
+                throw new Error(data.error || 'Upload failed');
+            }
+        } catch (err) {
+            console.error(err);
+            if (showToast) {
+                showToast('Lỗi khi tải lên file!', 'error');
+            }
+        } finally {
+            setUploadingId(null);
+        }
+    };
+
+    const handleDeletePdf = async (debt) => {
+        if (!confirm('Bạn có chắc chắn muốn xóa file PDF hóa đơn này không?')) return;
+
+        try {
+            let parsedNote = {};
+            if (debt.noteRaw) {
+                try {
+                    parsedNote = JSON.parse(debt.noteRaw);
+                } catch(e){}
+            }
+            delete parsedNote.invoice_pdf;
+            
+            const { error } = await supabase.from('incomes')
+                .update({ note: JSON.stringify(parsedNote) })
+                .eq('id', debt.first_income_id);
+            
+            if (error) throw error;
+            
+            if (showToast) {
+                showToast('Xóa file PDF thành công!', 'success');
+            }
+            if (refreshData) refreshData();
+        } catch (err) {
+            console.error(err);
+            if (showToast) {
+                showToast('Lỗi khi xóa file PDF!', 'error');
+            }
+        }
+    };
 
     return (
         <div className="w-full animate-in fade-in duration-500">
@@ -197,59 +283,89 @@ export default function CustomerDebts({ incomes, projects }) {
             </div>
 
             {/* Bảng Dữ Liệu */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-none">
+            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print:shadow-none print:border-none">
                 <div className="overflow-x-auto print:overflow-visible">
                     <table id="customer-debts-table" className="w-full text-left border-collapse min-w-[1000px] print:min-w-0 print:text-[12px]">
                         <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
-                                <th className="p-4 font-black">Công Trình</th>
-                                <th className="p-4 font-black text-center">Giai Đoạn / Đợt Thu</th>
-                                <th className="p-4 font-black">Số Hóa Đơn</th>
-                                <th className="p-4 font-black">Ngày Hóa Đơn</th>
-                                <th className="p-4 font-black">Số Chứng Từ</th>
-                                <th className="p-4 font-black text-right">Giá Trị Trước Thuế</th>
-                                <th className="p-4 font-black text-right">Thuế VAT</th>
-                                <th className="p-4 font-black text-right">Sau Thuế</th>
-                                <th className="p-4 font-black text-right">Giá Trị HSTT</th>
-                                <th className="p-4 font-black text-right text-red-600">Công Nợ</th>
+                            <tr className="bg-slate-50/75 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                                <th className="py-3.5 px-4 font-bold text-left">Công Trình</th>
+                                <th className="py-3.5 px-3 font-bold text-center">Giai Đoạn / Đợt Thu</th>
+                                <th className="py-3.5 px-3 font-bold text-left">Số Hóa Đơn</th>
+                                <th className="py-3.5 px-3 font-bold text-left">Ngày Hóa Đơn</th>
+                                <th className="py-3.5 px-3 font-bold text-left">Số Chứng Từ</th>
+                                <th className="py-3.5 px-3 font-bold text-right">Trước Thuế</th>
+                                <th className="py-3.5 px-3 font-bold text-right">Thuế VAT</th>
+                                <th className="py-3.5 px-3 font-bold text-right">Sau Thuế</th>
+                                <th className="py-3.5 px-3 font-bold text-right">Giá Trị HSTT</th>
+                                <th className="py-3.5 px-3 font-bold text-right text-red-600">Công Nợ</th>
+                                <th className="py-3.5 px-4 font-bold text-center">PDF</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {filteredDebtData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="10" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
+                                    <td colSpan="11" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
                                 </tr>
                             ) : (
                                 filteredDebtData.map(debt => (
-                                    <tr key={debt.id} className="hover:bg-slate-50/80 transition group">
-                                        <td className="p-4 align-top">
-                                            <span className={`inline-block text-xs font-black px-2.5 py-1.5 rounded-md border shadow-sm leading-snug break-words max-w-full ${projectColors[debt.project_name] || 'bg-slate-50 text-slate-700 border-slate-200'}`}>
+                                    <tr key={debt.id} className="hover:bg-slate-50/50 transition duration-150 group">
+                                        <td className="py-3.5 px-4 align-middle">
+                                            <span className={`inline-block text-[11px] font-bold px-2 py-1 rounded-md border shadow-sm leading-tight break-words max-w-[160px] ${projectColors[debt.project_name] || 'bg-slate-50 text-slate-700 border-slate-200'}`}>
                                                 {debt.project_name}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-center">
-                                            <span className="text-xs font-black px-2 py-1 rounded-md border bg-slate-100 text-slate-600 border-slate-200">
+                                        <td className="py-3.5 px-3 align-middle text-center">
+                                            <span className="inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold bg-slate-100 text-slate-600 border border-slate-200/60 whitespace-nowrap">
                                                 {debt.phase}
                                             </span>
                                         </td>
-                                        <td className="p-4 text-sm font-medium text-slate-600">{debt.invoiceNo || '-'}</td>
-                                        <td className="p-4 text-sm font-medium text-slate-600">
+                                        <td className="py-3.5 px-3 align-middle text-sm font-medium text-slate-600 tabular-nums">{debt.invoiceNo || '-'}</td>
+                                        <td className="py-3.5 px-3 align-middle text-sm font-medium text-slate-600 tabular-nums">
                                             {debt.invoiceDate ? debt.invoiceDate.split(', ').map(d => {
                                                 const parts = d.split('-');
                                                 if (parts.length === 3) return `${parts[2]}/${parts[1]}/${parts[0]}`;
                                                 return d;
                                             }).join(', ') : '-'}
                                         </td>
-                                        <td className="p-4 text-sm font-medium text-slate-600">{debt.voucherNo || '-'}</td>
-                                        <td className="p-4 text-right font-bold text-slate-800">{formatCurrency(debt.amount)}</td>
-                                        <td className="p-4 text-right font-bold text-slate-500">{formatCurrency(debt.vatAmount)}</td>
-                                        <td className="p-4 text-right font-bold text-blue-600">{formatCurrency(debt.invoiceAmount)}</td>
-                                        <td className="p-4 text-right font-bold text-emerald-600">{formatCurrency(debt.receivedAmount)}</td>
-                                        <td className="p-4 text-right font-black">
+                                        <td className="py-3.5 px-3 align-middle text-sm font-medium text-slate-600 tabular-nums">{debt.voucherNo || '-'}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-slate-700 tabular-nums">{formatCurrency(debt.amount)}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-medium text-slate-500 tabular-nums">{formatCurrency(debt.vatAmount)}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-blue-600 tabular-nums">{formatCurrency(debt.invoiceAmount)}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-emerald-600 tabular-nums">{formatCurrency(debt.receivedAmount)}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-bold tabular-nums">
                                             {debt.remainingAmount <= 0 ? (
-                                                <span className="text-[11px] bg-green-100 text-green-700 px-2 py-1 rounded-md uppercase tracking-wider whitespace-nowrap">HT</span>
+                                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 tracking-wider">HT</span>
                                             ) : (
                                                 <span className="text-red-600">{formatCurrency(debt.remainingAmount)}</span>
+                                            )}
+                                        </td>
+                                        <td className="py-3.5 px-4 align-middle text-center">
+                                            {debt.invoicePdf ? (
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600" title="Xem PDF">
+                                                        <Eye size={15} />
+                                                    </a>
+                                                    <a href={debt.invoicePdf} download className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-emerald-100 hover:border-emerald-600" title="Tải xuống">
+                                                        <Download size={15} />
+                                                    </a>
+                                                    <button onClick={() => handleDeletePdf(debt)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center justify-center relative group/upload">
+                                                    <input 
+                                                        type="file" 
+                                                        accept=".pdf"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                        onChange={(e) => handleUpload(e, debt)}
+                                                        disabled={uploadingId === debt.id}
+                                                        title="Tải lên PDF"
+                                                    />
+                                                    <button className={`p-1.5 ${uploadingId === debt.id ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên PDF">
+                                                        <Upload size={15} className={uploadingId === debt.id ? 'animate-bounce' : ''} />
+                                                    </button>
+                                                </div>
                                             )}
                                         </td>
                                     </tr>

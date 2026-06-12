@@ -100,6 +100,8 @@ export default function Home() {
 
     const [currentUser, setCurrentUser] = useState(null);
 
+
+
     const moveToTrash = async (tableName, matchColumn, matchValue, isIlike = false) => {
         try {
             const query = supabase.from(tableName).select('*');
@@ -150,6 +152,8 @@ export default function Home() {
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
     const [materialSubTab, setMaterialSubTab] = useState('order');
+
+
     
     const [isLoading, setIsLoading] = useState(true);
     const [toast, setToast] = useState({ show: false, msg: '', type: 'success' });
@@ -1433,7 +1437,7 @@ export default function Home() {
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
-                {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} />}
+                {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 
