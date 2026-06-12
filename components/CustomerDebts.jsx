@@ -128,41 +128,57 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
 
         setUploadingId(debt.id);
         try {
-            const formData = new FormData();
-            formData.append('file', file);
+            const fileExt = file.name.split('.').pop();
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || 'invoice';
+            const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = debt.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
             
-            const res = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-            const data = await res.json();
-            
-            if (data.url) {
-                let parsedNote = {};
-                if (debt.noteRaw) {
-                    try {
-                        parsedNote = JSON.parse(debt.noteRaw);
-                    } catch(e){}
-                }
-                parsedNote.invoice_pdf = data.url;
-                
-                const { error } = await supabase.from('incomes')
-                    .update({ note: JSON.stringify(parsedNote) })
-                    .eq('id', debt.first_income_id);
-                
-                if (error) throw error;
-                
-                if (showToast) {
-                    showToast('Tải lên PDF thành công!', 'success');
-                }
-                if (refreshData) refreshData();
-            } else {
-                throw new Error(data.error || 'Upload failed');
+            const fileName = `${Date.now()}_${sanitizedName}.${fileExt}`;
+            const filePath = `${sanitizedProject}/${fileName}`;
+
+            // Upload the file directly to Supabase Storage client-side
+            const { data: uploadData, error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (uploadError) {
+                throw new Error(
+                    uploadError.message === 'Bucket not found' 
+                    ? 'Không tìm thấy bucket "invoices". Hãy tạo bucket tên "invoices" ở chế độ Public trong Supabase Console -> Storage.'
+                    : uploadError.message
+                );
             }
-        } catch (err) {
-            console.error(err);
+
+            // Retrieve the public URL
+            const { data: { publicUrl } } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+            
+            let parsedNote = {};
+            if (debt.noteRaw) {
+                try {
+                    parsedNote = JSON.parse(debt.noteRaw);
+                } catch(e){}
+            }
+            parsedNote.invoice_pdf = publicUrl;
+            
+            const { error } = await supabase.from('incomes')
+                .update({ note: JSON.stringify(parsedNote) })
+                .eq('id', debt.first_income_id);
+            
+            if (error) throw error;
+            
             if (showToast) {
-                showToast('Lỗi khi tải lên file!', 'error');
+                showToast('Tải lên PDF thành công!', 'success');
+            }
+            if (refreshData) refreshData();
+        } catch (err) {
+            console.error('Lỗi khi tải lên file:', err);
+            if (showToast) {
+                showToast(err.message || 'Lỗi khi tải lên file!', 'error');
             }
         } finally {
             setUploadingId(null);
@@ -179,6 +195,17 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     parsedNote = JSON.parse(debt.noteRaw);
                 } catch(e){}
             }
+            
+            const fileUrl = parsedNote.invoice_pdf;
+            if (fileUrl && fileUrl.includes('/public/invoices/')) {
+                const parts = fileUrl.split('/public/invoices/');
+                if (parts.length > 1) {
+                    const filePath = decodeURIComponent(parts[1]);
+                    const { error: storageError } = await supabase.storage.from('invoices').remove([filePath]);
+                    if (storageError) console.warn('Lỗi khi xóa file khỏi Storage:', storageError);
+                }
+            }
+
             delete parsedNote.invoice_pdf;
             
             const { error } = await supabase.from('incomes')
