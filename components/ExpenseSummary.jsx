@@ -164,11 +164,11 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                             {transposedRows.map((row) => (
                                 <tr 
                                     key={row.category.code} 
-                                    className={`border-b transition bg-white odd:bg-slate-50 hover:bg-blue-50`}
+                                    className="border-b transition bg-white even:bg-slate-100 hover:bg-blue-50"
                                 >
                                     <td className="p-3 border-r border-slate-100 font-bold sticky left-0 bg-inherit z-10 text-slate-800 w-[180px] min-w-[180px] max-w-[180px]" title={row.category.name}>
-                                        {row.category.code}
-                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{row.category.name}</div>
+                                        {row.category.name}
+                                        <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{row.category.code}</div>
                                     </td>
                                     {filteredData.map(d => (
                                         <td key={d.project} data-excel-value={row[d.project] !== 0 ? -row[d.project] : ''} className="p-3 border-r border-slate-100 text-right min-w-[150px]">
@@ -178,46 +178,46 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 </tr>
                             ))}
                         </tbody>
-                        <tfoot className="bg-black text-white font-bold sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
-                            <tr className="border-t-[3px] border-slate-400 bg-black">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">TỔNG CHI PHÍ</td>
+                        <tfoot className="bg-black text-white font-bold text-xs sticky bottom-0 z-30 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
+                            <tr className="bg-black">
+                                <td className="p-1.5 px-3 border-r border-t-[3px] border-t-slate-400 border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">TỔNG CHI PHÍ</td>
                                 {filteredData.map(d => (
-                                    <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                    <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-1.5 px-3 border-r border-t-[3px] border-t-slate-400 border-slate-800 bg-black text-right min-w-[150px]">
                                         {renderExpense(transposedTotals[d.project])}
                                     </td>
                                 ))}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">ĐÃ THU</td>
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">ĐÃ THU</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const totalReceivedBeforeVat = projData ? projData.totalReceivedBeforeVat : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={totalReceivedBeforeVat !== 0 ? totalReceivedBeforeVat : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={totalReceivedBeforeVat !== 0 ? totalReceivedBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
                                             {totalReceivedBeforeVat !== 0 ? <span className="text-sky-400 font-bold">{formatCurrency(totalReceivedBeforeVat)}</span> : '-'}
                                         </td>
                                     );
                                 })}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">CHƯA THU</td>
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">CHƯA THU</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const unreceivedPhaseBeforeVat = projData ? projData.unreceivedPhaseBeforeVat : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={unreceivedPhaseBeforeVat !== 0 ? unreceivedPhaseBeforeVat : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={unreceivedPhaseBeforeVat !== 0 ? unreceivedPhaseBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
                                             {unreceivedPhaseBeforeVat !== 0 ? <span className="text-purple-300 font-bold">{formatCurrency(unreceivedPhaseBeforeVat)}</span> : '-'}
                                         </td>
                                     );
                                 })}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase text-[11px] md:text-sm w-[180px] min-w-[180px] max-w-[180px] leading-tight">LỢI NHUẬN CHƯA THU</td>
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">LỢI NHUẬN CHƯA THU</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const uncollectedProfit = projData ? projData.uncollectedProfit : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={uncollectedProfit !== 0 ? uncollectedProfit : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={uncollectedProfit !== 0 ? uncollectedProfit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
                                             {uncollectedProfit !== 0 ? (
                                                 <span className={`font-bold ${uncollectedProfit > 0 ? 'text-blue-400' : 'text-red-400'}`}>
                                                     {uncollectedProfit > 0 ? formatCurrency(uncollectedProfit) : `(${formatCurrency(Math.abs(uncollectedProfit))})`}
@@ -228,12 +228,12 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 })}
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
-                                <td className="p-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">LỢI NHUẬN</td>
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">LỢI NHUẬN</td>
                                 {filteredData.map(d => {
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const profit = projData ? projData.profit : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={profit !== 0 ? profit : ''} className="p-3 border-r border-slate-800 text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={profit !== 0 ? profit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
                                             {profit !== 0 ? (
                                                 <span className={`font-bold ${profit > 0 ? 'text-blue-400' : 'text-red-400'}`}>
                                                     {profit > 0 ? formatCurrency(profit) : `(${formatCurrency(Math.abs(profit))})`}

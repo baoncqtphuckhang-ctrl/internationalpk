@@ -13,6 +13,7 @@ import ProjectManager from '@/components/ProjectManager';
 import ExpenseSummary from '@/components/ExpenseSummary';
 import PartnerDebts from '@/components/PartnerDebts';
 import CustomerDebts from '@/components/CustomerDebts';
+import EmployeeSalary from '@/components/EmployeeSalary';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
@@ -1444,6 +1445,8 @@ export default function Home() {
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
+                
+                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 

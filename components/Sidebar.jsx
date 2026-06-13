@@ -65,6 +65,7 @@ export default function Sidebar({
         { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isThuKy, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
         { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: true, badge: expectedInvoicesCount > 0 ? expectedInvoicesCount : null },
         { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy },
+        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: currentUser?.role === 'ADMIN' },
     ];
 
     const toggleTab = (id) => {
