@@ -31,7 +31,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, projects, dnttList, showToast }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToProject }) {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isDbStorage, setIsDbStorage] = useState(false);
@@ -107,7 +107,10 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
         const status = req ? req.status : 'Draft';
         const matchesStatus = selectedStatusFilter === '' || status === selectedStatusFilter;
         
-        return matchesSearch && matchesProject && matchesStatus;
+        const isDeadStatus = status === 'Draft' || status === 'Rejected';
+        if (selectedStatusFilter === '' && isDeadStatus) return false;
+
+        return matchesSearch && matchesProject && matchesStatus && !order.is_deleted;
     });
 
     const formatDateVN = (dateStr) => {
@@ -639,7 +642,15 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                     : 0;
      
                                                 return (
-                                                    <tr key={order.id} className="hover:bg-slate-50/50 transition">
+                                                    <tr 
+                                                        key={order.id} 
+                                                        className={`hover:bg-slate-50/50 transition ${(status === 'Accounted' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
+                                                        onDoubleClick={() => {
+                                                            if (onNavigateToProject) {
+                                                                onNavigateToProject(order.project_name);
+                                                            }
+                                                        }}
+                                                    >
                                                         <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400">
                                                             {formatDateVN(order.order_date)}
                                                         </td>
@@ -670,7 +681,11 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                                             {status === 'Accounted' || (req && req.total_amount > 0) ? (
                                                                  <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
                                                             ) : (
-                                                                <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>
+                                                                status === 'Draft' || status === 'Rejected' ? (
+                                                                    <span className="text-slate-400 italic font-normal text-xs">-</span>
+                                                                ) : (
+                                                                    <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>
+                                                                )
                                                             )}
                                                         </td>
                                                         <td className="px-6 py-4 text-center whitespace-nowrap">
@@ -922,7 +937,14 @@ export default function MaterialOrderManager({ currentUser, projects, dnttList, 
                                         <p className="text-xs font-normal italic mt-0.5">ký và ghi rõ họ tên</p>
                                     </div>
                                     <div className="flex flex-col items-center">
-                                        <p className="print-signature text-2xl font-bold font-serif italic text-black">{getSignatureName(getCommanderName(selectedOrder.recipient))}</p>
+                                        {(() => {
+                                            const creatorUsername = selectedOrder.created_by || currentUser?.username;
+                                            const signatureUrl = usersList?.find(u => u.username === creatorUsername)?.signature_url;
+                                            if (signatureUrl) {
+                                                return <img src={signatureUrl} className="h-16 object-contain" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />;
+                                            }
+                                            return <p className="print-signature text-2xl font-bold font-serif italic text-black">{getSignatureName(getCommanderName(selectedOrder.recipient))}</p>;
+                                        })()}
                                         <p className="mt-2 text-sm font-bold underline tracking-tight uppercase">{getCommanderName(selectedOrder.recipient)}</p>
                                     </div>
                                 </div>

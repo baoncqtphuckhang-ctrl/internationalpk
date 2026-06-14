@@ -111,7 +111,8 @@ export default function HistoryTable({
     handleCopyTable,
     exportTableToExcel,
     expenseCategories,
-    systemConfig
+    systemConfig,
+    initialSearchNote = ''
 }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
 
@@ -166,8 +167,14 @@ export default function HistoryTable({
     });
 
     const [textFilters, setTextFilters] = useState({
-        invoiceNo: '', note: ''
+        invoiceNo: '', note: initialSearchNote || ''
     });
+
+    useEffect(() => {
+        if (initialSearchNote !== undefined) {
+            setTextFilters(prev => ({ ...prev, note: initialSearchNote }));
+        }
+    }, [initialSearchNote]);
 
     const handleSort = (key, direction) => {
         setSortConfig({ key, direction });

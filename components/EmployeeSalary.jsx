@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X } from 'lucide-react';
 import { formatCurrency } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 
 const DEPARTMENTS = ['VĂN PHÒNG', 'KỸ THUẬT', 'KỸ THUẬT GONDOLA', 'Khác...'];
 
@@ -58,7 +59,7 @@ const getDefaultAttendance = (year, month) => {
     return att;
 };
 
-const INITIAL_DATA = [
+export const INITIAL_DATA = [
     { id: 'dep-1', department: 'VĂN PHÒNG', isDepartment: true, isCustomDept: false },
     { id: '1', name: 'Trần Thiên Chí Bình', basic_salary: 24255000, phone_allowance: 300000, parking_allowance: 0, makeup_allowance: 0, insurance_salary: 5000000, advance: 0, other_deductions: 10000000, other_additions: 0, cash: 0, notes: '(11) TRỪ TIỀN MƯỢN 17/10/2023 LẦN 5', bank_account: '108866666699', bank_account_name: 'TRẦN THIÊN CHÍ BÌNH', bank_name: 'VIETINBANK' },
     { id: '2', name: 'Nguyễn Chí Bảo', basic_salary: 18000000, phone_allowance: 0, parking_allowance: 300000, makeup_allowance: 0, insurance_salary: 5000000, advance: 0, other_deductions: 0, other_additions: 0, cash: 0, notes: '', bank_account: '106881335836', bank_account_name: 'NGUYỄN CHÍ BẢO', bank_name: 'VIETINBANK' },
@@ -95,8 +96,8 @@ const INITIAL_DATA = [
     { id: '29', name: 'Nguyễn Khắc Huỳnh', basic_salary: 14333333, phone_allowance: 0, parking_allowance: 0, makeup_allowance: 0, insurance_salary: 5000000, advance: 4000000, other_deductions: 0, other_additions: 4400000, cash: 0, notes: '', bank_account: '105869389545', bank_account_name: 'NGUYỄN KHÁC HUỲNH', bank_name: 'VIETINBANK' },
 ];
 
-export default function EmployeeSalary({ currentUser }) {
-    const [employees, setEmployees] = useState(INITIAL_DATA);
+export default function EmployeeSalary({ currentUser, usersList = [] }) {
+    const [employees, setEmployees] = useState([]);
     const [activeTab, setActiveTab] = useState('salary'); // 'salary' | 'attendance' | 'history'
     const [systemModal, setSystemModal] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null, onCancel: null, password: '', error: '' });
     const [addEmployeeModal, setAddEmployeeModal] = useState({ isOpen: false });
@@ -113,13 +114,103 @@ export default function EmployeeSalary({ currentUser }) {
     const [globalStandardDays, setGlobalStandardDays] = useState(26);
     const [daysInMonthCount, setDaysInMonthCount] = useState(30);
     const [yearMonth, setYearMonth] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
+    const [isDbStorage, setIsDbStorage] = useState(false);
+    const [initialLoaded, setInitialLoaded] = useState(false);
 
     useEffect(() => {
-        const savedHistory = localStorage.getItem('misa_salary_history');
-        if (savedHistory) {
-            try { setHistoryRecords(JSON.parse(savedHistory)); } catch (e) {}
-        }
+        const fetchBaseData = async () => {
+            try {
+                const { data, error } = await supabase.from('employees').select('*').order('order_index', { ascending: true });
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    setIsDbStorage(true);
+                    setEmployees(data.map(e => ({
+                        ...e,
+                        isDepartment: e.is_department,
+                        isCustomDept: e.is_custom_dept
+                    })));
+                } else {
+                    throw new Error("Empty DB");
+                }
+            } catch (err) {
+                console.warn('Fallback to LocalStorage for employees');
+                setIsDbStorage(false);
+                const localData = localStorage.getItem('misa_employees_base');
+                if (localData) {
+                    try { setEmployees(JSON.parse(localData)); } catch(e) { setEmployees(INITIAL_DATA); }
+                } else {
+                    setEmployees(INITIAL_DATA);
+                }
+            }
+            setInitialLoaded(true);
+        };
+        fetchBaseData();
+
+        const fetchHistory = async () => {
+            try {
+                const { data, error } = await supabase.from('salary_history').select('*');
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    const historyMap = {};
+                    data.forEach(item => {
+                        historyMap[item.month_id] = {
+                            timestamp: item.timestamp,
+                            globalStandardDays: item.global_standard_days,
+                            employees: item.employees_data
+                        };
+                    });
+                    setHistoryRecords(historyMap);
+                } else {
+                    throw new Error("Empty History DB");
+                }
+            } catch (err) {
+                const savedHistory = localStorage.getItem('misa_salary_history');
+                if (savedHistory) {
+                    try { setHistoryRecords(JSON.parse(savedHistory)); } catch (e) {}
+                }
+            }
+        };
+        fetchHistory();
     }, []);
+
+    useEffect(() => {
+        if (!initialLoaded || employees.length === 0) return;
+        
+        const saveTimer = setTimeout(async () => {
+            if (isDbStorage) {
+                try {
+                    const upsertData = employees.map((e, index) => ({
+                        id: e.id,
+                        name: e.name || '',
+                        department: e.department || '',
+                        is_department: !!e.isDepartment,
+                        is_custom_dept: !!e.isCustomDept,
+                        basic_salary: Number(e.basic_salary) || 0,
+                        phone_allowance: Number(e.phone_allowance) || 0,
+                        parking_allowance: Number(e.parking_allowance) || 0,
+                        makeup_allowance: Number(e.makeup_allowance) || 0,
+                        gondola_allowance: Number(e.gondola_allowance) || 0,
+                        laptop_allowance: Number(e.laptop_allowance) || 0,
+                        insurance_salary: Number(e.insurance_salary) || 0,
+                        advance: Number(e.advance) || 0,
+                        other_deductions: Number(e.other_deductions) || 0,
+                        other_additions: Number(e.other_additions) || 0,
+                        cash: Number(e.cash) || 0,
+                        notes: e.notes || '',
+                        bank_account: e.bank_account || '',
+                        bank_account_name: e.bank_account_name || '',
+                        bank_name: e.bank_name || '',
+                        attendance: e.attendance || {},
+                        order_index: index
+                    }));
+                    await supabase.from('employees').upsert(upsertData, { onConflict: 'id' });
+                } catch(err) { console.error('Save to Supabase failed', err); }
+            }
+            localStorage.setItem('misa_employees_base', JSON.stringify(employees));
+        }, 1500);
+
+        return () => clearTimeout(saveTimer);
+    }, [employees, isDbStorage, initialLoaded]);
 
     useEffect(() => {
         if (!selectedMonth) return;
@@ -217,9 +308,14 @@ export default function EmployeeSalary({ currentUser }) {
             type: 'password',
             title: 'Xác nhận xóa nhân viên',
             message: 'Vui lòng nhập mật khẩu quản trị để xóa nhân viên này.',
-            onConfirm: (pwd) => {
+            onConfirm: async (pwd) => {
                 if (pwd === 'admin') {
                     setEmployees(employees.filter(e => e.id !== id));
+                    if (isDbStorage) {
+                        try {
+                            await supabase.from('employees').delete().eq('id', id);
+                        } catch(e) {}
+                    }
                     return true;
                 } else {
                     return 'Sai mật khẩu!';
@@ -234,22 +330,34 @@ export default function EmployeeSalary({ currentUser }) {
             type: 'confirm',
             title: 'Chốt bảng lương',
             message: `Bạn có chắc chắn muốn chốt và lưu dữ liệu bảng lương tháng ${selectedMonth} không? Hành động này sẽ tạo một bản lưu không thể thay đổi.`,
-            onConfirm: () => {
+            onConfirm: async () => {
+                const monthData = {
+                    timestamp: new Date().toISOString(),
+                    globalStandardDays,
+                    employees: employees.map(calculateRow)
+                };
                 const newHistory = {
                     ...historyRecords,
-                    [selectedMonth]: {
-                        timestamp: new Date().toISOString(),
-                        globalStandardDays,
-                        employees: employees.map(calculateRow)
-                    }
+                    [selectedMonth]: monthData
                 };
                 setHistoryRecords(newHistory);
                 localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
+                
+                try {
+                    await supabase.from('salary_history').upsert([{
+                        month_id: selectedMonth,
+                        timestamp: monthData.timestamp,
+                        global_standard_days: monthData.globalStandardDays,
+                        employees_data: monthData.employees
+                    }], { onConflict: 'month_id' });
+                } catch(e) { console.error('History save error', e); }
+
                 setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã lưu dữ liệu tháng này vào Lịch sử!' }), 300);
                 return true;
             }
         });
     };
+
 
     const handleDeleteHistory = (monthId) => {
         setSystemModal({
@@ -257,12 +365,17 @@ export default function EmployeeSalary({ currentUser }) {
             type: 'password',
             title: 'Xóa vĩnh viễn Lịch sử',
             message: `Vui lòng nhập mật khẩu quản trị để xóa vĩnh viễn bảng lương tháng ${monthId}:`,
-            onConfirm: (pwd) => {
+            onConfirm: async (pwd) => {
                 if (pwd === 'admin') {
                     const newHistory = { ...historyRecords };
                     delete newHistory[monthId];
                     setHistoryRecords(newHistory);
                     localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
+                    
+                    try {
+                        await supabase.from('salary_history').delete().eq('month_id', monthId);
+                    } catch(e) { console.error('Delete history error', e); }
+
                     setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa thành công!' }), 300);
                     return true;
                 } else {
@@ -295,7 +408,10 @@ export default function EmployeeSalary({ currentUser }) {
     const handleToggleAttendance = (empId, day) => {
         setEmployees(prev => prev.map(emp => {
             if (emp.id === empId) {
-                const currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? 1;
+                const [yStr, mStr] = selectedMonth.split('-');
+                const y = parseInt(yStr), m = parseInt(mStr);
+                const isSunday = new Date(y, m - 1, day).getDay() === 0;
+                const currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? (isSunday ? 0 : 1);
                 let nextAtt = 1;
                 if (currentAtt === 1) nextAtt = 0.5;
                 else if (currentAtt === 0.5) nextAtt = 'P';
@@ -329,7 +445,15 @@ export default function EmployeeSalary({ currentUser }) {
         
         const total_income_5 = basic + phone + parking + makeup + gondola + laptop;
         
-        const actual = Object.values(emp.attendance?.[selectedMonth] || {}).reduce((sum, val) => sum + (val === 'P' ? 1 : val), 0);
+        const [yStr, mStr] = selectedMonth.split('-');
+        const y = parseInt(yStr), m = parseInt(mStr);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        let actual = 0;
+        for (let i = 1; i <= daysInMonth; i++) {
+            const isSunday = new Date(y, m - 1, i).getDay() === 0;
+            const attVal = emp.attendance?.[selectedMonth]?.[i] ?? (isSunday ? 0 : 1);
+            actual += (attVal === 'P' ? 1 : attVal);
+        }
         const std = globalStandardDays || 1;
         
         const total_actual_salary_8_raw = (total_income_5 / std) * actual;
@@ -717,9 +841,6 @@ export default function EmployeeSalary({ currentUser }) {
                     </div>
                     
                     <div className="p-4 px-6 bg-white flex justify-end gap-3 border-t border-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
-                        <button onClick={() => setAddEmployeeModal({ isOpen: false })} className="px-6 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
-                            Hủy bỏ
-                        </button>
                         <button onClick={handleAddEmployeeSubmit} className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 rounded-xl transition flex items-center gap-2">
                             <Plus size={18}/> Lưu Nhân Viên
                         </button>
@@ -1120,8 +1241,8 @@ export default function EmployeeSalary({ currentUser }) {
                                             <td className="border border-slate-300 p-2 font-medium text-slate-700 sticky left-12 z-20 bg-white group-hover:bg-blue-50/50">{emp.name || '---'}</td>
                                             {Array.from({ length: daysInMonthCount }).map((_, i) => {
                                                 const day = i + 1;
-                                                const attValue = emp.attendance?.[selectedMonth]?.[day] ?? 1;
                                                 const isSunday = new Date(yearMonth.y, yearMonth.m - 1, day).getDay() === 0;
+                                                const attValue = emp.attendance?.[selectedMonth]?.[day] ?? (isSunday ? 0 : 1);
                                                 
                                                 return (
                                                     <td key={day} className={`border border-slate-300 p-0 text-center ${isSunday && attValue === 1 ? 'bg-red-50/30' : ''}`}>

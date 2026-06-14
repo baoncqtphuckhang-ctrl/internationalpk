@@ -100,7 +100,8 @@ export default function ApprovalWorkflow({
     onAddDebt,
     isLoading,
     STATUSES,
-    ROLES
+    ROLES,
+    onNavigateToProject
 }) {
     const [view, setView] = useState('list'); // 'list' hoặc 'create'
 
@@ -303,7 +304,11 @@ export default function ApprovalWorkflow({
             invoice_no: d.invoiceNumber
         }));
 
-        onAccountDNTT(distributeItem.id, payload);
+        if (status === 'ĐÃ XONG') {
+            onAccountDNTT(distributeItem.id, payload);
+        } else {
+            onAccountDNTT(distributeItem.id, []);
+        }
 
         if (onAddDebt) {
             const hasVatTu = distributionData.some(d => ['621', '623'].includes(d.code));
@@ -617,7 +622,15 @@ export default function ApprovalWorkflow({
                                 const displayTitle = getDisplayTitle(item);
                                 
                                 return (
-                                    <div key={item.id} className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group">
+                                    <div 
+                                        key={item.id} 
+                                        className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group ${(item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') ? 'cursor-pointer hover:border-indigo-300' : ''} select-none`}
+                                        onDoubleClick={() => {
+                                            if ((item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') && onNavigateToProject && item.project_name) {
+                                                onNavigateToProject(item.project_name);
+                                            }
+                                        }}
+                                    >
                                         <div className="flex-1 space-y-3">
                                             <div className="flex items-center gap-3">
                                                 <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase border ${getStatusStyle(item.status)}`}>

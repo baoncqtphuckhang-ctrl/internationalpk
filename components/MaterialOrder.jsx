@@ -72,7 +72,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrder({ currentUser, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest }) {
+export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest }) {
     const [view, setView] = useState('list'); // 'list', 'create', 'detail'
     const [orders, setOrders] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -97,12 +97,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
             project_name: projName,
             order_phase: 'ĐỢT 1',
             order_date: new Date().toISOString().split('T')[0],
-            address: firstProj?.address || 'BÌNH HÒA, TP HCM',
+            address: firstProj?.address || '',
             category: 'THI CÔNG SƠN NƯỚC',
             company: '',
-            recipient: (firstProj?.cht_name && firstProj?.cht_phone)
-                ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
-                : 'VÕ NGỌC LÂM (SĐT: 033 2620148)',
+            recipient: firstProj?.cht_name ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) : '',
             categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
             show_signature: true
         };
@@ -118,11 +116,9 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                 ...prev,
                 project_name: firstProj.name,
                 order_phase: nextPhase,
-                address: firstProj.address || 'BÌNH HÒA, TP HCM',
+                address: firstProj.address || '',
                 categories: template,
-                recipient: (firstProj.cht_name && firstProj.cht_phone)
-                    ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
-                    : 'VÕ NGỌC LÂM (SĐT: 033 2620148)'
+                recipient: firstProj.cht_name ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) : ''
             }));
         }
     }, [projects, orders]);
@@ -187,10 +183,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             project_name: firstProj.name,
                             order_phase: nextPhase,
                             categories: template,
-                            address: firstProj.address || 'BÌNH HÒA, TP HCM',
-                            recipient: (firstProj.cht_name && firstProj.cht_phone)
-                                ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
-                                : 'VÕ NGỌC LÂM (SĐT: 033 2620148)'
+                            address: firstProj.address || '',
+                            recipient: firstProj.cht_name 
+                                ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
+                                : ''
                         };
                     } else if (!prev.id) {
                         // Project name already set by state default, let's update phase and template
@@ -229,10 +225,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             project_name: firstProj.name,
                             order_phase: nextPhase,
                             categories: template,
-                            address: firstProj.address || 'BÌNH HÒA, TP HCM',
-                            recipient: (firstProj.cht_name && firstProj.cht_phone)
-                                ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
-                                : 'VÕ NGỌC LÂM (SĐT: 033 2620148)'
+                            address: firstProj.address || '',
+                            recipient: firstProj.cht_name 
+                                ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
+                                : ''
                         };
                     } else if (!prev.id) {
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders);
@@ -458,10 +454,10 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
         const projName = firstProj?.name || '';
         const nextPhase = getNextOrderPhaseForProject(projName, orders);
         const template = getProjectMaterialTemplate(projName);
-        const address = firstProj?.address || 'BÌNH HÒA, TP HCM';
-        const recipient = (firstProj?.cht_name && firstProj?.cht_phone)
-            ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})`
-            : 'VÕ NGỌC LÂM (SĐT: 033 2620148)';
+        const address = firstProj?.address || '';
+        const recipient = firstProj?.cht_name 
+            ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
+            : '';
 
         setFormData({
             id: null,
@@ -790,7 +786,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
         const isDeleted = dnttList && dnttList.length > 0 && req === null && o.id && !o.id.toString().startsWith('local_');
 
         // Hide successfully placed orders (only show Rejected or Draft)
-        const isPlaced = req && req.status !== 'Rejected';
+        const isPlaced = req && req.status !== 'Rejected' && req.status !== 'Draft';
 
         return matchesProject && matchesSearch && !isDeleted && !isPlaced;
     });
@@ -1179,15 +1175,13 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                         const selectedName = e.target.value;
                                         const proj = projects.find(p => p.name === selectedName);
                                         const address = proj?.address || '';
-                                        const recipient = (proj?.cht_name && proj?.cht_phone)
-                                            ? `${proj.cht_name} (SĐT: ${proj.cht_phone})`
-                                            : 'VÕ NGỌC LÂM (SĐT: 033 2620148)';
+                                        const recipient = proj?.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '';
                                         const nextPhase = getNextOrderPhaseForProject(selectedName, orders);
                                         const template = getProjectMaterialTemplate(selectedName);
                                         setFormData({ 
                                             ...formData, 
                                             project_name: selectedName, 
-                                            address: address || 'BÌNH HÒA, TP HCM', 
+                                            address: address || '',
                                             recipient: recipient,
                                             order_phase: nextPhase,
                                             categories: template
@@ -1301,7 +1295,7 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                             </div>
 
                             <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Gợi ý Chỉ Huy Trưởng</label>
+                                <label className="block text-xs font-black text-slate-900 uppercase">Gợi ý người nhận hàng từ danh sách</label>
                                 <select 
                                     onChange={(e) => {
                                         const val = e.target.value;
@@ -1313,12 +1307,20 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                     }}
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                 >
-                                    <option value="">-- Chọn CHT gợi ý --</option>
-                                    {projects.filter(p => p.cht_name).map(p => (
-                                        <option key={p.name} value={`${p.cht_name} (SĐT: ${p.cht_phone || ''})`}>
-                                            {p.cht_name} - CHT {p.name} {p.cht_phone ? `(SĐT: ${p.cht_phone})` : ''}
-                                        </option>
-                                    ))}
+                                    <option value="">-- Chọn nhân sự gợi ý --</option>
+                                    {usersList && usersList.length > 0 ? (
+                                        usersList.map(u => (
+                                            <option key={u.id} value={`${u.name} (SĐT: ${u.phone || ''})`}>
+                                                {u.name} {u.phone ? `- SĐT: ${u.phone}` : ''}
+                                            </option>
+                                        ))
+                                    ) : (
+                                        [...new Set(projects.filter(p => p.cht_name).map(p => p.cht_phone ? `${p.cht_name} (SĐT: ${p.cht_phone})` : p.cht_name))].map((val, idx) => (
+                                            <option key={idx} value={val}>
+                                                {val}
+                                            </option>
+                                        ))
+                                    )}
                                     <option value="custom">Tự nhập người nhận khác...</option>
                                 </select>
                             </div>
@@ -1523,9 +1525,15 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                     {/* SIGNATURE BOX */}
                                     <div className="h-20 flex items-center justify-center">
                                         {formData.show_signature && (
-                                            <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none animate-in fade-in duration-300">
-                                                {getSignatureName(getCommanderName(formData.recipient))}
-                                            </div>
+                                            <>
+                                                {currentUser?.signature_url ? (
+                                                    <img src={currentUser.signature_url} className="max-h-16 object-contain opacity-90 animate-in fade-in duration-300" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                                ) : (
+                                                    <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none animate-in fade-in duration-300">
+                                                        {getSignatureName(getCommanderName(formData.recipient))}
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                     
@@ -1695,11 +1703,21 @@ export default function MaterialOrder({ currentUser, projects, showToast, onCrea
                                 <p className="font-extrabold text-sm text-slate-800">NGƯỜI LẬP</p>
                                 
                                 <div className="h-20 flex items-center justify-center">
-                                    {selectedOrder.show_signature && (
-                                        <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none">
-                                            {getSignatureName(getCommanderName(selectedOrder.recipient))}
-                                        </div>
-                                    )}
+                                    {selectedOrder.show_signature && (() => {
+                                        const creatorUsername = selectedOrder.created_by || currentUser?.username;
+                                        const signatureUrl = usersList?.find(u => u.username === creatorUsername)?.signature_url;
+                                        return (
+                                            <>
+                                                {signatureUrl ? (
+                                                    <img src={signatureUrl} className="max-h-16 object-contain opacity-90" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                                ) : (
+                                                    <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none">
+                                                        {getSignatureName(getCommanderName(selectedOrder.recipient))}
+                                                    </div>
+                                                )}
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                                 
                                 <p className="font-bold text-black border-t border-black pt-2 text-sm uppercase">

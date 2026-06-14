@@ -153,7 +153,7 @@ export default function Home() {
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
     const [materialSubTab, setMaterialSubTab] = useState('order');
-
+    const [historySearchTerm, setHistorySearchTerm] = useState('');
 
     
     const [isLoading, setIsLoading] = useState(true);
@@ -959,24 +959,25 @@ export default function Home() {
     const handleAccountDNTT = async (id, distribution) => {
         setIsLoading(true);
         try {
-            // 1. Chèn các dòng giao dịch vào transactions, đính kèm ID phiếu vào note để liên kết
-            const { error: transError } = await supabase.from('transactions').insert(distribution.map(d => ({
-                ...d,
-                note: `[ID:${id}] ${d.note}`,
-                accounting_date: new Date().toISOString().split('T')[0],
-                created_by: currentUser.username
-            })));
-            if (transError) throw transError;
+            if (distribution && distribution.length > 0) {
+                // 1. Chèn các dòng giao dịch vào transactions, đính kèm ID phiếu vào note để liên kết
+                const { error: transError } = await supabase.from('transactions').insert(distribution.map(d => ({
+                    ...d,
+                    note: `[ID:${id}] ${d.note}`,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    created_by: currentUser.username
+                })));
+                if (transError) throw transError;
+            }
 
             // 2. Cập nhật trạng thái DNTT sang ACCOUNTED (và cập nhật tổng tiền hạch toán thực tế)
             const totalSum = distribution.reduce((sum, d) => sum + (d.debit || 0), 0);
             const { error: statusError } = await supabase.from('approval_requests').update({ 
                 status: STATUSES.ACCOUNTED,
-                total_amount: totalSum
+                actual_accounting_amount: distribution.length > 0 ? totalSum : undefined
             }).eq('id', id);
+            
             if (statusError) throw statusError;
-
-            showToast('Đã hạch toán chi phí thành công!');
             logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})`);
             fetchData();
         } catch (error) {
@@ -1084,6 +1085,22 @@ export default function Home() {
         try {
             const id = typeof debtOrId === 'object' ? debtOrId.id : debtOrId;
             const debtObj = typeof debtOrId === 'object' ? debtOrId : debts.find(d => d.id === id);
+
+            if (newStatus === 'ĐÃ XONG' && debtObj.status !== 'ĐÃ XONG') {
+                const transData = {
+                    project_name: debtObj.project_name,
+                    code: debtObj.debt_type === 'CẦN THU' ? '511' : (debtObj.note?.includes('[VẬT TƯ]') ? '621' : '622'),
+                    credit: debtObj.debt_type === 'CẦN THU' ? debtObj.amount : 0,
+                    debit: debtObj.debt_type === 'CẦN TRẢ' ? debtObj.amount : 0,
+                    note: `[THANH TOÁN CÔNG NỢ] ${debtObj.note || ''}`,
+                    recipient: debtObj.partner_name,
+                    corresponding_account: correspondingAccount || '1121',
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    created_by: currentUser?.username || 'System'
+                };
+                const { error: transError } = await supabase.from('transactions').insert([transData]);
+                if (transError) throw transError;
+            }
 
             const { error } = await supabase.from('partner_debts').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
@@ -1375,6 +1392,69 @@ export default function Home() {
         );
     });
 
+    const handleUploadUserSignature = async (id, file) => {
+        if (!file) return;
+        setIsLoading(true);
+        const reader = new FileReader();
+        reader.readAsDataURL(file);
+        reader.onload = async () => {
+            try {
+                // Compress image before upload using Canvas
+                const img = new Image();
+                img.src = reader.result;
+                img.onload = async () => {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        const MAX_WIDTH = 500;
+                        const MAX_HEIGHT = 500;
+                        let width = img.width;
+                        let height = img.height;
+
+                        if (width > height) {
+                            if (width > MAX_WIDTH) {
+                                height *= MAX_WIDTH / width;
+                                width = MAX_WIDTH;
+                            }
+                        } else {
+                            if (height > MAX_HEIGHT) {
+                                width *= MAX_HEIGHT / height;
+                                height = MAX_HEIGHT;
+                            }
+                        }
+
+                        canvas.width = width;
+                        canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.fillStyle = "white"; // Ensure white background for JPEG
+                        ctx.fillRect(0, 0, width, height);
+                        ctx.drawImage(img, 0, 0, width, height);
+                        
+                        // Compress to JPEG with high quality
+                        const finalBase64 = canvas.toDataURL('image/jpeg', 0.85);
+
+                        const { error } = await supabase.from('users').update({ signature_url: finalBase64 }).eq('id', id);
+                        if (error) throw error;
+                        
+                        setUsersList(usersList.map(u => u.id === id ? { ...u, signature_url: finalBase64 } : u));
+                        showToast('Đã tải lên chữ ký thành công!');
+                    } catch (error) {
+                        showToast(`Không thể tải chữ ký: ${error.message || 'Lỗi Database (bạn đã tạo cột signature_url chưa?)'}`, 'error');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                };
+            } catch (error) {
+                showToast(`Lỗi xử lý ảnh: ${error.message}`, 'error');
+                setIsLoading(false);
+            }
+        };
+        reader.onerror = () => {
+            console.error('Lỗi đọc file');
+            showToast('Không thể đọc file ảnh', 'error');
+            setIsLoading(false);
+        };
+    };
+
     if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} />;
 
     return (
@@ -1438,7 +1518,7 @@ export default function Home() {
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} />}
                 
                 {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} />}
                 
@@ -1446,7 +1526,7 @@ export default function Home() {
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
-                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} />}
+                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 
@@ -1463,6 +1543,10 @@ export default function Home() {
                         STATUSES={STATUSES}
                         ROLES={ROLES}
                         systemConfig={systemConfig}
+                        onNavigateToProject={(projectName) => {
+                            setSelectedProject(projectName);
+                            setActiveTab('project-detail');
+                        }}
                     />
                 )}
 
@@ -1487,6 +1571,7 @@ export default function Home() {
                         {materialSubTab === 'order' ? (
                                 <MaterialOrder 
                                     currentUser={currentUser}
+                                    usersList={usersList}
                                     projects={allowedProjects}
                                     showToast={showToast}
                                     onCreateAccountingRequest={handleCreateAccountingRequest}
@@ -1496,9 +1581,18 @@ export default function Home() {
                         ) : (
                             <MaterialOrderManager 
                                 currentUser={currentUser}
+                                usersList={usersList}
                                 projects={allowedProjects}
                                 dnttList={allowedDnttList}
                                 showToast={showToast}
+                                onNavigateToHistory={(searchTerm) => {
+                                    setHistorySearchTerm(searchTerm);
+                                    setActiveTab('history');
+                                }}
+                                onNavigateToProject={(projectName) => {
+                                    setSelectedProject(projectName);
+                                    setActiveTab('project-detail');
+                                }}
                             />
                         )}
                     </div>
@@ -2009,13 +2103,14 @@ export default function Home() {
                                             <th className="p-4 font-bold text-slate-700">Số ĐT</th>
                                             <th className="p-4 font-bold text-slate-700">Chức vụ (Role)</th>
                                             <th className="p-4 font-bold text-slate-700">Trạng thái</th>
+                                            <th className="p-4 font-bold text-slate-700 text-center">Chữ ký</th>
                                             <th className="p-4 font-bold text-slate-700 text-right">Thao tác</th>
                                         </tr>
                                     </thead>
                                     <tbody>
                                     {filteredUsers.length === 0 ? (
                                         <tr>
-                                            <td colSpan="6" className="p-8 text-center text-slate-500">Không tìm thấy nhân viên phù hợp.</td>
+                                            <td colSpan="7" className="p-8 text-center text-slate-500">Không tìm thấy nhân viên phù hợp.</td>
                                         </tr>
                                     ) : (
                                         filteredUsers.map(u => (
@@ -2054,6 +2149,20 @@ export default function Home() {
                                                             </label>
                                                         )}
                                                     </div>
+                                                </td>
+                                                <td className="p-4 text-center relative group">
+                                                    {u.signature_url ? (
+                                                        <img src={u.signature_url} className="h-10 max-w-[100px] object-contain mx-auto rounded bg-white p-1 border shadow-sm" alt="Chữ ký" />
+                                                    ) : (
+                                                        <span className="text-sm text-slate-400 group-hover:text-indigo-600 transition">Chưa có</span>
+                                                    )}
+                                                    <input 
+                                                        type="file" 
+                                                        accept="image/*" 
+                                                        className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                                                        title="Tải lên chữ ký"
+                                                        onChange={(e) => handleUploadUserSignature(u.id, e.target.files[0])}
+                                                    />
                                                 </td>
                                                 <td className="p-4 text-right flex justify-end gap-1">
                                                     {role === 'ADMIN' && (

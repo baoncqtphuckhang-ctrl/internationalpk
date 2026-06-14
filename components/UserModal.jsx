@@ -1,6 +1,10 @@
 import React, { useState, useEffect } from 'react';
+import { supabase } from '@/lib/supabase';
+import { INITIAL_DATA } from './EmployeeSalary';
 
 export default function UserModal({ isOpen, user, onClose, onSave }) {
+    const [employees, setEmployees] = useState([]);
+    const [showCustomInput, setShowCustomInput] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
         name: '',
@@ -8,6 +12,20 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
         phone: '',
         password: '1'
     });
+
+    useEffect(() => {
+        const fetchEmployees = async () => {
+            const { data } = await supabase.from('employees').select('name');
+            if (data && data.length > 0) {
+                setEmployees(data.filter(e => e.name).map(e => e.name));
+            } else {
+                setEmployees(INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name));
+            }
+        };
+        if (isOpen) {
+            fetchEmployees();
+        }
+    }, [isOpen]);
 
     useEffect(() => {
         if (user) {
@@ -18,6 +36,11 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                 phone: user.phone || '',
                 password: user.password || ''
             });
+            if (user.name && employees.length > 0 && !employees.includes(user.name)) {
+                setShowCustomInput(true);
+            } else {
+                setShowCustomInput(false);
+            }
         } else {
             setFormData({
                 username: '',
@@ -26,8 +49,9 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                 phone: '',
                 password: '1'
             });
+            setShowCustomInput(false);
         }
-    }, [user, isOpen]);
+    }, [user, isOpen, employees]);
 
     if (!isOpen) return null;
 
@@ -53,7 +77,28 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                     </div>
                     <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-700 uppercase">Tên hiển thị</label>
-                        <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition" placeholder="Ví dụ: Nguyễn Văn A" />
+                        <select required={!showCustomInput} value={showCustomInput ? 'Khác...' : formData.name} onChange={(e) => {
+                            if (e.target.value === 'Khác...') {
+                                setShowCustomInput(true);
+                                setFormData({...formData, name: ''});
+                            } else {
+                                setShowCustomInput(false);
+                                setFormData({...formData, name: e.target.value});
+                            }
+                        }} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition">
+                            <option value="">-- Chọn Nhân Viên --</option>
+                            {employees.map(empName => (
+                                <option key={empName} value={empName}>{empName}</option>
+                            ))}
+                            <option value="Khác...">Khác (Tự nhập mới)...</option>
+                            {/* Cho phép giữ nguyên tên nếu user cũ không nằm trong danh sách nhân viên */}
+                            {formData.name && !employees.includes(formData.name) && !showCustomInput && (
+                                <option value={formData.name}>{formData.name}</option>
+                            )}
+                        </select>
+                        {showCustomInput && (
+                            <input type="text" required value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} className="w-full mt-2 p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition animate-in slide-in-from-top-2" placeholder="Nhập tên hiển thị mới..." autoFocus />
+                        )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div className="space-y-1">
