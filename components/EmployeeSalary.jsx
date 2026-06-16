@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X } from 'lucide-react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, getVietnameseHolidays } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
 const DEPARTMENTS = ['VĂN PHÒNG', 'KỸ THUẬT', 'KỸ THUẬT GONDOLA', 'Khác...'];
@@ -99,6 +99,7 @@ export const INITIAL_DATA = [
 export default function EmployeeSalary({ currentUser, usersList = [] }) {
     const [employees, setEmployees] = useState([]);
     const [activeTab, setActiveTab] = useState('salary'); // 'salary' | 'attendance' | 'history'
+    const [holidays, setHolidays] = useState({});
     const [systemModal, setSystemModal] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null, onCancel: null, password: '', error: '' });
     const [addEmployeeModal, setAddEmployeeModal] = useState({ isOpen: false });
     const [newEmpData, setNewEmpData] = useState({
@@ -116,6 +117,21 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
     const [yearMonth, setYearMonth] = useState({ y: today.getFullYear(), m: today.getMonth() + 1 });
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [initialLoaded, setInitialLoaded] = useState(false);
+
+    const getIsHoliday = (day, specificMonth = selectedMonth, historyId = viewingHistoryId) => {
+        if (historyId && historyRecords[historyId]) {
+            return (historyRecords[historyId].holidays || []).includes(day);
+        }
+        
+        const [yStr, mStr] = specificMonth.split('-');
+        const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+        const autoHolidays = getVietnameseHolidays(y, m) || [];
+        const manualToggled = holidays[specificMonth] || [];
+        
+        const isAuto = autoHolidays.includes(day);
+        const isManual = manualToggled.includes(day);
+        return isAuto ? !isManual : isManual;
+    };
 
     useEffect(() => {
         const fetchBaseData = async () => {
@@ -146,6 +162,11 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         };
         fetchBaseData();
 
+        const localHolidays = localStorage.getItem('misa_holidays');
+        if (localHolidays) {
+            try { setHolidays(JSON.parse(localHolidays)); } catch(e) {}
+        }
+
         const fetchHistory = async () => {
             try {
                 const { data, error } = await supabase.from('salary_history').select('*');
@@ -153,10 +174,13 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                 if (data && data.length > 0) {
                     const historyMap = {};
                     data.forEach(item => {
+                        const emps = item.employees_data || [];
+                        const metadata = emps.find(e => e.id === 'metadata_holidays');
                         historyMap[item.month_id] = {
                             timestamp: item.timestamp,
                             globalStandardDays: item.global_standard_days,
-                            employees: item.employees_data
+                            holidays: metadata ? metadata.holidays : [],
+                            employees: emps.filter(e => e.id !== 'metadata_holidays')
                         };
                     });
                     setHistoryRecords(historyMap);
@@ -331,9 +355,17 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             title: 'Chốt bảng lương',
             message: `Bạn có chắc chắn muốn chốt và lưu dữ liệu bảng lương tháng ${selectedMonth} không? Hành động này sẽ tạo một bản lưu không thể thay đổi.`,
             onConfirm: async () => {
+                const [yStr, mStr] = selectedMonth.split('-');
+                const y = parseInt(yStr), m = parseInt(mStr);
+                const daysInMonth = new Date(y, m, 0).getDate();
+                const evaluatedHolidays = [];
+                for(let i=1; i<=daysInMonth; i++) {
+                    if (getIsHoliday(i, selectedMonth, null)) evaluatedHolidays.push(i);
+                }
                 const monthData = {
                     timestamp: new Date().toISOString(),
                     globalStandardDays,
+                    holidays: evaluatedHolidays,
                     employees: employees.map(calculateRow)
                 };
                 const newHistory = {
@@ -348,7 +380,7 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                         month_id: selectedMonth,
                         timestamp: monthData.timestamp,
                         global_standard_days: monthData.globalStandardDays,
-                        employees_data: monthData.employees
+                        employees_data: [...monthData.employees, { id: 'metadata_holidays', holidays: monthData.holidays }]
                     }], { onConflict: 'month_id' });
                 } catch(e) { console.error('History save error', e); }
 
@@ -397,6 +429,22 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         setEmployees(employees.map(e => e.id === id ? { ...e, [field]: value } : e));
     };
 
+    const handleToggleHoliday = (day) => {
+        if (viewingHistoryId) return;
+        setHolidays(prev => {
+            const monthHolidays = prev[selectedMonth] || [];
+            let newHolidays;
+            if (monthHolidays.includes(day)) {
+                newHolidays = monthHolidays.filter(d => d !== day);
+            } else {
+                newHolidays = [...monthHolidays, day];
+            }
+            const updated = { ...prev, [selectedMonth]: newHolidays };
+            localStorage.setItem('misa_holidays', JSON.stringify(updated));
+            return updated;
+        });
+    };
+
     const handleDepartmentChange = (id, value) => {
         if (value === 'Khác...') {
             setEmployees(employees.map(e => e.id === id ? { ...e, isCustomDept: true, department: '' } : e));
@@ -411,12 +459,28 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                 const [yStr, mStr] = selectedMonth.split('-');
                 const y = parseInt(yStr), m = parseInt(mStr);
                 const isSunday = new Date(y, m - 1, day).getDay() === 0;
-                const currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? (isSunday ? 0 : 1);
+                const isHoliday = getIsHoliday(day);
+                
+                const defaultAtt = isHoliday || isSunday ? 0 : 1;
+                let currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
+                // Migrate old data: if it's a holiday but saved as 1, treat as 0
+                if (isHoliday && currentAtt === 1) currentAtt = 0;
+                
                 let nextAtt = 1;
-                if (currentAtt === 1) nextAtt = 0.5;
-                else if (currentAtt === 0.5) nextAtt = 'P';
-                else if (currentAtt === 'P') nextAtt = 0;
-                else nextAtt = 1;
+                
+                if (isHoliday) {
+                    if (currentAtt === 1) nextAtt = 1.5;
+                    else if (currentAtt === 1.5) nextAtt = 2;
+                    else if (currentAtt === 2) nextAtt = 0.5;
+                    else if (currentAtt === 0.5) nextAtt = 'P';
+                    else if (currentAtt === 'P') nextAtt = 0;
+                    else nextAtt = 1;
+                } else {
+                    if (currentAtt === 1) nextAtt = 0.5;
+                    else if (currentAtt === 0.5) nextAtt = 'P';
+                    else if (currentAtt === 'P') nextAtt = 0;
+                    else nextAtt = 1;
+                }
                 
                 return {
                     ...emp,
@@ -451,8 +515,12 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         let actual = 0;
         for (let i = 1; i <= daysInMonth; i++) {
             const isSunday = new Date(y, m - 1, i).getDay() === 0;
-            const attVal = emp.attendance?.[selectedMonth]?.[i] ?? (isSunday ? 0 : 1);
-            actual += (attVal === 'P' ? 1 : attVal);
+            const isHoliday = getIsHoliday(i);
+            const defaultAtt = isHoliday || isSunday ? 0 : 1;
+            let attVal = emp.attendance?.[selectedMonth]?.[i] ?? defaultAtt;
+            if (isHoliday && attVal === 1) attVal = 0;
+            
+            actual += (attVal === 'P' ? 1 : (Number(attVal) || 0));
         }
         const std = globalStandardDays || 1;
         
@@ -1209,9 +1277,16 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                                 {Array.from({ length: daysInMonthCount }).map((_, i) => {
                                     const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
                                     const isSunday = date.getDay() === 0;
+                                    const day = i + 1;
+                                    const isHoliday = getIsHoliday(day);
+                                    
                                     return (
-                                        <th key={i} className={`border border-slate-300 p-1 text-center font-bold w-10 ${isSunday ? 'bg-red-100 text-red-600' : 'text-slate-700'}`}>
-                                            {i + 1}
+                                        <th key={i} 
+                                            onClick={() => handleToggleHoliday(day)}
+                                            className={`border border-slate-300 p-1 text-center font-bold w-10 cursor-pointer transition ${isHoliday ? 'bg-blue-600 text-white shadow-inner' : isSunday ? 'bg-red-100 text-red-600' : 'text-slate-700 hover:bg-slate-200'}`}
+                                            title="Click để đánh dấu/bỏ đánh dấu ngày lễ"
+                                        >
+                                            {day}
                                         </th>
                                     );
                                 })}
@@ -1242,15 +1317,18 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                                             {Array.from({ length: daysInMonthCount }).map((_, i) => {
                                                 const day = i + 1;
                                                 const isSunday = new Date(yearMonth.y, yearMonth.m - 1, day).getDay() === 0;
-                                                const attValue = emp.attendance?.[selectedMonth]?.[day] ?? (isSunday ? 0 : 1);
+                                                const isHoliday = getIsHoliday(day);
+                                                const defaultAtt = isHoliday || isSunday ? 0 : 1;
+                                                let attValue = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
+                                                if (isHoliday && attValue === 1) attValue = 0;
                                                 
                                                 return (
-                                                    <td key={day} className={`border border-slate-300 p-0 text-center ${isSunday && attValue === 1 ? 'bg-red-50/30' : ''}`}>
+                                                    <td key={day} className={`border border-slate-300 p-0 text-center ${isHoliday ? 'bg-blue-200/80 shadow-inner' : (isSunday && attValue === 1 ? 'bg-red-50/30' : '')}`}>
                                                         <button 
                                                             onClick={() => handleToggleAttendance(emp.id, day)}
-                                                            className={`w-full h-full min-h-[36px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`}
+                                                            className={`w-full h-full min-h-[36px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 1.5 ? 'bg-purple-500 text-white' : attValue === 2 ? 'bg-indigo-600 text-white' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`}
                                                         >
-                                                            {attValue === 1 ? 'X' : attValue === 0.5 ? '/' : attValue === 'P' ? 'P' : ''}
+                                                            {attValue === 1 ? 'X' : attValue === 1.5 ? '1.5' : attValue === 2 ? '2' : attValue === 0.5 ? '/' : attValue === 'P' ? 'P' : ''}
                                                         </button>
                                                     </td>
                                                 );
@@ -1269,12 +1347,14 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             )}
             
             {activeTab === 'attendance' && (
-                <div className="mt-4 flex gap-4 text-sm text-slate-600 font-medium">
+                <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600 font-medium">
                     <div className="flex items-center gap-1"><span className="text-emerald-600 font-bold">X</span> : Đủ công (1 ngày)</div>
+                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-purple-500 text-white flex items-center justify-center rounded text-[10px] font-bold">1.5</span> : x1.5 (Lễ)</div>
+                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-indigo-600 text-white flex items-center justify-center rounded text-[10px] font-bold">2</span> : x2 (Lễ)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-orange-500 text-white flex items-center justify-center rounded text-xs font-bold">/</span> : Nửa ngày (0.5 ngày)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-blue-500 text-white flex items-center justify-center rounded text-xs font-bold">P</span> : Nghỉ có phép (1 ngày)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-red-500 inline-block rounded"></span> : Nghỉ (0 ngày)</div>
-                    <div>• Click vào ô để đổi trạng thái</div>
+                    <div className="w-full text-blue-600 mt-1">• Click vào tiêu đề ngày (1, 2, 3...) để đổi ngày đó thành Ngày Lễ. Ngày lễ sẽ có nền màu xanh.</div>
                 </div>
             )}
         </div>

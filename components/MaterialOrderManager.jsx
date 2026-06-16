@@ -11,11 +11,11 @@ import {
 import { supabase } from '../lib/supabase';
 
 const STATUS_LABELS = {
-    'Waiting QS': { label: 'Chờ QS duyệt', color: 'bg-blue-50 text-blue-700 border-blue-100 hover:bg-blue-100', icon: Clock },
-    'Waiting Accounting': { label: 'Chờ hạch toán', color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100', icon: Clock },
-    'Paid': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
-    'Accounted': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
-    'Rejected': { label: 'Bị từ chối', color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100', icon: XCircle }
+    'Draft': { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info },
+    'Pending': { label: 'Chờ hạch toán', color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100', icon: Clock },
+    'Approved': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
+    'Rejected': { label: 'Bị từ chối', color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100', icon: XCircle },
+    'Deleted': { label: 'Đã xóa', color: 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-200', icon: XCircle }
 };
 
 const getCommanderName = (recipient) => {
@@ -644,7 +644,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 return (
                                                     <tr 
                                                         key={order.id} 
-                                                        className={`hover:bg-slate-50/50 transition ${(status === 'Accounted' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
+                                                        className={`hover:bg-slate-50/50 transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
                                                         onDoubleClick={() => {
                                                             if (onNavigateToProject) {
                                                                 onNavigateToProject(order.project_name);
@@ -678,10 +678,10 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                             </span>
                                                         </td>
                                                         <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold">
-                                                            {status === 'Accounted' || (req && req.total_amount > 0) ? (
+                                                            {status === 'Approved' || (req && req.total_amount > 0) ? (
                                                                  <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
                                                             ) : (
-                                                                status === 'Draft' || status === 'Rejected' ? (
+                                                                status === 'Draft' || status === 'Rejected' || status === 'Deleted' ? (
                                                                     <span className="text-slate-400 italic font-normal text-xs">-</span>
                                                                 ) : (
                                                                     <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>

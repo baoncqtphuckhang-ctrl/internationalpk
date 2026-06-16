@@ -419,7 +419,7 @@ export default function Home() {
                 }
             }
             showToast('Đã lưu dữ liệu thành công!');
-            logActivity(editId ? 'Cập nhật' : 'Thêm', type === 'EXPENSE' ? 'Chi phí' : (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : 'Thu tiền'), type === 'EXPENSE' ? `Chi phí: ${data.debit} - ${data.note}` : (type === 'OFFICE_INCOME' ? `Thu VP: ${data.office_amount}` : `Thu đợt ${data.phase}: ${data.amount || data.actual_received_amount}`), data.project_name);
+            logActivity(editId ? 'Cập nhật' : 'Thêm', type === 'EXPENSE' ? 'Chi phí' : (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : 'Thu tiền'), type === 'EXPENSE' ? `Chi phí: ${data.debit} - ${data.note}${data.recipient ? ` (Người nhận: ${data.recipient})` : ''}` : (type === 'OFFICE_INCOME' ? `Thu VP: ${data.office_amount}` : `Thu đợt ${data.phase}: ${data.amount || data.actual_received_amount}`), data.project_name);
             setEditTransaction(null);
             if (previousTab && type !== 'INCOME_REAL') {
                 setActiveTab(previousTab);
@@ -978,7 +978,7 @@ export default function Home() {
             }).eq('id', id);
             
             if (statusError) throw statusError;
-            logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})`);
+            logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})${distribution && distribution[0]?.recipient ? ` (Người nhận: ${distribution[0].recipient})` : ''}`);
             fetchData();
         } catch (error) {
             console.error(error);
