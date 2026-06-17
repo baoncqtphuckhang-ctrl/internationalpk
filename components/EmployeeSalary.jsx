@@ -1272,8 +1272,23 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                     <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
                         <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
                             <tr>
-                                <th className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[50px] w-12 sticky left-0 z-40 bg-slate-100">STT</th>
-                                <th className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[200px] sticky left-12 z-40 bg-slate-100">HỌ VÀ TÊN</th>
+                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[50px] w-12 sticky left-0 z-40 bg-slate-100">STT</th>
+                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[200px] sticky left-[50px] md:left-[50px] z-40 bg-slate-100">HỌ VÀ TÊN</th>
+                                {Array.from({ length: daysInMonthCount }).map((_, i) => {
+                                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
+                                    const dayOfWeek = date.getDay();
+                                    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                                    const isSunday = dayOfWeek === 0;
+                                    
+                                    return (
+                                        <th key={`dow-${i}`} className={`border border-slate-300 p-1 text-center text-[10px] font-bold ${isSunday ? 'bg-red-100 text-red-600' : 'text-slate-500 bg-slate-50'}`}>
+                                            {dayNames[dayOfWeek]}
+                                        </th>
+                                    );
+                                })}
+                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-16 bg-blue-50">TỔNG</th>
+                            </tr>
+                            <tr>
                                 {Array.from({ length: daysInMonthCount }).map((_, i) => {
                                     const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
                                     const isSunday = date.getDay() === 0;
@@ -1290,7 +1305,6 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                                         </th>
                                     );
                                 })}
-                                <th className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-16 bg-blue-50">TỔNG</th>
                             </tr>
                         </thead>
                         <tbody>

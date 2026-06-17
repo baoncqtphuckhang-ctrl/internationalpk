@@ -25,7 +25,7 @@ import SystemConfigModal from '@/components/SystemConfigModal';
 import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import Trash from '@/components/Trash';
 import { supabase } from '@/lib/supabase';
-import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN } from '@/lib/utils';
+import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPENSE_CATEGORIES } from '@/lib/utils';
 import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
@@ -1246,7 +1246,8 @@ export default function Home() {
         return allowedProjects.map(p => {
             const name = p.name;
             const details = projectDetails[name] || { contractValueAfterTax: 0 };
-            const exp = allowedTransactions.filter(t => t.project_name === name).reduce((sum, t) => sum + (t.debit || 0) - (t.credit || 0), 0);
+            const validExpenseCodes = EXPENSE_CATEGORIES.map(c => c.code);
+            const exp = allowedTransactions.filter(t => t.project_name === name && validExpenseCodes.includes(t.code)).reduce((sum, t) => sum + (t.debit || 0) - (t.credit || 0), 0);
             const projIncomes = allowedIncomes.filter(i => i.project_name === name);
             const totalSanLuong = projIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
             const actInc = Math.round(totalSanLuong);
