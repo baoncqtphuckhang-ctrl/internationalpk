@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -263,11 +263,36 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsDeleteAllConfirmOpen(false);
     };
 
-    const filteredInvoices = invoices.filter(inv => {
+    const handleToggleComplete = async (id, currentStatus) => {
+        try {
+            const { error } = await supabase
+                .from('expected_invoices')
+                .update({ is_completed: !currentStatus })
+                .eq('id', id);
+            
+            if (error) {
+                console.warn('Supabase update failed, updating locally', error);
+            }
+            setInvoices(prev => prev.map(inv => 
+                inv.id === id ? { ...inv, is_completed: !currentStatus } : inv
+            ));
+        } catch (error) {
+            console.error('Error toggling complete:', error);
+            setInvoices(prev => prev.map(inv => 
+                inv.id === id ? { ...inv, is_completed: !currentStatus } : inv
+            ));
+        }
+    };
+
+    let filteredInvoices = invoices.filter(inv => {
         if (activeSubTab === 'invoice') {
             if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
         } else if (activeSubTab === 'team') {
             if (!inv.teamValue && !inv.teamName) return false;
+            if (inv.is_completed) return false;
+        } else if (activeSubTab === 'history_team') {
+            if (!inv.teamValue && !inv.teamName) return false;
+            if (!inv.is_completed) return false;
         }
 
         const term = searchTerm.toLowerCase();
@@ -281,6 +306,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             (projectDetails?.[inv.projectName]?.contractNo || '').toLowerCase().includes(term)
         );
     });
+
+    if (activeSubTab === 'history_team') {
+        filteredInvoices.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+    }
 
     const customerDebts = useMemo(() => {
         if (activeSubTab !== 'customer_debt') return [];
@@ -484,6 +513,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
                     GIÁ TRỊ TỔ ĐỘI
+                </button>
+                <button 
+                    onClick={() => setActiveSubTab('history_team')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'history_team' ? 'border-amber-600 text-amber-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    LỊCH SỬ CHI TỔ ĐỘI
                 </button>
             </div>
 
@@ -752,7 +787,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
                                     </>
-                                ) : activeSubTab === 'team' ? (
+                                ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Tên tổ đội</th>
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Lũy kế tạm ứng</th>
@@ -760,7 +795,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Tổng cộng</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-32 text-center">Thao tác</th>
                                     </>
                                 ) : (
                                     <>
@@ -836,6 +871,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <td className="p-4 text-sm text-slate-500">{inv.note}</td>
                                             <td className="p-4 text-center">
                                                 <div className="flex items-center justify-center gap-2">
+                                                    {activeSubTab === 'team' && (
+                                                        <button onClick={() => handleToggleComplete(inv.id, inv.is_completed)} className="p-1.5 text-emerald-600 hover:bg-emerald-50 rounded-lg transition" title="Đánh dấu hoàn thành"><CheckCircle2 size={16} /></button>
+                                                    )}
+                                                    {activeSubTab === 'history_team' && (
+                                                        <button onClick={() => handleToggleComplete(inv.id, inv.is_completed)} className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition" title="Hoàn tác"><RotateCcw size={16} /></button>
+                                                    )}
                                                     <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition" title="Sửa"><Edit2 size={16} /></button>
                                                     {currentUser?.role?.toUpperCase() === 'ADMIN' && (
                                                         <button onClick={() => handleDelete(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa"><Trash2 size={16} /></button>
