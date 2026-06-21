@@ -57,8 +57,8 @@ body {
 /* A4 Print Layout and Styling */
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 30mm 20mm 15mm 20mm;
+    size: A3 landscape;
+    margin: 15mm 10mm 15mm 10mm;
   }
 
   /* Reset body and hide all screen-only elements */
@@ -73,7 +73,7 @@ body {
   }
 
   body * {
-    visibility: hidden;
+    /* visibility: hidden; Removed to prevent whitespace */
   }
 
   aside, .no-print {
@@ -81,8 +81,8 @@ body {
   }
 
   /* Show only the designated print area and its descendants */
-  .print-area, .print-area * {
-    visibility: visible !important;
+  .print-area {
+    /* ... */
   }
 
   .print-area {

@@ -264,10 +264,10 @@ export default function PartnerDebts({
 
             {/* Bảng Dữ Liệu */}
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden print:shadow-none print:border-none">
-                <div className="overflow-x-auto print:overflow-visible">
+                <div className="overflow-auto max-h-[calc(100vh-260px)] print:overflow-visible print:max-h-none">
                     <table id="partner-debts-table" className="w-full text-left border-collapse min-w-[800px] print:min-w-0 print:text-[12px]">
-                        <thead>
-                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500">
+                        <thead className="sticky top-0 z-20">
+                            <tr className="bg-slate-50 border-b border-slate-200 text-xs uppercase tracking-wider text-slate-500 shadow-sm">
                                 <th className="p-4 font-black">Ngày Ghi Nhận</th>
                                 <th className="p-4 font-black">Loại</th>
                                 <th className="p-4 font-black">Công Trình</th>

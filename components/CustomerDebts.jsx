@@ -67,6 +67,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     voucherNo: '',
                     invoiceDate: '',
                     invoicePdf: null,
+                    hsttPdf: null,
                     noteRaw: inc.note,
                     invoice_id: isInvoice ? inc.id : null,
                     invoice_noteRaw: isInvoice ? inc.note : null,
@@ -108,9 +109,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                             grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
                         }
                         
-                        if (parsed.invoice_pdf && !grouped[key].invoicePdf) {
-                            grouped[key].invoicePdf = parsed.invoice_pdf;
-                        }
+                        if (parsed.invoice_pdf) grouped[key].invoicePdf = parsed.invoice_pdf;
+                        if (parsed.hstt_pdf) grouped[key].hsttPdf = parsed.hstt_pdf;
                     }
                 } catch(e) {}
             }
@@ -148,14 +148,14 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
 
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
 
-    const handleUpload = async (e, debt) => {
+    const handleUpload = async (e, debt, type = 'invoice') => {
         const file = e.target.files[0];
         if (!file) return;
 
-        setUploadingId(debt.id);
+        setUploadingId(`${debt.id}_${type}`);
         try {
             const fileExt = file.name.split('.').pop();
-            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || 'invoice';
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || type;
             const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
             const sanitizedProject = debt.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
             
@@ -189,7 +189,11 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     parsedNote = JSON.parse(debt.noteRaw);
                 } catch(e){}
             }
-            parsedNote.invoice_pdf = publicUrl;
+            if (type === 'invoice') {
+                parsedNote.invoice_pdf = publicUrl;
+            } else {
+                parsedNote.hstt_pdf = publicUrl;
+            }
             
             const { error } = await supabase.from('incomes')
                 .update({ note: JSON.stringify(parsedNote) })
@@ -211,7 +215,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         }
     };
 
-    const handleDeletePdf = async (debt) => {
+    const handleDeletePdf = async (debt, type = 'invoice') => {
         try {
             let parsedNote = {};
             if (debt.noteRaw) {
@@ -220,7 +224,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 } catch(e){}
             }
             
-            const fileUrl = parsedNote.invoice_pdf;
+            const fileUrl = type === 'invoice' ? parsedNote.invoice_pdf : parsedNote.hstt_pdf;
             if (fileUrl && fileUrl.includes('/public/invoices/')) {
                 const parts = fileUrl.split('/public/invoices/');
                 if (parts.length > 1) {
@@ -230,7 +234,11 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 }
             }
 
-            delete parsedNote.invoice_pdf;
+            if (type === 'invoice') {
+                delete parsedNote.invoice_pdf;
+            } else {
+                delete parsedNote.hstt_pdf;
+            }
             
             const { error } = await supabase.from('incomes')
                 .update({ note: JSON.stringify(parsedNote) })
@@ -415,11 +423,11 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             </div>
 
             {/* Bảng Dữ Liệu */}
-            <div className="bg-white rounded-2xl shadow-sm border border-slate-200/80 overflow-hidden print:shadow-none print:border-none">
-                <div className="overflow-x-auto print:overflow-visible">
-                    <table id="customer-debts-table" className="w-full text-left border-collapse min-w-[1000px] print:min-w-0 print:text-[12px]">
+            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-300px)]">
+                    <table id="customer-debts-table" className="w-full text-left border-collapse min-w-[1200px]">
                         <thead>
-                            <tr className="bg-slate-50/75 border-b border-slate-200 text-xs font-semibold uppercase tracking-wider text-slate-500">
+                            <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-10 text-xs font-semibold uppercase tracking-wider text-slate-500">
                                 <th className="py-3.5 px-4 font-bold text-left">Công Trình</th>
                                 <th className="py-3.5 px-3 font-bold text-center">Giai Đoạn / Đợt Thu</th>
                                 <th className="py-3.5 px-3 font-bold text-left">Số Hóa Đơn</th>
@@ -430,6 +438,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 <th className="py-3.5 px-3 font-bold text-right">Sau Thuế</th>
                                 <th className="py-3.5 px-3 font-bold text-right">Giá Trị HSTT</th>
                                 <th className="py-3.5 px-3 font-bold text-right text-red-600">Công Nợ</th>
+                                <th className="py-3.5 px-3 font-bold text-center">HĐ PDF</th>
+                                <th className="py-3.5 px-3 font-bold text-center">HSTT PDF</th>
                                 <th className="py-3.5 px-4 font-bold text-center">Thao Tác</th>
                             </tr>
                         </thead>
@@ -471,6 +481,58 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                                 <span className="text-red-600">{formatCurrency(debt.remainingAmount)}</span>
                                             )}
                                         </td>
+                                        <td className="py-3.5 px-3 align-middle text-center">
+                                            {debt.invoicePdf ? (
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HĐ PDF">
+                                                        <Eye size={15} />
+                                                    </a>
+                                                    <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'invoice' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HĐ PDF">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="relative group/upload flex items-center justify-center">
+                                                    <input 
+                                                        type="file" 
+                                                        accept=".pdf"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                        onChange={(e) => handleUpload(e, debt, 'invoice')}
+                                                        disabled={uploadingId === `${debt.id}_invoice`}
+                                                        title="Tải lên HĐ PDF"
+                                                    />
+                                                    <button className={`p-1.5 ${uploadingId === `${debt.id}_invoice` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HĐ PDF">
+                                                        <Upload size={15} className={uploadingId === `${debt.id}_invoice` ? 'animate-bounce' : ''} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </td>
+                                        <td className="py-3.5 px-3 align-middle text-center">
+                                            {debt.hsttPdf ? (
+                                                <div className="flex items-center justify-center gap-1.5">
+                                                    <a href={debt.hsttPdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HSTT PDF">
+                                                        <Eye size={15} />
+                                                    </a>
+                                                    <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'hstt' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HSTT PDF">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="relative group/upload flex items-center justify-center">
+                                                    <input 
+                                                        type="file" 
+                                                        accept=".pdf"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                        onChange={(e) => handleUpload(e, debt, 'hstt')}
+                                                        disabled={uploadingId === `${debt.id}_hstt`}
+                                                        title="Tải lên HSTT PDF"
+                                                    />
+                                                    <button className={`p-1.5 ${uploadingId === `${debt.id}_hstt` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-purple-600 group-hover/upload:text-white group-hover/upload:border-purple-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HSTT PDF">
+                                                        <Upload size={15} className={uploadingId === `${debt.id}_hstt` ? 'animate-bounce' : ''} />
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </td>
                                         <td className="py-3.5 px-4 align-middle text-center">
                                             <div className="flex items-center justify-center gap-1.5">
                                                 <button 
@@ -480,33 +542,6 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                                 >
                                                     <Edit3 size={15} />
                                                 </button>
-                                                {debt.invoicePdf ? (
-                                                    <>
-                                                        <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600" title="Xem PDF">
-                                                            <Eye size={15} />
-                                                        </a>
-                                                        <a href={debt.invoicePdf} download className="p-1.5 bg-emerald-50 text-emerald-600 hover:bg-emerald-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-emerald-100 hover:border-emerald-600" title="Tải xuống">
-                                                            <Download size={15} />
-                                                        </a>
-                                                        <button onClick={() => setConfirmDelete({ isOpen: true, debt })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-rose-100 hover:border-rose-600 cursor-pointer" title="Xóa PDF">
-                                                            <Trash2 size={15} />
-                                                        </button>
-                                                    </>
-                                                ) : (
-                                                    <div className="relative group/upload flex items-center justify-center">
-                                                        <input 
-                                                            type="file" 
-                                                            accept=".pdf"
-                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                            onChange={(e) => handleUpload(e, debt)}
-                                                            disabled={uploadingId === debt.id}
-                                                            title="Tải lên PDF"
-                                                        />
-                                                        <button className={`p-1.5 ${uploadingId === debt.id ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên PDF">
-                                                            <Upload size={15} className={uploadingId === debt.id ? 'animate-bounce' : ''} />
-                                                        </button>
-                                                    </div>
-                                                )}
                                             </div>
                                         </td>
                                     </tr>
@@ -523,13 +558,13 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 confirmText="Xóa tệp"
                 type="danger"
                 onConfirm={async () => {
-                    const debt = confirmDelete.debt;
-                    setConfirmDelete({ isOpen: false, debt: null });
+                    const { debt, type } = confirmDelete;
+                    setConfirmDelete({ isOpen: false, debt: null, type: null });
                     if (debt) {
-                        await handleDeletePdf(debt);
+                        await handleDeletePdf(debt, type);
                     }
                 }}
-                onCancel={() => setConfirmDelete({ isOpen: false, debt: null })}
+                onCancel={() => setConfirmDelete({ isOpen: false, debt: null, type: null })}
             />
 
             {/* Modal chỉnh sửa thông tin hóa đơn */}

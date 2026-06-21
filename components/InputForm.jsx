@@ -761,12 +761,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         value={formData.amount ? formatCurrency(formData.amount) : ''}
                                         onChange={(e) => {
                                             const val = parseVietnameseNumber(e.target.value);
-                                            const vat = Math.round(val * formData.vat_rate / 100);
                                             setFormData(prev => ({ 
                                                 ...prev, 
-                                                amount: val, 
-                                                vat_amount: vat, 
-                                                post_tax_amount: val + vat 
+                                                amount: val 
                                             }));
                                             if (errors.amount) {
                                                 setErrors(prev => { const er = {...prev}; delete er.amount; return er; });
@@ -785,23 +782,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             <label className="flex items-center gap-1 cursor-pointer">
                                                 <input type="radio" name="vat_rate" value="8" checked={formData.vat_rate === 8} 
                                                     onChange={() => {
-                                                        const vat = Math.round(formData.amount * 8 / 100);
-                                                        setFormData(prev => ({...prev, vat_rate: 8, vat_amount: vat, post_tax_amount: prev.amount + vat}));
+                                                        setFormData(prev => ({...prev, vat_rate: 8}));
                                                     }} 
                                                 /> 8%
                                             </label>
                                             <label className="flex items-center gap-1 cursor-pointer">
                                                 <input type="radio" name="vat_rate" value="10" checked={formData.vat_rate === 10} 
                                                     onChange={() => {
-                                                        const vat = Math.round(formData.amount * 10 / 100);
-                                                        setFormData(prev => ({...prev, vat_rate: 10, vat_amount: vat, post_tax_amount: prev.amount + vat}));
+                                                        setFormData(prev => ({...prev, vat_rate: 10}));
                                                     }} 
                                                 /> 10%
                                             </label>
                                             <label className="flex items-center gap-1 cursor-pointer">
                                                 <input type="radio" name="vat_rate" value="0" checked={formData.vat_rate === 0} 
                                                     onChange={() => {
-                                                        setFormData(prev => ({...prev, vat_rate: 0, vat_amount: 0, post_tax_amount: prev.amount}));
+                                                        setFormData(prev => ({...prev, vat_rate: 0}));
                                                     }} 
                                                 /> Khác
                                             </label>
@@ -812,7 +807,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         value={formData.vat_amount ? formatCurrency(formData.vat_amount) : ''}
                                         onChange={(e) => {
                                             const val = parseVietnameseNumber(e.target.value);
-                                            setFormData(prev => ({ ...prev, vat_amount: val, post_tax_amount: prev.amount + val }));
+                                            setFormData(prev => ({ ...prev, vat_amount: val }));
                                         }}
                                         placeholder="Nhập VAT..."
                                         className={`${inputCls('vat_amount')} font-bold text-slate-600`}
@@ -828,8 +823,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             const val = parseVietnameseNumber(e.target.value);
                                             setFormData(prev => ({ 
                                                 ...prev, 
-                                                post_tax_amount: val,
-                                                amount: val - (prev.vat_amount || 0)
+                                                post_tax_amount: val 
                                             }));
                                         }}
                                         placeholder="Nhập số tiền sau thuế..."
