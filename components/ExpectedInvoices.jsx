@@ -1213,21 +1213,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     {sortedGroupInvoices.map((inv, idx) => {
                                                         const isAcctUser = currentUser?.role?.toUpperCase() === 'ACCOUNTANT';
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
+                                                        const isZero = !parseFloat(inv.teamValue);
 
                                                         return (
-                                                        <tr key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${!parseFloat(inv.teamValue) ? 'border-l-slate-300 bg-slate-50 opacity-70 grayscale' : `${color.rowBorder} bg-white`}`}>
-                                                            <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
-                                                            <td className="p-4 text-sm font-bold text-slate-800">{inv.phase || '-'}</td>
-                                                            <td className="p-4 text-sm font-bold text-slate-800">{inv.teamName || '-'}</td>
-                                                            <td className="p-4 text-sm text-right font-bold text-amber-600">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
-                                                            <td className="p-4 text-sm text-right font-bold text-red-600">{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
-                                                            <td className="p-4 text-sm text-right font-medium text-blue-600">{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
-                                                            <td className="p-4 text-sm text-right font-bold text-emerald-600">{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
-                                                            <td className="p-4 text-sm text-right font-black text-indigo-600">{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0))}</td>
-                                                            <td className="p-4 text-sm text-slate-600 font-medium whitespace-nowrap">{inv.account_name || '-'}</td>
-                                                            <td className="p-4 text-sm text-slate-600 font-medium whitespace-nowrap">{inv.account_number || '-'}</td>
-                                                            <td className="p-4 text-sm text-slate-600 font-medium uppercase whitespace-nowrap">{inv.bank_name || '-'}</td>
-                                                            <td className="p-4 text-sm text-slate-500 max-w-[150px] truncate" title={inv.note}>{inv.note || '-'}</td>
+                                                        <tr key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${isZero ? 'border-l-slate-300 bg-slate-50' : `${color.rowBorder} bg-white`}`}>
+                                                            <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
+                                                            <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.phase || '-'}</td>
+                                                            <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-black ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0))}</td>
+                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
+                                                            <td className={`p-4 text-sm max-w-[150px] truncate ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
                                                             {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
                                                             <td className="p-4 text-center">
                                                                 <div className="flex items-center justify-center gap-2">
