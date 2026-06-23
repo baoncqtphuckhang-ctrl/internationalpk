@@ -1,11 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Home, LayoutDashboard, PieChart, PlusCircle, History, 
     FileSignature, ShieldCheck, Users, LogOut, 
     ChevronRight, Building2, Menu, X, Trash2,
-    ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock
+    ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock, Search
 } from 'lucide-react';
 
 export default function Sidebar({ 
@@ -34,10 +34,23 @@ export default function Sidebar({
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isProjectsMenuOpen, setIsProjectsMenuOpen] = useState(false);
+    const [projectSearchTerm, setProjectSearchTerm] = useState('');
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
     const [deletePassword, setDeletePassword] = useState('');
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
+
+    useEffect(() => {
+        if (!isProjectsMenuOpen) {
+            setProjectSearchTerm('');
+        }
+    }, [isProjectsMenuOpen]);
+
+    const filteredSidebarProjects = useMemo(() => {
+        if (!projectSearchTerm) return projects;
+        const term = projectSearchTerm.toLowerCase();
+        return projects.filter(p => p.name.toLowerCase().includes(term));
+    }, [projects, projectSearchTerm]);
     
     // Compute pending approvals badge
     const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS';
@@ -208,7 +221,28 @@ export default function Sidebar({
                         
                         {isProjectsMenuOpen && (
                             <div className="space-y-1 pl-2">
-                                {projects.map(p => (
+                                <div className="px-2 pb-2">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-2.5 text-slate-500" size={14} />
+                                        <input 
+                                            type="text"
+                                            placeholder="Tìm công trình..."
+                                            value={projectSearchTerm}
+                                            onChange={(e) => setProjectSearchTerm(e.target.value)}
+                                            onKeyDown={(e) => {
+                                                if (e.key === 'Enter' && filteredSidebarProjects.length > 0) {
+                                                    setSelectedProject(filteredSidebarProjects[0].name);
+                                                    toggleTab('project-detail');
+                                                    setProjectSearchTerm('');
+                                                }
+                                            }}
+                                            className="w-full bg-slate-800 border border-slate-700 rounded-xl pl-9 pr-3 py-2 text-xs font-bold text-slate-300 outline-none focus:border-indigo-500 focus:bg-slate-900 transition"
+                                        />
+                                    </div>
+                                </div>
+                                {filteredSidebarProjects.length === 0 ? (
+                                    <div className="text-xs text-slate-500 text-center py-2">Không tìm thấy công trình</div>
+                                ) : filteredSidebarProjects.map(p => (
                                     <div key={p.id} className="flex flex-col">
                                         {deleteProjectConfirmName === p.name ? (
                                             <div className="mt-1 mx-3 p-3 bg-slate-800 border border-red-900/50 rounded-xl animate-in fade-in">

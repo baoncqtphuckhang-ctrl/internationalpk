@@ -43,20 +43,38 @@ const getNextOrderPhaseForProject = (projectName, ordersList) => {
     return `ĐỢT ${maxPhase + 1}`;
 };
 
-const getProjectMaterialTemplate = (projectName) => {
-    if (!projectName) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+const getProjectMaterialTemplateData = (projectName) => {
+    if (!projectName) return { versions: [] };
     try {
         const savedTemplates = localStorage.getItem('misa_project_material_templates');
         if (savedTemplates) {
             const templates = JSON.parse(savedTemplates);
-            if (templates[projectName] && Array.isArray(templates[projectName]) && templates[projectName].length > 0) {
-                return JSON.parse(JSON.stringify(templates[projectName]));
+            const projData = templates[projectName];
+            
+            if (Array.isArray(projData) && projData.length > 0) {
+                const today = new Date().toISOString().split('T')[0];
+                return {
+                    versions: [{ id: Date.now().toString(), date: today, categories: projData }]
+                };
+            }
+            if (projData && projData.versions) {
+                return projData;
             }
         }
     } catch (e) {
         console.error("Error reading material templates:", e);
     }
-    return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    return { versions: [] };
+};
+
+const getProjectMaterialTemplate = (projectName, versionId = null) => {
+    const data = getProjectMaterialTemplateData(projectName);
+    if (data.versions.length === 0) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    if (versionId) {
+        const ver = data.versions.find(v => v.id === versionId);
+        if (ver) return JSON.parse(JSON.stringify(ver.categories));
+    }
+    return JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories));
 };
 
 const getCommanderName = (recipient) => {
@@ -86,6 +104,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
     // Config state
     const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
+    const [configVersions, setConfigVersions] = useState([]);
+    const [activeVersionId, setActiveVersionId] = useState('');
     const [configCategories, setConfigCategories] = useState([]);
 
     // Form state
@@ -490,16 +510,24 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         setView('create');
     };
 
-    const openDetail = (order) => {
-        setSelectedOrder(order);
-        setView('detail');
-    };
-
-    const openConfig = () => {
-        const proj = configProjectName || projects[0]?.name;
+    const handleOpenConfig = (projName = null) => {
+        const proj = typeof projName === 'string' ? projName : (configProjectName || projects[0]?.name);
         if (proj) {
             setConfigProjectName(proj);
-            setConfigCategories(getProjectMaterialTemplate(proj));
+            const data = getProjectMaterialTemplateData(proj);
+            if (data.versions.length > 0) {
+                setConfigVersions(data.versions);
+                const latestVer = data.versions[data.versions.length - 1];
+                setActiveVersionId(latestVer.id);
+                setConfigCategories(JSON.parse(JSON.stringify(latestVer.categories)));
+            } else {
+                const today = new Date().toISOString().split('T')[0];
+                const newId = Date.now().toString();
+                const defaultCats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+                setConfigVersions([{ id: newId, date: today, categories: defaultCats }]);
+                setActiveVersionId(newId);
+                setConfigCategories(defaultCats);
+            }
         }
         setView('config');
     };
@@ -507,8 +535,14 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const handleSaveConfig = () => {
         if (!configProjectName) return;
         try {
+            const updatedVersions = configVersions.map(v => 
+                v.id === activeVersionId ? { ...v, categories: configCategories } : v
+            );
+
             const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-            projectTemplates[configProjectName] = configCategories;
+            projectTemplates[configProjectName] = {
+                versions: updatedVersions
+            };
             localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
             showToast('Đã lưu cấu hình danh mục vật tư cho công trình!');
             setView('list');
@@ -516,6 +550,41 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             console.error("Error saving project material template:", err);
             showToast('Lỗi khi lưu cấu hình!', 'error');
         }
+    };
+
+    const handleSwitchVersion = (vid) => {
+        // Save current changes to current version before switching
+        const currentUpdated = configVersions.map(v => 
+            v.id === activeVersionId ? { ...v, categories: configCategories } : v
+        );
+        setConfigVersions(currentUpdated);
+        
+        setActiveVersionId(vid);
+        const ver = currentUpdated.find(v => v.id === vid);
+        if (ver) {
+            setConfigCategories(JSON.parse(JSON.stringify(ver.categories)));
+        }
+    };
+
+    const handleAddVersion = () => {
+        const newId = Date.now().toString();
+        const today = new Date().toISOString().split('T')[0];
+        const newVer = { id: newId, date: today, categories: JSON.parse(JSON.stringify(configCategories)) };
+        setConfigVersions(prev => [...prev, newVer]);
+        setActiveVersionId(newId);
+    };
+
+    const handleDeleteVersion = () => {
+        if (configVersions.length <= 1) {
+            showToast('Không thể xóa đợt giá duy nhất!', 'error');
+            return;
+        }
+        if (!window.confirm('Bạn có chắc chắn muốn xóa đợt giá này?')) return;
+        const updated = configVersions.filter(v => v.id !== activeVersionId);
+        setConfigVersions(updated);
+        const lastVer = updated[updated.length - 1];
+        setActiveVersionId(lastVer.id);
+        setConfigCategories(JSON.parse(JSON.stringify(lastVer.categories)));
     };
 
     // Form logic helpers
@@ -831,7 +900,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     </div>
                     <div className="flex gap-2 flex-wrap">
                         <button 
-                            onClick={openConfig}
+                            onClick={handleOpenConfig}
                             className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-2xl font-black shadow-xl shadow-slate-800/20 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
                         >
                             <Edit3 size={18} /> THÔNG TIN VẬT TƯ
@@ -999,7 +1068,20 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 onChange={(e) => {
                                     const proj = e.target.value;
                                     setConfigProjectName(proj);
-                                    setConfigCategories(getProjectMaterialTemplate(proj));
+                                    const data = getProjectMaterialTemplateData(proj);
+                                    if (data.versions.length > 0) {
+                                        setConfigVersions(data.versions);
+                                        const latestVer = data.versions[data.versions.length - 1];
+                                        setActiveVersionId(latestVer.id);
+                                        setConfigCategories(JSON.parse(JSON.stringify(latestVer.categories)));
+                                    } else {
+                                        const today = new Date().toISOString().split('T')[0];
+                                        const newId = Date.now().toString();
+                                        const defaultCats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+                                        setConfigVersions([{ id: newId, date: today, categories: defaultCats }]);
+                                        setActiveVersionId(newId);
+                                        setConfigCategories(defaultCats);
+                                    }
                                 }}
                                 className="w-full md:w-1/2 p-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
                             >
@@ -1008,6 +1090,47 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 ))}
                             </select>
                             <p className="text-xs text-slate-500 mt-2 italic">Lưu ý: Bạn đang định nghĩa danh sách vật tư mặc định sẽ hiện ra mỗi khi lập Đơn đặt hàng mới cho công trình này.</p>
+                        </div>
+                        
+                        <div className="mb-6 flex flex-col md:flex-row items-start md:items-end gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                            <div className="w-full md:w-auto flex-1">
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Đợt giá (Ngày áp giá):</label>
+                                <select
+                                    value={activeVersionId}
+                                    onChange={(e) => handleSwitchVersion(e.target.value)}
+                                    className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
+                                >
+                                    {configVersions.map((v, i) => (
+                                        <option key={v.id} value={v.id}>Đợt {i + 1} - Áp dụng từ ngày {formatDateVN(v.date)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="flex gap-2 w-full md:w-auto">
+                                <button 
+                                    onClick={handleAddVersion}
+                                    className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-emerald-200"
+                                >
+                                    <Copy size={18} /> Thêm đợt giá (từ đợt hiện tại)
+                                </button>
+                                <button 
+                                    onClick={handleDeleteVersion}
+                                    className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-red-200"
+                                >
+                                    <Trash2 size={18} /> Xóa đợt này
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="mb-4">
+                            <label className="block text-sm font-bold text-slate-700 mb-2">Ngày bắt đầu áp dụng (của đợt này):</label>
+                            <input 
+                                type="date" 
+                                value={configVersions.find(v => v.id === activeVersionId)?.date || ''}
+                                onChange={(e) => {
+                                    setConfigVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, date: e.target.value } : v));
+                                }}
+                                className="w-full md:w-48 p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
+                            />
                         </div>
 
                         <div className="space-y-6">

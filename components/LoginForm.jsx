@@ -6,10 +6,7 @@ import { Building2, ShieldCheck, Lock, Star, User, ArrowRight, Eye, EyeOff, Sun,
 export default function LoginForm({ onLogin, usersList }) {
     const [form, setForm] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
-    const [promptUser, setPromptUser] = useState(null);
-    const [promptPassword, setPromptPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
-    const [showPromptPassword, setShowPromptPassword] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
 
     useEffect(() => {
@@ -154,34 +151,6 @@ export default function LoginForm({ onLogin, usersList }) {
                             </button>
                         </form>
 
-                        <div className="mt-10 mb-8 relative flex items-center justify-center">
-                            <div className="absolute inset-0 flex items-center">
-                                <div className="w-full border-t border-[rgba(212,175,55,0.15)]"></div>
-                            </div>
-                            <div className="relative bg-[#0A0A0A] px-4 text-[10px] font-bold text-[#D4AF37] uppercase tracking-[0.2em]">
-                                Hoặc đăng nhập nhanh
-                            </div>
-                        </div>
-
-                        <div className="flex flex-wrap gap-4 justify-center">
-                            {usersList.map((u, i) => (
-                                <button 
-                                    key={u.id} 
-                                    onClick={() => {
-                                        setPromptUser(u);
-                                        setPromptPassword('');
-                                        setShowPromptPassword(false);
-                                        setError('');
-                                    }} 
-                                    className="flex items-center justify-center gap-2.5 px-4 py-3 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl text-[#B8B8B8] hover:text-[#FFFFFF] hover:bg-[#101010] hover:border-[#D4AF37]/60 hover:shadow-[0_0_15px_rgba(212,175,55,0.15)] transition-all duration-300 group flex-1 min-w-[120px]"
-                                >
-                                    <div className="text-[#D4AF37] group-hover:scale-110 transition-transform duration-300">
-                                        <User size={16} />
-                                    </div>
-                                    <span className="text-[13px] font-semibold">{u.role}</span>
-                                </button>
-                            ))}
-                        </div>
                     </div>
 
                     {/* ISO Footer */}
@@ -197,71 +166,6 @@ export default function LoginForm({ onLogin, usersList }) {
                 </div>
             </div>
 
-            {/* QUICK LOGIN MODAL */}
-            {promptUser && (
-                <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-[#050505]/80 backdrop-blur-[20px] animate-in fade-in duration-300 text-[#FFFFFF]">
-                    <div className="bg-[#0A0A0A] border border-[rgba(212,175,55,0.25)] rounded-[32px] p-10 w-full max-w-[400px] shadow-[0_20px_60px_rgba(0,0,0,0.9)] relative animate-in zoom-in-[0.95] duration-300">
-                        <div className="absolute top-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/60 to-transparent"></div>
-                        
-                        <div className="w-[80px] h-[80px] border border-[rgba(212,175,55,0.3)] rounded-full flex items-center justify-center mb-8 mx-auto bg-[#101010] shadow-[0_0_20px_rgba(212,175,55,0.15)] relative">
-                            <div className="absolute inset-0 rounded-full bg-[#D4AF37] opacity-10 blur-md"></div>
-                            <User size={36} strokeWidth={1.5} className="text-[#D4AF37] relative z-10" />
-                        </div>
-                        <h3 className="text-[22px] font-bold text-[#FFFFFF] mb-2 text-center tracking-tight">Đăng nhập {promptUser.role}</h3>
-                        <p className="text-[13px] text-[#B8B8B8] mb-8 text-center font-medium">Tài khoản: <span className="text-[#D4AF37] tracking-wider">{promptUser.username}</span></p>
-                        
-                        <div className="relative mb-8">
-                            <input 
-                                type={showPromptPassword ? "text" : "password"}
-                                autoFocus
-                                value={promptPassword}
-                                onChange={(e) => setPromptPassword(e.target.value)}
-                                onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                        if (promptPassword === promptUser.password) {
-                                            onLogin(promptUser);
-                                        } else {
-                                            setError('Sai mật khẩu!');
-                                            setPromptUser(null);
-                                        }
-                                    }
-                                }}
-                                className="w-full p-4 pr-12 bg-[#050505] border border-[rgba(212,175,55,0.25)] rounded-2xl outline-none focus:border-[#D4AF37] focus:shadow-[0_0_15px_rgba(212,175,55,0.15)] text-[#FFFFFF] text-center text-[16px] font-medium transition-all placeholder:text-[#B8B8B8]/30 placeholder:font-normal"
-                                placeholder="Nhập mật khẩu..."
-                            />
-                            <button
-                                type="button"
-                                onClick={() => setShowPromptPassword(!showPromptPassword)}
-                                className="absolute right-5 top-1/2 -translate-y-1/2 text-[#B8B8B8] hover:text-[#FFFFFF] transition-colors"
-                            >
-                                {showPromptPassword ? <EyeOff size={18} /> : <Eye size={18} />}
-                            </button>
-                        </div>
-                        
-                        <div className="flex gap-4">
-                            <button 
-                                onClick={() => setPromptUser(null)}
-                                className="flex-1 py-4 rounded-2xl font-semibold text-[#B8B8B8] bg-[#050505] border border-[rgba(212,175,55,0.25)] hover:bg-[#101010] hover:text-[#FFFFFF] hover:border-[#D4AF37]/50 transition-all text-[14px]"
-                            >
-                                Hủy bỏ
-                            </button>
-                            <button 
-                                onClick={() => {
-                                    if (promptPassword === promptUser.password) {
-                                        onLogin(promptUser);
-                                    } else {
-                                        setError('Sai mật khẩu!');
-                                        setPromptUser(null);
-                                    }
-                                }}
-                                className="flex-1 py-4 bg-gradient-to-r from-[#C6922D] via-[#F5D27A] to-[#D4AF37] text-[#050505] rounded-2xl font-bold hover:brightness-110 shadow-[0_0_20px_rgba(212,175,55,0.3)] transition-all text-[14px]"
-                            >
-                                Xác nhận
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }

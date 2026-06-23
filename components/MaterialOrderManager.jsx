@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
@@ -12,10 +12,17 @@ import { supabase } from '../lib/supabase';
 
 const STATUS_LABELS = {
     'Draft': { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info },
-    'Pending': { label: 'Chờ hạch toán', color: 'bg-amber-50 text-amber-700 border-amber-100 hover:bg-amber-100', icon: Clock },
-    'Approved': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
+    'Waiting QS': { label: 'Chờ QS duyệt', color: 'bg-amber-50 text-amber-700 border-amber-100', icon: Clock },
+    'Waiting Accounting': { label: 'Chờ KT duyệt', color: 'bg-amber-50 text-amber-700 border-amber-100', icon: Clock },
+    'Waiting Print': { label: 'Chờ in UNC', color: 'bg-purple-50 text-purple-700 border-purple-100', icon: Clock },
+    'Waiting Pay': { label: 'Chờ chi tiền', color: 'bg-blue-50 text-blue-700 border-blue-100', icon: Clock },
+    'Paid': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
+    'Accounted': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
     'Rejected': { label: 'Bị từ chối', color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100', icon: XCircle },
-    'Deleted': { label: 'Đã xóa', color: 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-200', icon: XCircle }
+    'Deleted': { label: 'Đã xóa', color: 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-200', icon: XCircle },
+    // Fallback for legacy statuses
+    'Pending': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
+    'Approved': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle }
 };
 
 const getCommanderName = (recipient) => {
@@ -94,8 +101,42 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }) || null;
     };
 
+    // Merge actual orders with any orphaned DNTT requests of type 'Đơn Vật Tư'
+    const allOrders = useMemo(() => {
+        const list = [...orders];
+        if (dnttList && dnttList.length > 0) {
+            dnttList.forEach(d => {
+                if (d.doc_type === 'Đơn Vật Tư') {
+                    let parsed;
+                    try {
+                        parsed = JSON.parse(d.reason);
+                    } catch(e) { return; }
+                    
+                    const hasOrder = list.some(o => 
+                        (parsed.material_order_id && o.id === parsed.material_order_id) || 
+                        (o.project_name === d.project_name && o.order_date === parsed.date)
+                    );
+                    
+                    if (!hasOrder) {
+                        list.push({
+                            id: parsed.material_order_id || `orphan-${d.id}`,
+                            project_name: d.project_name,
+                            order_phase: parsed.orderPhase || 'Không rõ đợt',
+                            recipient: d.recipient,
+                            order_date: parsed.date || d.created_at?.split('T')[0] || new Date().toISOString().split('T')[0],
+                            items: parsed.items || [],
+                            is_deleted: false,
+                            _is_orphan: true
+                        });
+                    }
+                }
+            });
+        }
+        return list;
+    }, [orders, dnttList]);
+
     // Filters logic
-    const filteredOrders = orders.filter(order => {
+    const filteredOrders = allOrders.filter(order => {
         const matchesSearch = 
             order.project_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
             order.order_phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -105,12 +146,23 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         
         const req = getMatchedRequest(order);
         const status = req ? req.status : 'Draft';
-        const matchesStatus = selectedStatusFilter === '' || status === selectedStatusFilter;
         
-        const isDeadStatus = status === 'Draft' || status === 'Rejected';
+        let normalizedStatus = status;
+        if (status === 'Draft') normalizedStatus = 'Draft';
+        else if (status === 'Bị từ chối' || status === 'Rejected') normalizedStatus = 'Rejected';
+        else if (status === 'Đã hoàn tất' || status === 'Accounted') normalizedStatus = 'Accounted';
+        else if (status === 'Chờ hạch toán' || status === 'Paid') normalizedStatus = 'Paid';
+        else normalizedStatus = 'Waiting QS'; // Treat other waiting states as Waiting
+
+        const matchesStatus = selectedStatusFilter === '' || normalizedStatus === selectedStatusFilter;
+        
+        const isDeadStatus = normalizedStatus === 'Draft' || normalizedStatus === 'Rejected';
         if (selectedStatusFilter === '' && isDeadStatus) return false;
 
-        return matchesSearch && matchesProject && matchesStatus && !order.is_deleted;
+        // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
+        if (order.is_deleted && !req) return false;
+        
+        return matchesSearch && matchesProject && matchesStatus;
     });
 
     const formatDateVN = (dateStr) => {

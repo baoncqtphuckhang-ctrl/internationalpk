@@ -131,7 +131,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                     )}
                 </div>
                 <div className="overflow-auto custom-scrollbar flex-1" style={{ overflowX: 'auto', overflowY: 'auto' }}>
-                    <table id="expense-table" className="w-full text-left text-sm border-collapse min-w-[2000px]">
+                    <table id="expense-table" className="w-full text-left text-sm border-collapse">
                         <thead>
                             <tr className="bg-slate-100 text-slate-700 text-[11px] uppercase tracking-wider">
                                 <th className="p-3 border-b border-r border-slate-200 font-bold sticky left-0 top-0 bg-slate-100 z-30 w-[180px] min-w-[180px] max-w-[180px]">
@@ -140,7 +140,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 {filteredData.map(d => (
                                     <th 
                                         key={d.project} 
-                                        className="p-3 border-b border-r border-slate-200 font-bold text-right min-w-[150px] max-w-[200px] hover:bg-slate-200 transition-colors group relative sticky top-0 bg-slate-100 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
+                                        className="p-3 border-b border-r border-slate-200 font-bold text-right w-[150px] min-w-[150px] max-w-[200px] hover:bg-slate-200 transition-colors group relative sticky top-0 bg-slate-100 z-20 shadow-[0_1px_2px_rgba(0,0,0,0.05)]"
                                     >
                                         <div className="flex items-center justify-end gap-1">
                                             <div className="opacity-0 group-hover:opacity-100 flex gap-1 transition-all absolute left-2">
@@ -158,6 +158,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </div>
                                     </th>
                                 ))}
+                                <th className="p-3 border-b border-slate-200 sticky top-0 bg-slate-100 z-20 w-full min-w-[50px]"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -171,10 +172,11 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         <div className="text-[10px] text-slate-500 font-normal mt-0.5 leading-tight">{row.category.code}</div>
                                     </td>
                                     {filteredData.map(d => (
-                                        <td key={d.project} data-excel-value={row[d.project] !== 0 ? -row[d.project] : ''} className="p-3 border-r border-slate-100 text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={row[d.project] !== 0 ? -row[d.project] : ''} className="p-3 border-r border-slate-100 text-right w-[150px] min-w-[150px] max-w-[200px]">
                                             {renderExpense(row[d.project])}
                                         </td>
                                     ))}
+                                    <td className="p-3 border-slate-100 w-full"></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -182,10 +184,11 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                             <tr className="bg-black">
                                 <td className="p-1.5 px-3 border-r border-t-[3px] border-t-slate-400 border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">TỔNG CHI PHÍ</td>
                                 {filteredData.map(d => (
-                                    <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-1.5 px-3 border-r border-t-[3px] border-t-slate-400 border-slate-800 bg-black text-right min-w-[150px]">
+                                    <td key={d.project} data-excel-value={transposedTotals[d.project] !== 0 ? -transposedTotals[d.project] : ''} className="p-1.5 px-3 border-r border-t-[3px] border-t-slate-400 border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px]">
                                         {renderExpense(transposedTotals[d.project])}
                                     </td>
                                 ))}
+                                <td className="p-1.5 px-3 border-t-[3px] border-t-slate-400 border-slate-800 bg-black w-full"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">ĐÃ THU</td>
@@ -193,11 +196,12 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const totalReceivedBeforeVat = projData ? projData.totalReceivedBeforeVat : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={totalReceivedBeforeVat !== 0 ? totalReceivedBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={totalReceivedBeforeVat !== 0 ? totalReceivedBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px]">
                                             {totalReceivedBeforeVat !== 0 ? <span className="text-sky-400 font-bold">{formatCurrency(totalReceivedBeforeVat)}</span> : '-'}
                                         </td>
                                     );
                                 })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">CHƯA THU</td>
@@ -205,11 +209,12 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const unreceivedPhaseBeforeVat = projData ? projData.unreceivedPhaseBeforeVat : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={unreceivedPhaseBeforeVat !== 0 ? unreceivedPhaseBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={unreceivedPhaseBeforeVat !== 0 ? unreceivedPhaseBeforeVat : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px]">
                                             {unreceivedPhaseBeforeVat !== 0 ? <span className="text-purple-300 font-bold">{formatCurrency(unreceivedPhaseBeforeVat)}</span> : '-'}
                                         </td>
                                     );
                                 })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">LỢI NHUẬN CHƯA THU</td>
@@ -217,7 +222,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const uncollectedProfit = projData ? projData.uncollectedProfit : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={uncollectedProfit !== 0 ? uncollectedProfit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={uncollectedProfit !== 0 ? uncollectedProfit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px]">
                                             {uncollectedProfit !== 0 ? (
                                                 <span className={`font-bold ${uncollectedProfit > 0 ? 'text-blue-400' : 'text-red-400'}`}>
                                                     {uncollectedProfit > 0 ? formatCurrency(uncollectedProfit) : `(${formatCurrency(Math.abs(uncollectedProfit))})`}
@@ -226,6 +231,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">LỢI NHUẬN</td>
@@ -233,7 +239,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                     const projData = dashboardData.find(item => item.project === d.project);
                                     const profit = projData ? projData.profit : 0;
                                     return (
-                                        <td key={d.project} data-excel-value={profit !== 0 ? profit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right min-w-[150px]">
+                                        <td key={d.project} data-excel-value={profit !== 0 ? profit : ''} className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px]">
                                             {profit !== 0 ? (
                                                 <span className={`font-bold ${profit > 0 ? 'text-blue-400' : 'text-red-400'}`}>
                                                     {profit > 0 ? formatCurrency(profit) : `(${formatCurrency(Math.abs(profit))})`}
@@ -242,6 +248,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
                             </tr>
 
                         </tfoot>

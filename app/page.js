@@ -16,6 +16,7 @@ import CustomerDebts from '@/components/CustomerDebts';
 import EmployeeSalary from '@/components/EmployeeSalary';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
+import MaterialWarehouse from '@/components/MaterialWarehouse';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
 import ExpectedInvoices from '@/components/ExpectedInvoices';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -1523,7 +1524,7 @@ export default function Home() {
                 
                 {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} />}
                 
-                {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} />}
+                {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} />}
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
@@ -1563,13 +1564,24 @@ export default function Home() {
                     />
                 )}
 
+
+
                 {activeTab === 'materials' && (
                     <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
                         <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm">
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
+                            {currentUser?.role === 'ADMIN' && (
+                                <button onClick={() => setMaterialSubTab('warehouse')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
+                            )}
                         </div>
-                        {materialSubTab === 'order' ? (
+                        {materialSubTab === 'warehouse' && currentUser?.role === 'ADMIN' ? (
+                            <MaterialWarehouse 
+                                currentUser={currentUser} 
+                                projects={allowedProjects} 
+                                showToast={showToast} 
+                            />
+                        ) : materialSubTab === 'order' ? (
                                 <MaterialOrder 
                                     currentUser={currentUser}
                                     usersList={usersList}
@@ -1608,6 +1620,12 @@ export default function Home() {
                         transactions={allowedTransactions}
                         handleCopyTable={handleCopyTable}
                         exportTableToExcel={exportTableToExcel}
+                        onAddTransaction={handleAddData}
+                        showToast={showToast}
+                        onNavigateToProject={(projectName) => {
+                            setSelectedProject(projectName);
+                            setActiveTab('project-detail');
+                        }}
                     />
                 )}
 

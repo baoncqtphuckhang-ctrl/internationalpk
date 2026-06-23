@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
-export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject }) {
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
     const [isFormOpen, setIsFormOpen] = useState(false);
@@ -11,6 +11,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [searchTerm, setSearchTerm] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
+    const [deletePeriodState, setDeletePeriodState] = useState({ isOpen: false, periodName: '', periodInvoices: [], password: '', error: '' });
+    const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
+    const [bulkAddMonth, setBulkAddMonth] = useState('');
     const [activeSubTab, setActiveSubTab] = useState('customer_debt');
     const [formData, setFormData] = useState({
         projectName: '',
@@ -29,6 +32,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         deductionAmount: ''
     });
     const [confirmPeriodAction, setConfirmPeriodAction] = useState(null);
+    const [editingPeriodName, setEditingPeriodName] = useState(null);
+    const [newPeriodName, setNewPeriodName] = useState('');
+    const [renameError, setRenameError] = useState('');
+
+    const [isClonePeriodModalOpen, setIsClonePeriodModalOpen] = useState(false);
+    const [cloneSourcePeriod, setCloneSourcePeriod] = useState('');
+    const [cloneTargetPeriod, setCloneTargetPeriod] = useState('');
+
+    const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
+    const [advanceData, setAdvanceData] = useState(null);
 
     const [collapsedPhases, setCollapsedPhases] = useState({});
 
@@ -164,9 +177,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const handleSave = async (e) => {
         e.preventDefault();
         
-        const preTax = parseFloat(formData.preTaxValue) || 0;
-        const vat = parseFloat(formData.vatAmount) || 0;
-        const postTax = parseFloat(formData.postTaxValue) || 0;
+        const preTax = parseFloat(parseVietnameseNumber(formData.preTaxValue)) || 0;
+        const vat = parseFloat(parseVietnameseNumber(formData.vatAmount)) || 0;
+        const postTax = parseFloat(parseVietnameseNumber(formData.postTaxValue)) || 0;
         const teamVal = parseFloat(parseVietnameseNumber(formData.teamValue)) || 0;
         const accAdv = parseFloat(parseVietnameseNumber(formData.accumulatedAdvance)) || 0;
 
@@ -178,7 +191,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 !i.is_completed
             );
             if (existingPeriod && !editingId) {
-                alert(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`);
+                if (showToast) showToast(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`, 'error');
+                else alert(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`);
                 return;
             }
         }
@@ -262,7 +276,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             resetForm();
         } catch (error) {
             console.error('Error in handleSave:', error);
-            alert('Có lỗi xảy ra khi lưu dữ liệu!');
+            if (showToast) showToast('Có lỗi xảy ra khi lưu dữ liệu!', 'error');
+            else alert('Có lỗi xảy ra khi lưu dữ liệu!');
         }
     };
 
@@ -325,7 +340,234 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             setConfirmPeriodAction(null);
         } catch (error) {
             console.error('Error toggling period:', error);
-            alert('Có lỗi xảy ra!');
+            if (showToast) showToast('Có lỗi xảy ra!', 'error');
+            else alert('Có lỗi xảy ra!');
+        }
+    };
+
+    const handleRenamePeriod = async (oldPeriod, periodInvoices) => {
+        if (!newPeriodName.trim() || newPeriodName === oldPeriod) {
+            setEditingPeriodName(null);
+            return;
+        }
+        
+        if (allPeriods.includes(newPeriodName)) {
+            setRenameError('Tên kỳ thanh toán này đã tồn tại!');
+            return;
+        }
+
+        try {
+            const ids = periodInvoices.map(inv => inv.id);
+            for (const id of ids) {
+                await supabase
+                    .from('expected_invoices')
+                    .update({ payment_period: newPeriodName })
+                    .eq('id', id);
+            }
+            
+            setInvoices(prev => prev.map(inv => 
+                ids.includes(inv.id) ? { ...inv, payment_period: newPeriodName } : inv
+            ));
+            
+            setEditingPeriodName(null);
+        } catch (error) {
+            console.error('Error renaming period:', error);
+            if (showToast) showToast('Có lỗi xảy ra khi đổi tên!', 'error');
+            else alert('Có lỗi xảy ra khi đổi tên!');
+        }
+    };
+
+    const handleClonePeriod = async (sourcePeriod, targetPeriod) => {
+        if (!sourcePeriod || !targetPeriod || targetPeriod.trim() === '') return;
+        if (allPeriods.includes(targetPeriod.trim())) {
+            if (showToast) showToast('Tên kỳ thanh toán này đã tồn tại!', 'error');
+            else alert('Tên kỳ thanh toán này đã tồn tại!');
+            return;
+        }
+
+        try {
+            const periodInvoices = invoices.filter(inv => inv.payment_period === sourcePeriod);
+            const newInvoices = periodInvoices.map(inv => {
+                const oldTotal = (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0);
+                return {
+                    projectName: inv.projectName,
+                    phase: inv.phase,
+                    teamName: inv.teamName,
+                    preTaxValue: 0,
+                    deductionAmount: 0,
+                    accumulatedAdvance: oldTotal,
+                    teamValue: 0,
+                    account_name: inv.account_name,
+                    account_number: inv.account_number,
+                    bank_name: inv.bank_name,
+                    note: inv.note,
+                    payment_period: targetPeriod.trim(),
+                    qs_approved: false,
+                    accountant_approved: false,
+                    is_completed: false
+                };
+            });
+
+            const { data, error } = await supabase
+                .from('expected_invoices')
+                .insert(newInvoices)
+                .select();
+            
+            if (error) {
+                console.error('Error inserting cloned invoices:', error);
+                if (showToast) showToast('Có lỗi xảy ra khi nhân bản!', 'error');
+                else alert('Có lỗi xảy ra khi nhân bản!');
+            } else if (data) {
+                const formattedNew = data.map(d => ({
+                    id: d.id,
+                    projectName: d.projectName,
+                    phase: d.phase,
+                    teamName: d.teamName,
+                    preTaxValue: d.preTaxValue,
+                    vatAmount: d.vatAmount,
+                    postTaxValue: d.postTaxValue,
+                    deductionAmount: d.deductionAmount,
+                    accumulatedAdvance: d.accumulatedAdvance,
+                    teamValue: d.teamValue,
+                    account_name: d.account_name,
+                    account_number: d.account_number,
+                    bank_name: d.bank_name,
+                    note: d.note,
+                    created_at: d.created_at,
+                    payment_period: d.payment_period,
+                    qs_approved: d.qs_approved,
+                    accountant_approved: d.accountant_approved,
+                    is_completed: d.is_completed
+                }));
+                setInvoices(prev => [...prev, ...formattedNew]);
+                if (showToast) showToast('Nhân bản kỳ thanh toán thành công!', 'success');
+                else alert('Nhân bản kỳ thanh toán thành công!');
+                setIsClonePeriodModalOpen(false);
+                setCloneSourcePeriod('');
+                setCloneTargetPeriod('');
+            }
+        } catch (error) {
+            console.error('Error cloning period:', error);
+        }
+    };
+
+    const handleDeletePeriod = (periodName, periodInvoices) => {
+        setDeletePeriodState({ isOpen: true, periodName, periodInvoices, password: '', error: '' });
+    };
+
+    const confirmDeletePeriod = async () => {
+        if (!deletePeriodState.password) {
+            setDeletePeriodState(prev => ({ ...prev, error: 'Vui lòng nhập mật khẩu!' }));
+            return;
+        }
+        if (deletePeriodState.password !== currentUser?.password) {
+            setDeletePeriodState(prev => ({ ...prev, error: 'Mật khẩu không chính xác!' }));
+            return;
+        }
+
+        try {
+            const ids = deletePeriodState.periodInvoices.map(inv => inv.id);
+            for (const id of ids) {
+                await supabase
+                    .from('expected_invoices')
+                    .delete()
+                    .eq('id', id);
+            }
+            setInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
+            if (showToast) showToast('Đã xóa toàn bộ dữ liệu trong kỳ!', 'success');
+            setDeletePeriodState({ isOpen: false, periodName: '', periodInvoices: [], password: '', error: '' });
+        } catch (error) {
+            console.error('Error deleting period:', error);
+            if (showToast) showToast('Có lỗi xảy ra khi xóa kỳ thanh toán!', 'error');
+            setDeletePeriodState(prev => ({ ...prev, error: 'Lỗi server khi xóa!' }));
+        }
+    };
+
+    const handleBulkAddByMonth = async () => {
+        if (!bulkAddMonth) return;
+        
+        try {
+            const matchedIncomes = incomes.filter(inc => {
+                if (!inc.date) return false;
+                return inc.date.startsWith(bulkAddMonth);
+            });
+
+            if (matchedIncomes.length === 0) {
+                if (showToast) showToast(`Không tìm thấy đợt thanh toán nào trong tháng ${bulkAddMonth}!`, 'error');
+                return;
+            }
+
+            const newRecords = [];
+            for (const inc of matchedIncomes) {
+                const exists = invoices.some(inv => 
+                    inv.projectName === inc.project_name && 
+                    inv.phase === inc.phase
+                );
+                if (!exists) {
+                    newRecords.push({
+                        projectName: inc.project_name,
+                        preTaxValue: inc.amount || 0,
+                        vatAmount: inc.vat_amount || 0,
+                        postTaxValue: inc.post_tax_amount || 0,
+                        teamValue: 0,
+                        accumulatedAdvance: 0,
+                        teamName: '',
+                        phase: inc.phase,
+                        note: '',
+                        payment_period: '',
+                        account_name: '',
+                        account_number: '',
+                        bank_name: '',
+                        deductionAmount: 0,
+                        qs_approved: false,
+                        accountant_approved: false,
+                        is_completed: false
+                    });
+                }
+            }
+
+            if (newRecords.length === 0) {
+                if (showToast) showToast('Tất cả hóa đơn trong tháng này đã tồn tại trong danh sách!', 'error');
+                return;
+            }
+
+            const { data, error } = await supabase
+                .from('expected_invoices')
+                .insert(newRecords)
+                .select();
+            
+            if (error) {
+                console.error('Error bulk inserting:', error);
+                if (showToast) showToast('Có lỗi xảy ra khi thêm hàng loạt!', 'error');
+            } else if (data) {
+                const formattedNew = data.map(d => ({
+                    id: d.id,
+                    projectName: d.projectName,
+                    phase: d.phase,
+                    teamName: d.teamName,
+                    preTaxValue: d.preTaxValue,
+                    vatAmount: d.vatAmount,
+                    postTaxValue: d.postTaxValue,
+                    deductionAmount: d.deductionAmount,
+                    accumulatedAdvance: d.accumulatedAdvance,
+                    teamValue: d.teamValue,
+                    account_name: d.account_name,
+                    account_number: d.account_number,
+                    bank_name: d.bank_name,
+                    note: d.note,
+                    created_at: d.created_at,
+                    payment_period: d.payment_period,
+                    qs_approved: d.qs_approved,
+                    accountant_approved: d.accountant_approved,
+                    is_completed: d.is_completed
+                }));
+                setInvoices(prev => [...prev, ...formattedNew]);
+                if (showToast) showToast(`Đã thêm thành công ${newRecords.length} hóa đơn!`, 'success');
+                setIsBulkAddModalOpen(false);
+                setBulkAddMonth('');
+            }
+        } catch (err) {
+            console.error('Error in bulk add:', err);
         }
     };
 
@@ -446,20 +688,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
                 
                 if (sortedInvoices.length > 0) {
-                    const primaryInv = sortedInvoices[0];
-                    invoice_no = primaryInv.invoice_no || '';
-                    invoice_date = primaryInv.invoice_date || primaryInv.date || '';
+                    invoice_date = sortedInvoices[0].date || '';
                 }
 
                 for (const inv of sortedInvoices) {
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                phaseHstt = Number(parsed.actual_received_amount) || 0;
-                                if (inv.invoice_no) invoice_no = inv.invoice_no;
-                                if (inv.invoice_date || inv.date) invoice_date = inv.invoice_date || inv.date;
-                                break;
+                            if (parsed && typeof parsed === 'object') {
+                                if (!invoice_no && parsed.invoice_no) {
+                                    invoice_no = parsed.invoice_no;
+                                }
+                                if (parsed.invoice_date && (!invoice_date || invoice_date === sortedInvoices[0].date)) {
+                                    invoice_date = parsed.invoice_date;
+                                }
+                                if ('actual_received_amount' in parsed && phaseHstt === undefined) {
+                                    phaseHstt = Number(parsed.actual_received_amount) || 0;
+                                    if (parsed.invoice_no) invoice_no = parsed.invoice_no;
+                                    if (parsed.invoice_date) invoice_date = parsed.invoice_date;
+                                }
                             }
                         } catch(e) {}
                     }
@@ -564,8 +811,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }, [activeSubTab, invoices, customerDebts, filterProject]);
 
     return (
-        <div className="w-full mx-auto animate-in fade-in duration-500 font-sans text-slate-800">
-            <header className="mb-8 flex justify-between items-center">
+        <div className="w-full mx-auto animate-in fade-in duration-500 font-sans text-slate-800 print:w-full print:max-w-none print:bg-white print:text-black">
+            <style dangerouslySetInnerHTML={{__html: `
+                @media print {
+                    @page { size: A3 landscape; margin: 10mm; }
+                    body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
+                    .print-table-container { overflow: visible !important; max-height: none !important; }
+                }
+            `}} />
+            <header className="mb-8 flex justify-between items-center print:hidden">
                 <div>
                     <div className="flex items-center gap-3 mb-2">
                         <div className="bg-emerald-100 p-2 rounded-xl">
@@ -578,13 +832,30 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 
                 <div className="flex gap-3">
                     <button 
+                        onClick={() => window.print()}
+                        className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 print:hidden"
+                        title="In PDF"
+                    >
+                        <Printer size={20} />
+                        <span className="hidden sm:inline">In</span>
+                    </button>
+                    <button 
                         onClick={() => exportTableToExcel('expected-invoices-table', 'Du_Kien')}
-                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2"
+                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 print:hidden"
                         title="Xuất Excel"
                     >
                         <Download size={20} />
                         <span className="hidden sm:inline">Xuất Excel</span>
                     </button>
+                    {activeSubTab === 'team' && (
+                        <button 
+                            onClick={() => setIsClonePeriodModalOpen(true)}
+                            className="bg-purple-50 text-purple-600 hover:bg-purple-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 print:hidden"
+                        >
+                            <Copy size={20} />
+                            <span className="hidden sm:inline">Thêm kỳ mới</span>
+                        </button>
+                    )}
                     {activeSubTab !== 'customer_debt' && currentUser?.role?.toUpperCase() === 'ADMIN' && (
                         <button 
                             onClick={handleDeleteAll}
@@ -593,6 +864,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         >
                             <Trash2 size={20} />
                             Xóa tất cả
+                        </button>
+                    )}
+                    {activeSubTab === 'invoice' && (
+                        <button 
+                            onClick={() => setIsBulkAddModalOpen(true)}
+                            className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/10"
+                        >
+                            <Plus size={20} />
+                            <span className="hidden sm:inline">Thêm theo tháng</span>
                         </button>
                     )}
                     {activeSubTab !== 'customer_debt' && (
@@ -607,18 +887,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 </div>
             </header>
 
-            <div className="flex gap-6 border-b border-slate-200 mb-6 overflow-x-auto hide-scrollbar">
+            <div className="flex gap-6 border-b border-slate-200 mb-6 overflow-x-auto hide-scrollbar print:hidden">
                 <button 
                     onClick={() => setActiveSubTab('customer_debt')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'customer_debt' ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    CÔNG NỢ KHÁCH HÀNG
+                    CÔNG NỢ THU
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('invoice')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    GIÁ TRỊ HÓA ĐƠN
+                    HĐ DỰ KIẾN
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('team')}
@@ -634,7 +914,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 </button>
             </div>
 
-            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
+            <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 print:hidden">
                 <div className="flex-1 relative">
                     <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                     <input 
@@ -888,11 +1168,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 onChange={(e) => {
                                                     const value = e.target.value.replace(/\D/g, '');
                                                     const preTax = value ? parseInt(value) : 0;
-                                                    const deduc = formData.deductionAmount ? parseInt(formData.deductionAmount.replace(/\D/g, '')) : 0;
+                                                    const deduc = formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0;
                                                     setFormData(prev => ({ 
                                                         ...prev, 
                                                         preTaxValue: preTax ? preTax.toLocaleString('en-US') : '',
-                                                        teamValue: preTax > 0 ? (preTax - deduc).toLocaleString('en-US') : ''
+                                                        teamValue: (preTax - deduc) > 0 ? (preTax - deduc).toLocaleString('en-US') : '0'
                                                     }));
                                                 }}
                                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-amber-600 outline-none focus:border-indigo-500 focus:bg-white transition"
@@ -908,11 +1188,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 onChange={(e) => {
                                                     const value = e.target.value.replace(/\D/g, '');
                                                     const deduc = value ? parseInt(value) : 0;
-                                                    const preTax = formData.preTaxValue ? parseInt(formData.preTaxValue.replace(/\D/g, '')) : 0;
+                                                    const preTax = formData.preTaxValue ? parseInt(formData.preTaxValue.toString().replace(/\D/g, '')) : 0;
                                                     setFormData(prev => ({ 
                                                         ...prev, 
                                                         deductionAmount: deduc ? deduc.toLocaleString('en-US') : '',
-                                                        teamValue: preTax > 0 ? (preTax - deduc).toLocaleString('en-US') : ''
+                                                        teamValue: (preTax - deduc) > 0 ? (preTax - deduc).toLocaleString('en-US') : '0'
                                                     }));
                                                 }}
                                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-red-600 outline-none focus:border-indigo-500 focus:bg-white transition"
@@ -946,9 +1226,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 const value = e.target.value.replace(/\D/g, '');
                                                 setFormData(prev => ({ ...prev, teamValue: value ? parseInt(value).toLocaleString('en-US') : '' }));
                                             }}
-                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-emerald-600 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 50,000,000"
-                                            required
+                                            className="w-full bg-slate-100 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-emerald-600 outline-none cursor-not-allowed"
+                                            placeholder="Tự động tính..."
+                                            readOnly
                                         />
                                     </div>
                                 </div>
@@ -1027,7 +1307,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
-                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1400px]">
+                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1400px] [&_td]:align-middle [&_th]:align-middle">
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-20">
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
@@ -1041,7 +1321,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Giá trị sau thuế</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
@@ -1056,7 +1336,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ngân hàng</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
                                         {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-xs tracking-wider text-center w-36">Trạng thái duyệt</th>}
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-32 text-center">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-32 text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : (
                                     <>
@@ -1138,7 +1418,46 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <div className="p-1 bg-slate-800 rounded-md">
                                                                 {collapsedPhases[period] ? <ChevronRight size={18} className="text-white" /> : <ChevronDown size={18} className="text-white" />}
                                                             </div>
-                                                            <span className="font-black text-white text-sm uppercase tracking-wider">KỲ THANH TOÁN: {period}</span>
+                                                            {editingPeriodName === period ? (
+                                                                <div className="flex flex-col ml-2" onClick={e => e.stopPropagation()}>
+                                                                    <div className="flex items-center gap-2">
+                                                                        <input 
+                                                                            type="text" 
+                                                                            value={newPeriodName}
+                                                                            onChange={e => { setNewPeriodName(e.target.value); setRenameError(''); }}
+                                                                            className="px-2 py-1 text-sm text-slate-900 bg-white font-bold rounded outline-none"
+                                                                            autoFocus
+                                                                        />
+                                                                        <button onClick={() => handleRenamePeriod(period, periodInvoices)} className="bg-emerald-500 hover:bg-emerald-400 text-white p-1 rounded transition">
+                                                                            <CheckCircle2 size={16} />
+                                                                        </button>
+                                                                        <button onClick={() => { setEditingPeriodName(null); setRenameError(''); }} className="bg-slate-500 hover:bg-slate-400 text-white p-1 rounded transition">
+                                                                            <X size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                    {renameError && <span className="text-rose-400 text-xs mt-1 font-bold">{renameError}</span>}
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex items-center gap-2">
+                                                                    <span className="font-black text-white text-sm uppercase tracking-wider">KỲ THANH TOÁN: {period}</span>
+                                                                    <button 
+                                                                        onClick={(e) => { e.stopPropagation(); setEditingPeriodName(period); setNewPeriodName(period); }} 
+                                                                        className="text-slate-400 hover:text-white transition p-1"
+                                                                        title="Đổi tên kỳ thanh toán"
+                                                                    >
+                                                                        <Edit2 size={14} />
+                                                                    </button>
+                                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                                        <button 
+                                                                            onClick={(e) => { e.stopPropagation(); handleDeletePeriod(period, periodInvoices); }} 
+                                                                            className="text-slate-400 hover:text-rose-400 transition p-1"
+                                                                            title="Xóa toàn bộ kỳ này"
+                                                                        >
+                                                                            <Trash2 size={14} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            )}
                                                             {isKtApproved ? (
                                                                 <span className="ml-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-md text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> KẾ TOÁN: ĐÃ DUYỆT</span>
                                                             ) : isQsApproved ? (
@@ -1202,7 +1521,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 return (
                                                 <React.Fragment key={projName}>
                                                     <tr className={`${color.bg} border-y ${color.border}`}>
-                                                        <td colSpan="3" className={`p-3 font-black ${color.text} text-sm uppercase text-right`}>{projName}:</td>
+                                                        <td colSpan="2"></td>
+                                                        <td 
+                                                            className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
+                                                            onDoubleClick={() => onNavigateToProject && onNavigateToProject(projName)}
+                                                            title="Click đúp để xem chi tiết công trình"
+                                                        >
+                                                            {projName}:
+                                                        </td>
                                                         <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-red-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
@@ -1216,7 +1542,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         const isZero = !parseFloat(inv.teamValue);
 
                                                         return (
-                                                        <tr key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${isZero ? 'border-l-slate-300 bg-slate-50' : `${color.rowBorder} bg-white`}`}>
+                                                        <tr key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.phase || '-'}</td>
                                                             <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
@@ -1230,7 +1556,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
                                                             <td className={`p-4 text-sm max-w-[150px] truncate ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
                                                             {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
-                                                            <td className="p-4 text-center">
+                                                            <td className="p-4 text-center print:hidden">
                                                                 <div className="flex items-center justify-center gap-2">
                                                                     <button 
                                                                         onClick={() => !disableEdit && handleEdit(inv)} 
@@ -1242,6 +1568,36 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     </button>
                                                                     {currentUser?.role?.toUpperCase() === 'ADMIN' && (
                                                                         <button onClick={() => setConfirmDeleteId(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" title="Xóa"><Trash2 size={16} /></button>
+                                                                    )}
+                                                                    {activeSubTab === 'history_team' && (
+                                                                        transactions?.some(t => 
+                                                                            t.project_name === inv.projectName && 
+                                                                            t.recipient === inv.teamName && 
+                                                                            (t.note || '') === `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`
+                                                                        ) ? (
+                                                                            <span className="px-2 py-1.5 text-slate-400 bg-slate-100 rounded-lg border border-slate-200 whitespace-nowrap text-xs font-bold select-none cursor-not-allowed" title="Đã có giao dịch chi tương ứng trong Sổ quỹ">
+                                                                                Đã tạo T.Ứng
+                                                                            </span>
+                                                                        ) : (
+                                                                            <button 
+                                                                                onClick={() => {
+                                                                                    setAdvanceData({
+                                                                                        project_name: inv.projectName,
+                                                                                        recipient: inv.teamName,
+                                                                                        amount: (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0),
+                                                                                        payment_period: inv.payment_period,
+                                                                                        note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
+                                                                                        code: '622',
+                                                                                        corresponding_account: ''
+                                                                                    });
+                                                                                    setIsAdvanceModalOpen(true);
+                                                                                }}
+                                                                                className="px-2 py-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition border border-orange-200 bg-orange-50 whitespace-nowrap text-xs font-bold" 
+                                                                                title="Tạo Nhập liệu Tạm ứng"
+                                                                            >
+                                                                                Tạo Tạm ứng
+                                                                            </button>
+                                                                        )
                                                                     )}
                                                                 </div>
                                                             </td>
@@ -1257,13 +1613,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     filteredInvoices.map((inv, idx) => (
                                         <tr key={inv.id} className="hover:bg-slate-50 transition group">
                                             <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
-                                            <td className="p-4 text-sm font-bold text-slate-800">{inv.projectName}</td>
+                                            <td 
+                                                className="p-4 text-sm font-bold text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline"
+                                                onDoubleClick={() => onNavigateToProject && onNavigateToProject(inv.projectName)}
+                                                title="Click đúp để xem chi tiết công trình"
+                                            >
+                                                {inv.projectName}
+                                            </td>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
                                             <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
                                             <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
                                             <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                             <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
-                                            <td className="p-4 text-center">
+                                            <td className="p-4 text-center print:hidden">
                                                 <div className="flex items-center justify-center gap-2">
                                                     <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
                                                     {currentUser?.role?.toUpperCase() === 'ADMIN' && (
@@ -1281,6 +1643,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>
                                     <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>
+                                </tr>
+                            )}
+                            {activeSubTab === 'invoice' && filteredInvoices.length > 0 && (
+                                <tr className="bg-slate-100 border-t-2 border-slate-300">
+                                    <td colSpan="2" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
+                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNĐ</td>
+                                    <td colSpan="3"></td>
                                 </tr>
                             )}
                         </tbody>
@@ -1325,6 +1696,210 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 onConfirm={() => executePeriodToggle(confirmPeriodAction)}
                 onCancel={() => setConfirmPeriodAction(null)}
             />
+
+            {isClonePeriodModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Copy size={20} /> Thêm kỳ thanh toán mới (Nhân bản)</h3>
+                            <button onClick={() => { setIsClonePeriodModalOpen(false); setCloneSourcePeriod(''); setCloneTargetPeriod(''); }} className="text-slate-400 hover:text-white transition"><X /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-sm text-blue-800 mb-2">
+                                <p className="font-bold mb-1">Quy tắc nhân bản:</p>
+                                <ul className="list-disc pl-5 space-y-1">
+                                    <li>Sao chép toàn bộ danh sách tổ đội từ kỳ cũ sang kỳ mới.</li>
+                                    <li>Lũy kế tạm ứng (kỳ mới) = Tổng cộng (kỳ cũ).</li>
+                                    <li>Giá trị KL, Thu lại đội = 0.</li>
+                                </ul>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn kỳ thanh toán cũ muốn copy *</label>
+                                <select 
+                                    value={cloneSourcePeriod}
+                                    onChange={(e) => setCloneSourcePeriod(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
+                                >
+                                    <option value="">-- Chọn kỳ cũ --</option>
+                                    {allPeriods.map(p => <option key={p} value={p}>{p}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Nhập tên/ngày cho kỳ thanh toán mới *</label>
+                                <input 
+                                    type="text" 
+                                    value={cloneTargetPeriod}
+                                    onChange={(e) => setCloneTargetPeriod(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
+                                    placeholder="Ví dụ: 15/07/2026..."
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
+                                <button 
+                                    onClick={() => { setIsClonePeriodModalOpen(false); setCloneSourcePeriod(''); setCloneTargetPeriod(''); }} 
+                                    className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
+                                >
+                                    Hủy
+                                </button>
+                                <button 
+                                    onClick={() => handleClonePeriod(cloneSourcePeriod, cloneTargetPeriod)} 
+                                    disabled={!cloneSourcePeriod || !cloneTargetPeriod || cloneTargetPeriod.trim() === ''}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <CheckCircle2 size={18} /> Xác nhận Thêm
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {deletePeriodState.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Trash2 size={20} /> Xác nhận xóa kỳ thanh toán</h3>
+                            <button onClick={() => setDeletePeriodState(prev => ({...prev, isOpen: false}))} className="text-red-200 hover:text-white transition"><X /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-slate-600">Bạn đang yêu cầu <b>XÓA TOÀN BỘ</b> hóa đơn trong kỳ <b>"{deletePeriodState.periodName}"</b>.</p>
+                            <div className="bg-red-50 text-red-800 p-4 rounded-xl text-sm border border-red-200">
+                                <b>Cảnh báo:</b> Hành động này sẽ xóa vĩnh viễn dữ liệu của kỳ này và không thể phục hồi!
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Vui lòng nhập mật khẩu tài khoản để xác nhận *</label>
+                                <input 
+                                    type="password" 
+                                    value={deletePeriodState.password}
+                                    onChange={(e) => setDeletePeriodState(prev => ({...prev, password: e.target.value, error: ''}))}
+                                    onKeyDown={(e) => { if (e.key === 'Enter') confirmDeletePeriod(); }}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500 transition"
+                                    placeholder="Nhập mật khẩu của bạn..."
+                                    autoFocus
+                                />
+                                {deletePeriodState.error && <p className="text-red-500 text-sm mt-2 font-bold">{deletePeriodState.error}</p>}
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
+                                <button 
+                                    onClick={() => setDeletePeriodState(prev => ({...prev, isOpen: false}))} 
+                                    className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
+                                >
+                                    Hủy
+                                </button>
+                                <button 
+                                    onClick={confirmDeletePeriod} 
+                                    className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg"
+                                >
+                                    <Trash2 size={18} /> Xác nhận Xóa
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isBulkAddModalOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Plus size={20} /> Thêm HĐ Dự kiến theo tháng</h3>
+                            <button onClick={() => { setIsBulkAddModalOpen(false); setBulkAddMonth(''); }} className="text-indigo-200 hover:text-white transition"><X /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <p className="text-slate-600">Hệ thống sẽ tự động quét các đợt thanh toán (Thu thực tế) trong tháng bạn chọn và thêm vào danh sách HĐ Dự kiến.</p>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn tháng *</label>
+                                <input 
+                                    type="month" 
+                                    value={bulkAddMonth}
+                                    onChange={(e) => setBulkAddMonth(e.target.value)}
+                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
+                                <button 
+                                    onClick={() => { setIsBulkAddModalOpen(false); setBulkAddMonth(''); }} 
+                                    className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
+                                >
+                                    Hủy
+                                </button>
+                                <button 
+                                    onClick={handleBulkAddByMonth} 
+                                    disabled={!bulkAddMonth}
+                                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <CheckCircle2 size={18} /> Xác nhận Thêm
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isAdvanceModalOpen && advanceData && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2">Tạo Giao Dịch Tạm Ứng</h3>
+                            <button onClick={() => { setIsAdvanceModalOpen(false); setAdvanceData(null); }} className="text-slate-400 hover:text-white transition"><X /></button>
+                        </div>
+                        <div className="p-6 space-y-4">
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Công trình</label>
+                                <input type="text" value={advanceData.project_name} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Người nhận (Tổ đội)</label>
+                                <input type="text" value={advanceData.recipient} onChange={(e) => setAdvanceData({...advanceData, recipient: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Số tiền Tạm ứng (CHI)</label>
+                                <input type="text" value={advanceData.amount ? formatCurrency(advanceData.amount) : ''} onChange={(e) => setAdvanceData({...advanceData, amount: parseVietnameseNumber(e.target.value)})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none focus:border-indigo-500 transition" />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2">Mã chi phí (Nợ)</label>
+                                    <input type="text" value={advanceData.code} onChange={(e) => setAdvanceData({...advanceData, code: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" placeholder="VD: 622" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2">Tài khoản đối ứng (Có)</label>
+                                    <input type="text" value={advanceData.corresponding_account} onChange={(e) => setAdvanceData({...advanceData, corresponding_account: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" placeholder="VD: 1111 - Tiền mặt" />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Ghi chú</label>
+                                <input type="text" value={advanceData.note} onChange={(e) => setAdvanceData({...advanceData, note: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" />
+                            </div>
+                            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-sm text-blue-800">
+                                Giao dịch này sẽ được tự động ghi nhận vào <b>Sổ Thu/Chi</b> với loại hình là <b>CHI</b>.
+                            </div>
+                            <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
+                                <button onClick={() => { setIsAdvanceModalOpen(false); setAdvanceData(null); }} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy</button>
+                                <button 
+                                    onClick={() => {
+                                        if (onAddTransaction) {
+                                            onAddTransaction('EXPENSE', {
+                                                project_name: advanceData.project_name,
+                                                accounting_date: new Date().toISOString().split('T')[0],
+                                                recipient: advanceData.recipient,
+                                                code: advanceData.code || '',
+                                                corresponding_account: advanceData.corresponding_account || '',
+                                                debit: advanceData.amount,
+                                                note: advanceData.note
+                                            });
+                                            setIsAdvanceModalOpen(false);
+                                            setAdvanceData(null);
+                                        }
+                                    }} 
+                                    className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-lg"
+                                >
+                                    Xác nhận Tạo
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

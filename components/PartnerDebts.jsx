@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
-import { PlusCircle, Search, CheckCircle, Clock, Trash2, Filter, Save, X } from 'lucide-react';
+import { PlusCircle, Search, CheckCircle, Clock, Trash2, Filter, Save, X, Eye } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 export default function PartnerDebts({ 
@@ -10,7 +10,8 @@ export default function PartnerDebts({
     onUpdateDebtStatus, 
     onDeleteDebt,
     isLoading,
-    currentUser 
+    currentUser,
+    dnttList
 }) {
     const [confirmDebtModal, setConfirmDebtModal] = useState({ isOpen: false, debt: null });
     const [debtAccount, setDebtAccount] = useState('131 - Công nợ phải thu');
@@ -31,6 +32,16 @@ export default function PartnerDebts({
     
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+    const [viewDnttModal, setViewDnttModal] = useState(null);
+
+    const getDebtDntt = (note) => {
+        if (!note || !dnttList) return null;
+        const noteStr = note.split('[PAYLOAD]')[0];
+        const match = noteStr.match(/\[(.*?)\]\s*([a-f0-9\-]{8,})/i);
+        if (!match) return null;
+        const shortId = match[2];
+        return dnttList.find(d => d.id.startsWith(shortId));
+    };
 
     const handleFormChange = (e) => {
         const { name, value } = e.target;
@@ -294,7 +305,22 @@ export default function PartnerDebts({
                                         <td className="p-4 text-sm font-bold text-slate-700">{debt.project_name}</td>
                                         <td className="p-4">
                                             <p className="text-sm font-bold text-slate-800">{debt.partner_name}</p>
-                                            {debt.note && <p className="text-xs text-slate-400 mt-0.5">{debt.note.split('[PAYLOAD]')[0]}</p>}
+                                            {debt.note && (
+                                                <div className="flex items-center gap-2 mt-0.5">
+                                                    <p className="text-xs text-slate-400">{debt.note.split('[PAYLOAD]')[0]}</p>
+                                                    {(() => {
+                                                        const matchedDntt = getDebtDntt(debt.note);
+                                                        if (matchedDntt) {
+                                                            return (
+                                                                <button onClick={() => setViewDnttModal(matchedDntt)} className="text-blue-500 hover:text-blue-700 p-1 bg-blue-50 hover:bg-blue-100 rounded-lg transition" title="Xem chi tiết đơn">
+                                                                    <Eye size={14} />
+                                                                </button>
+                                                            );
+                                                        }
+                                                        return null;
+                                                    })()}
+                                                </div>
+                                            )}
                                         </td>
                                         <td className="p-4 text-right font-black text-slate-800">{formatCurrency(debt.amount)}</td>
                                         <td className="p-4 text-center">
@@ -388,6 +414,102 @@ export default function PartnerDebts({
                                     Hủy bỏ
                                 </button>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {viewDnttModal && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 border border-slate-100">
+                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+                            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Eye className="text-blue-500"/> Chi tiết [{viewDnttModal.doc_type}]</h3>
+                            <button onClick={() => setViewDnttModal(null)} className="text-slate-400 hover:text-slate-600 p-2"><X size={20}/></button>
+                        </div>
+                        <div className="p-6 overflow-auto custom-scrollbar bg-slate-50">
+                            {(() => {
+                                let parsed;
+                                try {
+                                    parsed = JSON.parse(viewDnttModal.reason);
+                                } catch(e) {
+                                    return <div className="text-slate-500">{viewDnttModal.reason}</div>;
+                                }
+                                
+                                const isMaterialOrder = viewDnttModal.doc_type === 'Đơn Vật Tư';
+                                
+                                return (
+                                    <div className="space-y-4">
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-white p-4 rounded-xl border border-slate-200">
+                                            <div>
+                                                <p className="text-xs text-slate-500 uppercase font-bold">Người đề nghị</p>
+                                                <p className="font-bold text-slate-800">{viewDnttModal.recipient}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500 uppercase font-bold">Tổng tiền</p>
+                                                <p className="font-black text-blue-600 text-lg">{formatCurrency(viewDnttModal.total_amount)} VNĐ</p>
+                                            </div>
+                                            {isMaterialOrder && parsed.orderPhase && (
+                                                <div>
+                                                    <p className="text-xs text-slate-500 uppercase font-bold">Đợt đặt hàng</p>
+                                                    <p className="font-bold text-slate-800">{parsed.orderPhase}</p>
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                                            <table className="w-full text-left text-sm">
+                                                <thead className="bg-slate-100 text-slate-600">
+                                                    <tr>
+                                                        <th className="p-3 font-bold border-b border-slate-200 w-12 text-center">STT</th>
+                                                        <th className="p-3 font-bold border-b border-slate-200">Nội dung / Tên vật tư</th>
+                                                        <th className="p-3 font-bold border-b border-slate-200 w-24">ĐVT</th>
+                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-24">Khối lượng</th>
+                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-32">Đơn giá</th>
+                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-32">Thành tiền</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100">
+                                                    {isMaterialOrder && Array.isArray(parsed.items) ? (
+                                                        parsed.items.map((cat, catIdx) => (
+                                                            <React.Fragment key={catIdx}>
+                                                                <tr className="bg-slate-50">
+                                                                    <td colSpan={6} className="p-3 font-black text-slate-800">{cat.categoryName}</td>
+                                                                </tr>
+                                                                {cat.items && cat.items.map((item, itemIdx) => (
+                                                                    <tr key={itemIdx} className="hover:bg-slate-50/50">
+                                                                        <td className="p-3 text-slate-500 text-center">{itemIdx + 1}</td>
+                                                                        <td className="p-3 font-medium">{item.name}</td>
+                                                                        <td className="p-3 text-slate-500">{item.unit || '-'}</td>
+                                                                        <td className="p-3 text-right">{item.quantity || '-'}</td>
+                                                                        <td className="p-3 text-right">{item.price ? formatCurrency(item.price) : '-'}</td>
+                                                                        <td className="p-3 text-right font-bold text-slate-700">{item.total ? formatCurrency(item.total) : '-'}</td>
+                                                                    </tr>
+                                                                ))}
+                                                            </React.Fragment>
+                                                        ))
+                                                    ) : (
+                                                        Array.isArray(parsed.items) ? parsed.items.map((item, idx) => (
+                                                            <tr key={idx} className="hover:bg-slate-50/50">
+                                                                <td className="p-3 text-slate-500 text-center">{idx + 1}</td>
+                                                                <td className="p-3 font-medium">{item.content}</td>
+                                                                <td className="p-3">-</td>
+                                                                <td className="p-3">-</td>
+                                                                <td className="p-3">-</td>
+                                                                <td className="p-3 text-right font-bold text-slate-700">{item.amount ? formatCurrency(item.amount) : '-'}</td>
+                                                            </tr>
+                                                        )) : (
+                                                            <tr><td colSpan={6} className="p-8 text-center text-slate-400">Không có chi tiết</td></tr>
+                                                        )
+                                                    )}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+                        </div>
+                        <div className="p-4 border-t flex justify-end bg-white">
+                            <button onClick={() => setViewDnttModal(null)} className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">Đóng lại</button>
                         </div>
                     </div>
                 </div>
