@@ -38,18 +38,21 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
                 if (userAllowedIp) {
                     const ipList = userAllowedIp.split(',').map(ip => ip.trim()).filter(Boolean);
                     if (ipList.length > 0 && !ipList.includes(currentIp)) {
-                        setError('Tài khoản này chỉ được phép đăng nhập trên máy tính đã đăng ký (Sai IP).');
+                        setError('Đăng nhập không thành công (Sai địa chỉ IP).');
                         setIsLoading(false);
                         return;
                     }
-                } else {
-                    // Pass IP to be saved by onLogin
-                    user.current_ip = currentIp;
                 }
                 user.login_ip = currentIp;
             } catch (e) {
                 console.error("Lỗi lấy IP:", e);
-                // Vẫn cho đăng nhập nếu lỗi lấy IP nhưng báo warning (có thể tùy chỉnh)
+                const allowedIps = systemConfig?.allowed_ips || {};
+                const userAllowedIp = allowedIps[user.username];
+                if (userAllowedIp) {
+                    setError('Đăng nhập không thành công (Không thể xác minh IP).');
+                    setIsLoading(false);
+                    return;
+                }
             }
 
             onLogin(user);

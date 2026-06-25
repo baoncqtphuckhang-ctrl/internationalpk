@@ -141,7 +141,7 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
                             className="w-full mt-2 p-3 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500 font-mono transition text-sm text-indigo-900" 
                             placeholder="Nhập các IP được phép, cách nhau bằng dấu phẩy..." 
                         />
-                        <p className="text-xs text-indigo-500 mt-2">Ví dụ: 192.168.1.10, 115.14.22.33. Nếu để trống, hệ thống sẽ tự động ghi nhận IP ở lần đăng nhập tiếp theo.</p>
+                        <p className="text-xs text-indigo-500 mt-2">Ví dụ: 192.168.1.10, 115.14.22.33. Nếu để trống, hệ thống sẽ tự động hiểu là không khóa IP cho user đó.</p>
                     </div>
                     <div className="pt-4 flex gap-3">
                         <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Hủy</button>

@@ -30,6 +30,16 @@ import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPEN
 import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
+const getIncomeType = (i) => {
+    if (i.note) {
+        try {
+            const parsed = JSON.parse(i.note);
+            if (parsed?.type_data) return parsed.type_data;
+        } catch(e) {}
+    }
+    return (i.post_tax_amount > 0 || i.amount > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';
+};
+
 const ROLES = {
     ADMIN: 'ADMIN', GIAMDOC: 'GIÁM ĐỐC', THUKY: 'THƯ KÝ',
     QS: 'QS', GS: 'GS', KETOAN: 'KẾ TOÁN'
@@ -173,15 +183,6 @@ export default function Home() {
     const handleLogin = async (user) => {
         let configChanged = false;
         const newConfig = { ...systemConfig };
-
-        if (user.current_ip) {
-            newConfig.allowed_ips = {
-                ...(newConfig.allowed_ips || {}),
-                [user.username]: user.current_ip
-            };
-            configChanged = true;
-            delete user.current_ip;
-        }
 
         if (user.login_ip) {
             const history = newConfig.ip_history?.[user.username] || [];
@@ -1321,7 +1322,7 @@ export default function Home() {
                 
                 // Bug 2 fix: actual_received_amount (HSTT) là giá trị duy nhất cho mỗi đợt,
                 // lấy giá trị mới nhất (không cộng dồn)
-                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                const invoiceRecords = phaseIncs.filter(i => getIncomeType(i) === 'INCOME_INVOICE');
                 
                 // Lấy giá trị HSTT duy nhất cho đợt này (từ bản ghi mới nhất có actual_received_amount)
                 let phaseHstt = undefined;
@@ -1791,7 +1792,7 @@ export default function Home() {
                                                 {(() => {
                                                     // Bug 1 fix: Hiển thị tất cả đợt, bao gồm cả đợt chỉ có INCOME_REAL
                                                     const allProjectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject);
-                                                    const invoiceRecords = allProjectIncomes.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                                                    const invoiceRecords = allProjectIncomes.filter(i => getIncomeType(i) === 'INCOME_INVOICE');
                                                     
                                                     // Lấy tất cả unique phases cho project này
                                                     const uniquePhases = [...new Set(allProjectIncomes.map(i => i.phase))].sort((a, b) => {
@@ -1811,7 +1812,7 @@ export default function Home() {
                                                     // Gom nhóm invoice records theo phase (1 dòng / đợt)
                                                     const phaseRows = uniquePhases.map(phase => {
                                                         const phaseInvoices = invoiceRecords.filter(i => i.phase === phase);
-                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && i.post_tax_amount === 0 && i.amount === 0);
+                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && getIncomeType(i) === 'INCOME_REAL');
                                                         
                                                         if (phaseInvoices.length > 0) {
                                                             // Đợt có INCOME_INVOICE - hiển thị từng invoice record
@@ -1856,7 +1857,7 @@ export default function Home() {
                                                     }, 0);
 
                                                     const totalDeduction = uniquePhases.reduce((sum, phase) => {
-                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && i.post_tax_amount === 0 && i.amount === 0);
+                                                        const phaseReals = allProjectIncomes.filter(i => i.phase === phase && getIncomeType(i) === 'INCOME_REAL');
                                                         const deductionForPhase = phaseReals.reduce((acc, inc) => {
                                                             let val = 0;
                                                             if (inc.note) {
