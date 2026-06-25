@@ -54,7 +54,7 @@ export default function Sidebar({
     
     // Compute pending approvals badge
     const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS';
-    const canApproveKT = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'KẾ TOÁN' || currentUser?.role === 'KẾ TOÁN TRƯỞNG';
+    const canApproveKT = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN');
     const canPay = canApproveKT || isThuKy;
 
     const pendingApprovalsCount = dnttList?.filter(item => {
@@ -74,11 +74,11 @@ export default function Sidebar({
         { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
         { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: canInputData || isThuKy, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
-        { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
+        { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && currentUser?.role !== 'KẾ TOÁN THUẾ', locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isThuKy, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
         { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: true },
         { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy },
-        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: currentUser?.role === 'ADMIN' },
+        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN') },
     ];
 
     const toggleTab = (id) => {

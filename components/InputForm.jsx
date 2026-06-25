@@ -322,7 +322,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
         } else if (type === 'INCOME_INVOICE') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
-            if (!formData.post_tax_amount || formData.post_tax_amount <= 0) newErrors.post_tax_amount = 'Số tiền thu phải lớn hơn 0';
+            const postTax = Number(formData.post_tax_amount) || 0;
+            const actualReceived = Number(formData.actual_received_amount) || 0;
+            if (postTax < 0) {
+                newErrors.post_tax_amount = 'Số tiền thu không được âm';
+            } else if (postTax === 0 && actualReceived === 0) {
+                newErrors.post_tax_amount = 'Vui lòng nhập Giá trị sau thuế hoặc Giá trị thực nhận';
+            }
         } else if (type === 'INCOME_REAL') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
             
@@ -758,7 +764,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     </label>
                                     <input
                                         type="text"
-                                        value={formData.amount ? formatCurrency(formData.amount) : ''}
+                                        value={(formData.amount !== undefined && formData.amount !== null && formData.amount !== '') ? formatCurrency(formData.amount) : ''}
                                         onChange={(e) => {
                                             const val = parseVietnameseNumber(e.target.value);
                                             setFormData(prev => ({ 
@@ -804,7 +810,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     </div>
                                     <input
                                         type="text"
-                                        value={formData.vat_amount ? formatCurrency(formData.vat_amount) : ''}
+                                        value={(formData.vat_amount !== undefined && formData.vat_amount !== null && formData.vat_amount !== '') ? formatCurrency(formData.vat_amount) : ''}
                                         onChange={(e) => {
                                             const val = parseVietnameseNumber(e.target.value);
                                             setFormData(prev => ({ ...prev, vat_amount: val }));
@@ -818,7 +824,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     <label className={labelCls}>Giá trị thanh toán sau thuế <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
-                                        value={formData.post_tax_amount ? formatCurrency(formData.post_tax_amount) : ''}
+                                        value={(formData.post_tax_amount !== undefined && formData.post_tax_amount !== null && formData.post_tax_amount !== '') ? formatCurrency(formData.post_tax_amount) : ''}
                                         onChange={(e) => {
                                             const val = parseVietnameseNumber(e.target.value);
                                             setFormData(prev => ({ 

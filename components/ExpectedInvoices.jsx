@@ -643,7 +643,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         } else if (activeSubTab === 'team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (inv.accountant_approved) return false;
-            if (currentUser?.role?.toUpperCase() === 'ACCOUNTANT' && !inv.qs_approved) return false;
+            if ((currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN')) && !inv.qs_approved) return false;
         } else if (activeSubTab === 'history_team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (!inv.accountant_approved) return false;
@@ -1406,8 +1406,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         const role = currentUser?.role?.toUpperCase();
                                         const canApproveQs = (role === 'QS' || role === 'ADMIN') && !isQsApproved;
                                         const canRevertQs = (role === 'QS' || role === 'ADMIN') && isQsApproved && !isKtApproved;
-                                        const canApproveKt = (role === 'ACCOUNTANT' || role === 'ADMIN') && isQsApproved && !isKtApproved;
-                                        const canRevertKt = (role === 'ACCOUNTANT' || role === 'ADMIN') && isKtApproved;
+                                        const canApproveKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isQsApproved && !isKtApproved;
+                                        const canRevertKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isKtApproved;
 
                                         return (
                                         <React.Fragment key={period}>
@@ -1537,7 +1537,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <td colSpan="6"></td>
                                                     </tr>
                                                     {sortedGroupInvoices.map((inv, idx) => {
-                                                        const isAcctUser = currentUser?.role?.toUpperCase() === 'ACCOUNTANT';
+                                                        const isAcctUser = currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
                                                         const isZero = !parseFloat(inv.teamValue);
 

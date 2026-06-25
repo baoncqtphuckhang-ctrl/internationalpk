@@ -344,8 +344,8 @@ export default function ApprovalWorkflow({
     // Role permissions
     const userRole = currentUser?.role?.toUpperCase();
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(userRole);
-    const canApproveQS = isAdminOrManager || ['KẾ TOÁN', 'QS'].includes(userRole);
-    const canApproveKT = isAdminOrManager || ['KẾ TOÁN', 'QS'].includes(userRole);
+    const canApproveQS = isAdminOrManager || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS'].includes(userRole);
+    const canApproveKT = isAdminOrManager || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS'].includes(userRole);
     const canPay = canApproveKT || userRole === 'THƯ KÝ';
     const canAccount = canApproveKT;
     const showApproveButtons = activeTab === 'approvals' || userRole === 'ADMIN';

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
 import { INITIAL_DATA } from './EmployeeSalary';
 
-export default function UserModal({ isOpen, user, onClose, onSave }) {
+export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, systemConfig }) {
     const [employees, setEmployees] = useState([]);
     const [showCustomInput, setShowCustomInput] = useState(false);
     const [formData, setFormData] = useState({
@@ -10,7 +10,8 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
         name: '',
         role: 'QS',
         phone: '',
-        password: '1'
+        password: '1',
+        allowed_ips: ''
     });
 
     useEffect(() => {
@@ -34,7 +35,8 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                 name: user.name || '',
                 role: user.role || 'QS',
                 phone: user.phone || '',
-                password: user.password || ''
+                password: user.password || '',
+                allowed_ips: systemConfig?.allowed_ips?.[user.username] || ''
             });
             if (user.name && employees.length > 0 && !employees.includes(user.name)) {
                 setShowCustomInput(true);
@@ -47,7 +49,8 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                 name: '',
                 role: 'QS',
                 phone: '',
-                password: '1'
+                password: '1',
+                allowed_ips: ''
             });
             setShowCustomInput(false);
         }
@@ -107,11 +110,15 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                                 <option value="ADMIN">ADMIN</option>
                                 <option value="GIÁM ĐỐC">GIÁM ĐỐC</option>
                                 <option value="PHÓ GĐ">PHÓ GĐ</option>
-                                <option value="KẾ TOÁN">KẾ TOÁN</option>
+                                <option value="KẾ TOÁN THUẾ">KẾ TOÁN THUẾ</option>
+                                <option value="KẾ TOÁN TỔNG HỢP">KẾ TOÁN TỔNG HỢP</option>
+                                <option value="KẾ TOÁN VẬT TƯ">KẾ TOÁN VẬT TƯ</option>
+                                <option value="KẾ TOÁN CHI PHÍ">KẾ TOÁN CHI PHÍ</option>
                                 <option value="QS">QS</option>
                                 <option value="GS">GS</option>
                                 <option value="CHT">CHT</option>
                                 <option value="THƯ KÝ">THƯ KÝ</option>
+                                <option value="TESTER">TESTER</option>
                             </select>
                         </div>
                         <div className="space-y-1">
@@ -125,6 +132,17 @@ export default function UserModal({ isOpen, user, onClose, onSave }) {
                             <input type="text" required value={formData.password} onChange={(e) => setFormData({...formData, password: e.target.value})} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-mono transition" />
                         </div>
                     )}
+                    <div className="space-y-1 mt-4 p-4 bg-indigo-50 border border-indigo-200 rounded-xl">
+                        <label className="text-xs font-bold text-indigo-700 uppercase block">Danh sách IP đăng nhập (Bảo mật)</label>
+                        <input 
+                            type="text" 
+                            value={formData.allowed_ips} 
+                            onChange={(e) => setFormData({...formData, allowed_ips: e.target.value})} 
+                            className="w-full mt-2 p-3 bg-white border border-indigo-200 rounded-xl outline-none focus:border-indigo-500 font-mono transition text-sm text-indigo-900" 
+                            placeholder="Nhập các IP được phép, cách nhau bằng dấu phẩy..." 
+                        />
+                        <p className="text-xs text-indigo-500 mt-2">Ví dụ: 192.168.1.10, 115.14.22.33. Nếu để trống, hệ thống sẽ tự động ghi nhận IP ở lần đăng nhập tiếp theo.</p>
+                    </div>
                     <div className="pt-4 flex gap-3">
                         <button type="button" onClick={onClose} className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition">Hủy</button>
                         <button type="submit" className="flex-1 py-3 rounded-xl font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition">

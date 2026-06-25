@@ -15,8 +15,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         contract_value_after_tax: 0,
         advance_value: 0,
         address: '',
-        cht_name: '',
-        cht_phone: '',
+        cht_list: [{ name: '', phone: '' }],
         debt_to_collect: 0,
         plhd_list: []
     });
@@ -39,8 +38,12 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             contract_value_after_tax: details.contractValueAfterTax || 0,
             advance_value: details.advanceValue || 0,
             address: details.address || '',
-            cht_name: details.chtName || '',
-            cht_phone: details.chtPhone || '',
+            cht_list: (details.chtName || '').split(',').map((s) => s.trim()).filter(Boolean).length > 0
+                ? (details.chtName || '').split(',').map((s) => s.trim()).filter(Boolean).map((name, i) => ({
+                    name,
+                    phone: ((details.chtPhone || '').split(',').map(s => s.trim())[i]) || ''
+                }))
+                : [{ name: '', phone: '' }],
             debt_to_collect: details.debtToCollect || 0,
             plhd_list: p.plhds || []
         });
@@ -52,7 +55,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], plhd_list: [] });
     };
 
     const handleDelete = (projectName) => {
@@ -110,7 +113,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_name: '', cht_phone: '', plhd_list: [] });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], plhd_list: [] });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -158,34 +161,66 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     placeholder="Địa chỉ chi tiết của dự án..."
                                 />
                             </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Chỉ Huy Trưởng (CHT)</label>
-                                <select 
-                                    value={formData.cht_name}
-                                    onChange={(e) => {
-                                        const selectedCht = usersList.find(u => u.name === e.target.value);
-                                        setFormData({
-                                            ...formData, 
-                                            cht_name: e.target.value,
-                                            cht_phone: selectedCht?.phone || ''
-                                        });
-                                    }}
-                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                            {formData.cht_list.map((cht, index) => (
+                                <React.Fragment key={`cht-${index}`}>
+                                    <div className="space-y-2 relative">
+                                        <label className="block text-sm font-black text-slate-900">
+                                            Chỉ Huy Trưởng {index + 1} (CHT)
+                                        </label>
+                                        <div className="relative">
+                                            <select 
+                                                value={cht.name}
+                                                onChange={(e) => {
+                                                    const selectedCht = usersList.find(u => u.name === e.target.value);
+                                                    const newList = [...formData.cht_list];
+                                                    newList[index] = {
+                                                        name: e.target.value,
+                                                        phone: selectedCht?.phone || ''
+                                                    };
+                                                    setFormData({ ...formData, cht_list: newList });
+                                                }}
+                                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                            >
+                                                <option value="">-- Chọn Chỉ Huy Trưởng --</option>
+                                                {usersList.filter(u => u.role !== 'ADMIN' && !u.role?.startsWith('KẾ TOÁN') && u.role !== 'THƯ KÝ').map(u => (
+                                                    <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
+                                                ))}
+                                            </select>
+                                            {index > 0 && (
+                                                <button 
+                                                    type="button" 
+                                                    onClick={() => {
+                                                        const newList = [...formData.cht_list];
+                                                        newList.splice(index, 1);
+                                                        setFormData({...formData, cht_list: newList});
+                                                    }}
+                                                    className="absolute -right-8 top-1/2 -translate-y-1/2 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                                                    title="Xóa CHT này"
+                                                >
+                                                    <Trash2 size={16}/>
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <div className="space-y-2">
+                                        <label className="block text-sm font-black text-slate-900">SĐT Chỉ Huy Trưởng {index + 1}</label>
+                                        <input 
+                                            type="text"
+                                            value={cht.phone}
+                                            readOnly
+                                            className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none bg-slate-100 text-slate-500"
+                                        />
+                                    </div>
+                                </React.Fragment>
+                            ))}
+                            <div className="md:col-span-2 flex justify-start mb-2">
+                                <button 
+                                    type="button"
+                                    onClick={() => setFormData({...formData, cht_list: [...(formData.cht_list || []), {name: '', phone: ''}]})}
+                                    className="text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 text-sm bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition"
                                 >
-                                    <option value="">-- Chọn Chỉ Huy Trưởng --</option>
-                                    {usersList.filter(u => u.role !== 'ADMIN' && u.role !== 'KẾ TOÁN' && u.role !== 'THƯ KÝ').map(u => (
-                                        <option key={u.id} value={u.name}>{u.name} ({u.role})</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">SĐT Chỉ Huy Trưởng</label>
-                                <input 
-                                    type="text"
-                                    value={formData.cht_phone}
-                                    readOnly
-                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none bg-slate-100 text-slate-500"
-                                />
+                                    <Plus size={16} /> Thêm CHT Khác
+                                </button>
                             </div>
                             <div className="space-y-2">
                                 <label className="block text-sm font-black text-slate-900">Giá trị HĐ (Trước thuế)</label>
@@ -332,10 +367,18 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     )}
                                     {(details.chtName || details.chtPhone) && (
                                         <div className="flex justify-between border-b border-slate-50 pb-2">
-                                            <span className="text-slate-400 flex items-center gap-1">👷 Chỉ Huy Trưởng:</span>
-                                            <span className="font-bold text-slate-700">
-                                                {details.chtName || '---'} {details.chtPhone ? `(${details.chtPhone})` : ''}
-                                            </span>
+                                            <span className="text-slate-400 flex items-center gap-1 whitespace-nowrap min-w-[140px]">👷 Chỉ Huy Trưởng:</span>
+                                            <div className="flex flex-col items-end gap-1 text-right max-w-full">
+                                                {(details.chtName || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                                                    const phone = (details.chtPhone || '').split(',').map(s => s.trim())[i] || '';
+                                                    return (
+                                                        <span key={i} className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md break-words whitespace-normal text-right inline-block w-full text-xs">
+                                                            {name} {phone ? `(${phone})` : ''}
+                                                        </span>
+                                                    );
+                                                })}
+                                                {!(details.chtName || '').trim() && <span className="font-bold text-slate-700">---</span>}
+                                            </div>
                                         </div>
                                     )}
                                     <div className="flex justify-between border-b border-slate-50 pb-2">

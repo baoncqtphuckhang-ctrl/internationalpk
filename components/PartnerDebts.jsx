@@ -106,7 +106,7 @@ export default function PartnerDebts({
     const totalNeedToCollect = filteredDebts.filter(d => d.debt_type === 'CẦN THU' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
     const totalNeedToPay = filteredDebts.filter(d => d.debt_type === 'CẦN TRẢ' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
 
-    const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'KẾ TOÁN TRƯỞNG', 'KẾ TOÁN'].includes(currentUser?.role?.toUpperCase());
+    const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'KẾ TOÁN TRƯỞNG', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase());
 
     return (
         <div className="max-w-6xl mx-auto animate-in fade-in duration-500">

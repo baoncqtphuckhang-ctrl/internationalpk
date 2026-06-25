@@ -3,28 +3,60 @@
 import React, { useState, useEffect } from 'react';
 import { Building2, ShieldCheck, Lock, Star, User, ArrowRight, Eye, EyeOff, Sun, Shield } from 'lucide-react';
 
-export default function LoginForm({ onLogin, usersList }) {
+export default function LoginForm({ onLogin, usersList, systemConfig }) {
     const [form, setForm] = useState({ username: '', password: '' });
     const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [isMounted, setIsMounted] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
 
     useEffect(() => {
         setIsMounted(true);
     }, []);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
+        setError('');
+        setIsLoading(true);
+
         const user = usersList.find(u => u.username === form.username && u.password === form.password);
         if (user) {
             if (user.isLocked) {
                 setError('Tài khoản đã bị khóa.');
+                setIsLoading(false);
                 return;
             }
+
+            try {
+                const res = await fetch('https://api.ipify.org?format=json');
+                const data = await res.json();
+                const currentIp = data.ip;
+                
+                const allowedIps = systemConfig?.allowed_ips || {};
+                const userAllowedIp = allowedIps[user.username];
+
+                if (userAllowedIp) {
+                    const ipList = userAllowedIp.split(',').map(ip => ip.trim()).filter(Boolean);
+                    if (ipList.length > 0 && !ipList.includes(currentIp)) {
+                        setError('Tài khoản này chỉ được phép đăng nhập trên máy tính đã đăng ký (Sai IP).');
+                        setIsLoading(false);
+                        return;
+                    }
+                } else {
+                    // Pass IP to be saved by onLogin
+                    user.current_ip = currentIp;
+                }
+                user.login_ip = currentIp;
+            } catch (e) {
+                console.error("Lỗi lấy IP:", e);
+                // Vẫn cho đăng nhập nếu lỗi lấy IP nhưng báo warning (có thể tùy chỉnh)
+            }
+
             onLogin(user);
         } else {
             setError('Sai tài khoản hoặc mật khẩu.');
         }
+        setIsLoading(false);
     };
 
     if (!isMounted) return <div className="min-h-screen bg-[#050505]"></div>;
@@ -145,9 +177,10 @@ export default function LoginForm({ onLogin, usersList }) {
                             </div>
                             <button 
                                 type="submit" 
-                                className="w-full mt-2 bg-gradient-to-r from-[#C6922D] via-[#F5D27A] to-[#D4AF37] hover:brightness-110 text-[#050505] font-bold py-4 rounded-2xl shadow-[0_4px_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2 text-[15px]"
+                                disabled={isLoading}
+                                className="w-full mt-2 bg-gradient-to-r from-[#C6922D] via-[#F5D27A] to-[#D4AF37] hover:brightness-110 disabled:opacity-70 text-[#050505] font-bold py-4 rounded-2xl shadow-[0_4px_20px_rgba(212,175,55,0.3)] transition-all flex items-center justify-center gap-2 text-[15px]"
                             >
-                                Đăng nhập <ArrowRight size={18} strokeWidth={2.5} className="text-[#050505]" />
+                                {isLoading ? 'Đang kiểm tra...' : <>Đăng nhập <ArrowRight size={18} strokeWidth={2.5} className="text-[#050505]" /></>}
                             </button>
                         </form>
 

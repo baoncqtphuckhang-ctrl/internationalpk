@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { X, Key, ShieldCheck, AlertCircle } from 'lucide-react';
 
 export default function ChangePasswordModal({ isOpen, user, onClose, onSave }) {
-    const [oldPassword, setOldPassword] = useState('');
     const [newPassword, setNewPassword] = useState('');
     const [confirmPassword, setConfirmPassword] = useState('');
     const [error, setError] = useState('');
@@ -13,13 +12,8 @@ export default function ChangePasswordModal({ isOpen, user, onClose, onSave }) {
         e.preventDefault();
         setError('');
 
-        if (!oldPassword || !newPassword || !confirmPassword) {
+        if (!newPassword || !confirmPassword) {
             setError('Vui lòng điền đầy đủ thông tin!');
-            return;
-        }
-
-        if (oldPassword !== user.password) {
-            setError('Mật khẩu cũ không chính xác!');
             return;
         }
 
@@ -28,13 +22,7 @@ export default function ChangePasswordModal({ isOpen, user, onClose, onSave }) {
             return;
         }
 
-        if (newPassword === oldPassword) {
-            setError('Mật khẩu mới phải khác mật khẩu cũ!');
-            return;
-        }
-
         onSave(newPassword);
-        setOldPassword('');
         setNewPassword('');
         setConfirmPassword('');
     };
@@ -69,17 +57,6 @@ export default function ChangePasswordModal({ isOpen, user, onClose, onSave }) {
                     )}
 
                     <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-bold text-slate-700 mb-1">Mật khẩu cũ</label>
-                            <input 
-                                type="password" 
-                                value={oldPassword}
-                                onChange={(e) => setOldPassword(e.target.value)}
-                                className="w-full border-2 border-slate-200 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 transition font-mono"
-                                placeholder="Nhập mật khẩu hiện tại..."
-                            />
-                        </div>
-                        
                         <div>
                             <label className="block text-sm font-bold text-slate-700 mb-1">Mật khẩu mới</label>
                             <input 

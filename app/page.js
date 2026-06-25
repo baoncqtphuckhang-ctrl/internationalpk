@@ -170,7 +170,35 @@ export default function Home() {
         setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 3000);
     };
 
-    const handleLogin = (user) => {
+    const handleLogin = async (user) => {
+        let configChanged = false;
+        const newConfig = { ...systemConfig };
+
+        if (user.current_ip) {
+            newConfig.allowed_ips = {
+                ...(newConfig.allowed_ips || {}),
+                [user.username]: user.current_ip
+            };
+            configChanged = true;
+            delete user.current_ip;
+        }
+
+        if (user.login_ip) {
+            const history = newConfig.ip_history?.[user.username] || [];
+            // Only add if it's not the last IP recorded to avoid spamming the same IP
+            if (history[history.length - 1] !== user.login_ip) {
+                newConfig.ip_history = {
+                    ...(newConfig.ip_history || {}),
+                    [user.username]: [...history, user.login_ip].slice(-10) // Keep last 10 IPs
+                };
+                configChanged = true;
+            }
+            delete user.login_ip;
+        }
+
+        if (configChanged) {
+            await handleSaveSystemConfig(newConfig);
+        }
         setCurrentUser(user);
         setActiveTab('home');
     };
@@ -296,12 +324,13 @@ export default function Home() {
     const handleSaveSystemConfig = async (newConfig) => {
         try {
             setSystemConfig(newConfig);
-            const { data: existingUser } = await supabase.from('users').select('id').eq('username', '__system_config__').single();
+            const { data: existingUser } = await supabase.from('users').select('id').eq('username', '__system_config__').maybeSingle();
             
             if (existingUser) {
                 await supabase.from('users').update({ phone: JSON.stringify(newConfig) }).eq('id', existingUser.id);
             } else {
                 await supabase.from('users').insert([{
+                    id: 'sys_' + Date.now(),
                     username: '__system_config__',
                     password: '123',
                     name: 'System Config',
@@ -399,12 +428,24 @@ export default function Home() {
                     vat_amount: isReal ? 0 : (data.vat_amount || 0),
                     post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0),
                     is_paid: isReal ? true : false,
-                    note: JSON.stringify({ text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }),
+                    note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }),
                     created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);
-                    const isOriginalReal = originalData ? (originalData.post_tax_amount === 0 && originalData.amount === 0) : false;
+                    let isOriginalReal = false;
+                    if (originalData) {
+                        try {
+                            const parsedNote = JSON.parse(originalData.note);
+                            if (parsedNote.type_data) {
+                                isOriginalReal = parsedNote.type_data === 'INCOME_REAL';
+                            } else {
+                                isOriginalReal = (originalData.post_tax_amount === 0 && originalData.amount === 0);
+                            }
+                        } catch(e) {
+                            isOriginalReal = (originalData.post_tax_amount === 0 && originalData.amount === 0);
+                        }
+                    }
                     
                     if (isReal !== isOriginalReal) {
                         // User switched tabs while editing. Insert instead of update to prevent data loss.
@@ -437,7 +478,17 @@ export default function Home() {
     const handleEditTransaction = (t) => {
         let typeStr = 'EXPENSE';
         if (t.phase) {
-            typeStr = (t.post_tax_amount === 0 && t.amount === 0) ? 'INCOME_REAL' : 'INCOME_INVOICE';
+            typeStr = 'INCOME_INVOICE';
+            try {
+                const parsedNote = JSON.parse(t.note);
+                if (parsedNote.type_data) {
+                    typeStr = parsedNote.type_data;
+                } else if (t.post_tax_amount === 0 && t.amount === 0) {
+                    typeStr = 'INCOME_REAL';
+                }
+            } catch(e) {
+                if (t.post_tax_amount === 0 && t.amount === 0) typeStr = 'INCOME_REAL';
+            }
         } else if (t.office_amount !== undefined) {
             typeStr = 'OFFICE_INCOME';
         }
@@ -487,8 +538,8 @@ export default function Home() {
                         debt_to_collect: data.debt_to_collect,
                         plhds: data.plhd_list || [],
                         address: data.address,
-                        cht_name: data.cht_name,
-                        cht_phone: data.cht_phone
+                        cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
+                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
                     }]);
                     if (insertError) {
                         console.error('Insert error during rename:', insertError);
@@ -517,8 +568,8 @@ export default function Home() {
                         debt_to_collect: data.debt_to_collect,
                         plhds: data.plhd_list || [],
                         address: data.address,
-                        cht_name: data.cht_name,
-                        cht_phone: data.cht_phone
+                        cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
+                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
                     }).eq('name', data.original_name || data.name);
                     if (error) throw error;
                 }
@@ -531,8 +582,8 @@ export default function Home() {
                     debt_to_collect: data.debt_to_collect,
                     plhds: data.plhd_list || [],
                     address: data.address,
-                    cht_name: data.cht_name,
-                    cht_phone: data.cht_phone
+                    cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
+                    cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
                 }]);
                 if (error) throw error;
             }
@@ -1191,17 +1242,20 @@ export default function Home() {
 
     const role = currentUser?.role?.toUpperCase();
     const canManageUsers = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(role);
-    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'QS'].includes(role);
+    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS'].includes(role);
     const canViewApprovals = canManageSystem || role === 'THƯ KÝ';
     const canInputData = canManageSystem || role === 'THƯ KÝ';
-    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'QS', 'THƯ KÝ'].includes(role);
+    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS', 'THƯ KÝ'].includes(role);
     const canViewReports = currentUser?.canViewFinance !== false;
     const canCreateDNTT = true;
 
     const assignedProjectNames = useMemo(() => {
         if (!currentUser) return [];
-        if (['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'QS', 'THƯ KÝ'].includes(role)) {
+        if (['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'THƯ KÝ'].includes(role)) {
             return projects.map(p => p.name);
+        }
+        if (role === 'TESTER') {
+            return projects.filter(p => p.name.toLowerCase().includes('test')).map(p => p.name);
         }
         return projects.filter(p => {
             const details = projectDetails[p.name] || {};
@@ -1384,6 +1438,37 @@ export default function Home() {
         }), { contractValueAfterTax: 0, totalContractAndPlhd: 0, debtToCollect: 0, totalExpense: 0, totalActualIncome: 0, advanceValue: 0, totalPhaseReceived: 0, totalUnreceivedPhase: 0, receivedPhaseBeforeVat: 0, unreceivedPhaseBeforeVat: 0, totalReceivedBeforeVat: 0, totalAllBeforeVat: 0, totalReceivedAmount: 0, uncollectedProfit: 0, profit: 0 });
     }, [dashboardData]);
 
+    const ROLE_RANK = {
+        'ADMIN': 1,
+        'QS': 2,
+        'GIÁM ĐỐC': 3,
+        'PHÓ GĐ': 3,
+        'THƯ KÝ': 4,
+        'KẾ TOÁN TỔNG HỢP': 5,
+        'KẾ TOÁN THUẾ': 5,
+        'KẾ TOÁN VẬT TƯ': 5,
+        'KẾ TOÁN CHI PHÍ': 5,
+        'KẾ TOÁN': 5,
+        'CHT': 6,
+        'GS': 7,
+        'TESTER': 8
+    };
+
+    const ROLE_COLORS = {
+        'ADMIN': 'bg-slate-800 text-slate-100',
+        'QS': 'bg-indigo-100 text-indigo-700',
+        'GIÁM ĐỐC': 'bg-amber-100 text-amber-800',
+        'PHÓ GĐ': 'bg-amber-50 text-amber-700',
+        'THƯ KÝ': 'bg-pink-100 text-pink-700',
+        'KẾ TOÁN TỔNG HỢP': 'bg-emerald-100 text-emerald-700',
+        'KẾ TOÁN THUẾ': 'bg-teal-100 text-teal-700',
+        'KẾ TOÁN VẬT TƯ': 'bg-cyan-100 text-cyan-700',
+        'KẾ TOÁN CHI PHÍ': 'bg-lime-100 text-lime-700',
+        'CHT': 'bg-blue-100 text-blue-700',
+        'GS': 'bg-sky-100 text-sky-700',
+        'TESTER': 'bg-fuchsia-100 text-fuchsia-700'
+    };
+
     const filteredUsers = usersList.filter(u => {
         const term = userSearchTerm.toLowerCase();
         return (
@@ -1392,6 +1477,11 @@ export default function Home() {
             (u.phone || '').toLowerCase().includes(term) ||
             (u.role || '').toLowerCase().includes(term)
         );
+    }).sort((a, b) => {
+        const rankA = ROLE_RANK[a.role?.toUpperCase()] || 99;
+        const rankB = ROLE_RANK[b.role?.toUpperCase()] || 99;
+        if (rankA !== rankB) return rankA - rankB;
+        return (a.name || '').localeCompare(b.name || '');
     });
 
     const handleUploadUserSignature = async (id, file) => {
@@ -1457,7 +1547,7 @@ export default function Home() {
         };
     };
 
-    if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} />;
+    if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} systemConfig={systemConfig} />;
 
     return (
         <div className="h-screen w-full overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
@@ -2088,7 +2178,7 @@ export default function Home() {
                 )}
 
                 {activeTab === 'users' && (
-                    <div className="animate-in fade-in duration-500 max-w-4xl mx-auto">
+                    <div className="animate-in fade-in duration-500 w-full px-4 lg:px-8">
                         <header className="mb-6 flex justify-between items-center">
                             <div>
                                 <h2 className="text-2xl font-bold text-slate-800">Quản lý Nhân viên</h2>
@@ -2117,13 +2207,15 @@ export default function Home() {
                                 <table className="w-full text-left min-w-[800px]">
                                     <thead className="bg-slate-50 border-b">
                                         <tr>
-                                            <th className="p-4 font-bold text-slate-700">Tên nhân viên</th>
-                                            <th className="p-4 font-bold text-slate-700">Tài khoản</th>
-                                            <th className="p-4 font-bold text-slate-700">Số ĐT</th>
-                                            <th className="p-4 font-bold text-slate-700">Chức vụ (Role)</th>
-                                            <th className="p-4 font-bold text-slate-700">Trạng thái</th>
-                                            <th className="p-4 font-bold text-slate-700 text-center">Chữ ký</th>
-                                            <th className="p-4 font-bold text-slate-700 text-right">Thao tác</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Tên nhân viên</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Tài khoản</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Số ĐT</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Chức vụ (Role)</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Trạng thái</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">IP Đăng nhập</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700">Lịch sử IP (Gần đây)</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700 text-center">Chữ ký</th>
+                                            <th className="px-3 py-2 text-sm font-bold text-slate-700 text-right">Thao tác</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -2133,12 +2225,12 @@ export default function Home() {
                                         </tr>
                                     ) : (
                                         filteredUsers.map(u => (
-                                            <tr key={u.id} className="border-b hover:bg-slate-50">
-                                                <td className="p-4 font-bold text-slate-900">{u.name}</td>
-                                                <td className="p-4 font-mono text-blue-600">@{u.username}</td>
-                                                <td className="p-4 font-mono text-slate-500">{u.phone || '---'}</td>
-                                                <td className="p-4"><span className="px-2 py-1 bg-blue-50 text-blue-700 rounded text-xs font-bold uppercase">{u.role}</span></td>
-                                                <td className="p-4">
+                                            <tr key={u.id} className="border-b odd:bg-white even:bg-slate-50/80 hover:bg-indigo-50/50 transition-colors">
+                                                <td className="px-3 py-2 text-sm font-bold text-slate-900">{u.name}</td>
+                                                <td className="px-3 py-2 text-sm font-mono text-blue-600">@{u.username}</td>
+                                                <td className="px-3 py-2 text-sm font-mono text-slate-500">{u.phone || '---'}</td>
+                                                <td className="px-3 py-2 text-sm"><span className={`px-2 py-1 rounded text-[11px] font-bold uppercase ${ROLE_COLORS[u.role?.toUpperCase()] || 'bg-slate-100 text-slate-700'}`}>{u.role}</span></td>
+                                                <td className="px-3 py-2 text-sm">
                                                     <div className="flex flex-col gap-2">
                                                         {u.isLocked ? (
                                                             <span className="flex items-center gap-1 text-red-500 font-bold"><AlertCircle size={14}/> Bị khóa</span>
@@ -2169,11 +2261,30 @@ export default function Home() {
                                                         )}
                                                     </div>
                                                 </td>
-                                                <td className="p-4 text-center relative group">
-                                                    {u.signature_url ? (
-                                                        <img src={u.signature_url} className="h-10 max-w-[100px] object-contain mx-auto rounded bg-white p-1 border shadow-sm" alt="Chữ ký" />
+                                                <td className="px-3 py-2 text-sm max-w-[150px] truncate">
+                                                    <span className="font-mono text-[11px] text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded" title={systemConfig?.allowed_ips?.[u.username] || 'Chưa khóa'}>
+                                                        {systemConfig?.allowed_ips?.[u.username] || 'Chưa khóa'}
+                                                    </span>
+                                                </td>
+                                                <td className="px-3 py-2 text-sm max-w-[180px] truncate" title={(systemConfig?.ip_history?.[u.username] || []).join(', ')}>
+                                                    {(systemConfig?.ip_history?.[u.username] || []).length > 0 ? (
+                                                        <div className="flex flex-col gap-1">
+                                                            {(systemConfig?.ip_history?.[u.username] || []).slice().reverse().slice(0, 3).map((ip, i) => (
+                                                                <span key={i} className="font-mono text-[10px] text-slate-500 bg-white border border-slate-200 px-1 py-0.5 rounded shadow-sm">{ip}</span>
+                                                            ))}
+                                                            {(systemConfig?.ip_history?.[u.username] || []).length > 3 && (
+                                                                <span className="text-[10px] text-slate-400 italic">...và {(systemConfig?.ip_history?.[u.username] || []).length - 3} IP khác</span>
+                                                            )}
+                                                        </div>
                                                     ) : (
-                                                        <span className="text-sm text-slate-400 group-hover:text-indigo-600 transition">Chưa có</span>
+                                                        <span className="text-[11px] text-slate-400 italic">Chưa có</span>
+                                                    )}
+                                                </td>
+                                                <td className="px-3 py-2 text-sm text-center relative group">
+                                                    {u.signature_url ? (
+                                                        <img src={u.signature_url} className="h-8 max-w-[80px] object-contain mx-auto rounded bg-white p-1 border shadow-sm" alt="Chữ ký" />
+                                                    ) : (
+                                                        <span className="text-xs text-slate-400 group-hover:text-indigo-600 transition">Chưa có</span>
                                                     )}
                                                     <input 
                                                         type="file" 
@@ -2183,9 +2294,9 @@ export default function Home() {
                                                         onChange={(e) => handleUploadUserSignature(u.id, e.target.files[0])}
                                                     />
                                                 </td>
-                                                <td className="p-4 text-right flex justify-end gap-1">
+                                                <td className="px-3 py-2 text-sm text-right flex justify-end gap-1">
                                                     {role === 'ADMIN' && (
-                                                        <button onClick={() => setHistoryModal({ isOpen: true, user: u })} className="text-indigo-500 hover:text-indigo-700 p-2 hover:bg-indigo-50 rounded transition" title="Lịch sử làm việc">
+                                                        <button onClick={() => setHistoryModal({ isOpen: true, user: u })} className="text-indigo-500 hover:text-indigo-700 p-1.5 hover:bg-indigo-50 rounded transition" title="Lịch sử làm việc">
                                                             <Clock size={16} />
                                                         </button>
                                                     )}
@@ -2265,6 +2376,18 @@ export default function Home() {
             <UserModal
                 isOpen={userModal.isOpen}
                 user={userModal.user}
+                systemConfig={systemConfig}
+                onClearIp={async (username) => {
+                    if (!systemConfig.allowed_ips || !systemConfig.allowed_ips[username]) {
+                        showToast('Tài khoản này chưa bị khóa IP nào.');
+                        return;
+                    }
+                    const newAllowedIps = { ...systemConfig.allowed_ips };
+                    delete newAllowedIps[username];
+                    const newConfig = { ...systemConfig, allowed_ips: newAllowedIps };
+                    await handleSaveSystemConfig(newConfig);
+                    showToast(`Đã xóa khóa IP cho tài khoản ${username}.`);
+                }}
                 onClose={() => setUserModal({ isOpen: false, user: null })}
                 onSave={async (data) => {
                     if (userModal.user) {
@@ -2277,6 +2400,16 @@ export default function Home() {
                                 phone: data.phone
                             }).eq('id', userModal.user.id);
                         } catch(e) {}
+                        
+                        const newAllowedIps = { ...(systemConfig.allowed_ips || {}) };
+                        if (data.allowed_ips) {
+                            newAllowedIps[data.username] = data.allowed_ips;
+                        } else {
+                            delete newAllowedIps[data.username];
+                        }
+                        const newConfig = { ...systemConfig, allowed_ips: newAllowedIps };
+                        await handleSaveSystemConfig(newConfig);
+
                         setUsersList(usersList.map(x => x.id === userModal.user.id ? { ...x, ...data } : x));
                         showToast('Đã cập nhật thông tin nhân viên!');
                         logActivity('Sửa', 'Hệ thống', `Cập nhật thông tin nhân viên: ${data.username}`);
@@ -2297,6 +2430,17 @@ export default function Home() {
                         setUsersList([...usersList, { id: newId, ...data, isLocked: false, canViewFinance: true }]);
                         showToast('Đã thêm nhân viên mới!');
                         logActivity('Thêm', 'Hệ thống', `Tạo tài khoản nhân viên: ${data.username}`);
+
+                        if (data.allowed_ips) {
+                            const newConfig = { 
+                                ...systemConfig, 
+                                allowed_ips: { 
+                                    ...(systemConfig.allowed_ips || {}), 
+                                    [data.username]: data.allowed_ips 
+                                } 
+                            };
+                            await handleSaveSystemConfig(newConfig);
+                        }
                     }
                     setUserModal({ isOpen: false, user: null });
                 }}
