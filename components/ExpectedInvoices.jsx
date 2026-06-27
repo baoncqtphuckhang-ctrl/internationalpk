@@ -324,12 +324,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (type === 'REVERT_QS') updatePayload = { qs_approved: false };
             if (type === 'REVERT_KT') updatePayload = { accountant_approved: false, is_completed: false };
             
-            for (const inv of periodInvoices) {
-                await supabase
-                    .from('expected_invoices')
-                    .update(updatePayload)
-                    .eq('id', inv.id);
-            }
+            const ids = periodInvoices.map(inv => inv.id);
+            await supabase
+                .from('expected_invoices')
+                .update(updatePayload)
+                .in('id', ids);
             
             setInvoices(prev => prev.map(inv => {
                 if (periodInvoices.find(p => p.id === inv.id)) {
@@ -1595,7 +1594,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                 className="px-2 py-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition border border-orange-200 bg-orange-50 whitespace-nowrap text-xs font-bold" 
                                                                                 title="Tạo Nhập liệu Tạm ứng"
                                                                             >
-                                                                                Tạo Tạm ứng
+                                                                                Hạch toán
                                                                             </button>
                                                                         )
                                                                     )}

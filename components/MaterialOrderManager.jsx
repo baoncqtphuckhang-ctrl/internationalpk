@@ -6,7 +6,7 @@ import {
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
     Clock, AlertTriangle, XCircle, ArrowLeft, RefreshCw,
-    DollarSign, Tag, Info, PieChart
+    DollarSign, Tag, Info, PieChart, Trash2
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -38,7 +38,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToProject }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToProject, refreshData }) {
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isDbStorage, setIsDbStorage] = useState(false);
@@ -50,6 +50,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [matchedRequest, setMatchedRequest] = useState(null);
     const [isStatsView, setIsStatsView] = useState(false);
+    
+    // Modal state
+    const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     
     // Load orders
     const fetchOrders = async () => {
@@ -157,8 +160,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const matchesStatus = selectedStatusFilter === '' || normalizedStatus === selectedStatusFilter;
         
         const isDeadStatus = normalizedStatus === 'Draft' || normalizedStatus === 'Rejected';
-        if (selectedStatusFilter === '' && isDeadStatus) return false;
-
+        // Removed the hiding of Draft/Rejected by default so users can see their drafts
+        
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
         if (order.is_deleted && !req) return false;
         
@@ -180,6 +183,45 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const req = getMatchedRequest(order);
         setSelectedOrder(order);
         setMatchedRequest(req);
+    };
+
+    const handleDeleteOrder = (orderId, e, reqId) => {
+        if (e) e.stopPropagation();
+        
+        setConfirmModal({
+            isOpen: true,
+            message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Hành động này sẽ xóa dữ liệu vĩnh viễn và không thể khôi phục.',
+            onConfirm: async () => {
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                setIsLoading(true);
+                try {
+                    if (!orderId.toString().startsWith('orphan-')) {
+                        const { error } = await supabase
+                            .from('material_orders')
+                            .delete()
+                            .eq('id', orderId);
+                        if (error) throw error;
+                    }
+                    if (reqId) {
+                        const { error: reqErr } = await supabase
+                            .from('approval_requests')
+                            .delete()
+                            .eq('id', reqId);
+                        if (reqErr) throw reqErr;
+                    }
+                    showToast('Đã xóa đơn đặt hàng thành công!');
+                    await fetchOrders();
+                    if (refreshData) {
+                        refreshData();
+                    }
+                } catch (err) {
+                    showToast('Lỗi khi xóa đơn đặt hàng!', 'error');
+                    console.error(err);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
+        });
     };
 
     const getStatistics = () => {
@@ -317,7 +359,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const orderItems = Array.isArray(orderData.items) ? orderData.items : [];
 
         orderItems.forEach(cat => {
-            const catHasQuantity = cat.items.some(it => parseFloat(it.quantity) > 0);
+            const currentCatItems = Array.isArray(cat?.items) ? cat.items : [];
+            const catHasQuantity = currentCatItems.some(it => parseFloat(it.quantity) > 0);
             if (!catHasQuantity) return;
 
             rowsHtml += `
@@ -325,7 +368,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     <td colspan="7" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; background-color: #f2f2f2; font-family: 'Times New Roman'; font-size: 13pt;">${cat.name}</td>
                 </tr>
             `;
-            cat.items.forEach(it => {
+            currentCatItems.forEach(it => {
                 const qty = parseFloat(it.quantity);
                 const price = parseFloat(it.price) || 0;
                 if (isNaN(qty) || qty <= 0) return;
@@ -441,7 +484,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     <tr style="height: 40px;">
                         <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
                         <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
-                            ${formatCurrency(orderItems.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
+                            ${formatCurrency(orderItems.reduce((total, cat) => total + (Array.isArray(cat?.items) ? cat.items : []).reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
                         </td>
                     </tr>
                     
@@ -749,12 +792,24 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                     <Eye size={14} /> Chi tiết
                                                                 </button>
                                                                 <button 
-                                                                    onClick={() => handleExportExcel(order)}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        handleExportExcel(order);
+                                                                    }}
                                                                     className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded-xl transition"
                                                                     title="Xuất Excel"
                                                                 >
                                                                     <Download size={15} />
                                                                 </button>
+                                                                {(status === 'Draft' || status === 'Rejected') && (
+                                                                    <button 
+                                                                        onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
+                                                                        className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"
+                                                                        title="Xóa Đơn Đặt Hàng"
+                                                                    >
+                                                                        <Trash2 size={15} />
+                                                                    </button>
+                                                                )}
                                                             </div>
                                                         </td>
                                                     </tr>
@@ -905,8 +960,10 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                             }
                                         }
 
-                                        return selectedOrder.items.map((cat, catIdx) => {
-                                            const catHasQuantity = cat.items.some(it => parseFloat(it.quantity) > 0);
+                                        const safeItems = Array.isArray(selectedOrder?.items) ? selectedOrder.items : [];
+                                        return safeItems.map((cat, catIdx) => {
+                                            const currentCatItems = Array.isArray(cat?.items) ? cat.items : [];
+                                            const catHasQuantity = currentCatItems.some(it => parseFloat(it.quantity) > 0);
                                             if (!catHasQuantity) return null;
 
                                             return (
@@ -919,7 +976,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                     </tr>
                                                     
                                                     {/* Category Items */}
-                                                    {cat.items.map((it, itemIdx) => {
+                                                    {currentCatItems.map((it, itemIdx) => {
                                                         const qty = parseFloat(it.quantity);
                                                         if (isNaN(qty) || qty <= 0) return null;
 
@@ -1002,6 +1059,35 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 </div>
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Custom Confirm Modal */}
+            {confirmModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
+                        <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-5 shadow-sm border border-red-100">
+                            <Trash2 size={32} />
+                        </div>
+                        <h3 className="text-2xl font-black text-slate-800 text-center mb-2">Xác nhận xóa</h3>
+                        <p className="text-slate-500 text-[15px] text-center mb-8 leading-relaxed px-2">
+                            {confirmModal.message}
+                        </p>
+                        <div className="flex gap-3">
+                            <button 
+                                onClick={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })}
+                                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-4 rounded-xl transition"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                onClick={confirmModal.onConfirm}
+                                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-red-600/20 transition"
+                            >
+                                Xóa vĩnh viễn
+                            </button>
+                        </div>
                     </div>
                 </div>
             )}

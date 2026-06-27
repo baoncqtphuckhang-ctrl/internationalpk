@@ -29,7 +29,7 @@ const DEFAULT_CATEGORIES = [
 
 const getNextOrderPhaseForProject = (projectName, ordersList) => {
     if (!projectName) return 'ĐỢT 1';
-    const projectOrders = ordersList.filter(o => o.project_name === projectName);
+    const projectOrders = ordersList.filter(o => o.project_name === projectName && !o.is_deleted);
     if (projectOrders.length === 0) return 'ĐỢT 1';
     
     let maxPhase = 0;
@@ -69,9 +69,14 @@ const getProjectMaterialTemplateData = (projectName) => {
 
 const getProjectMaterialTemplate = (projectName, versionId = null) => {
     const data = getProjectMaterialTemplateData(projectName);
-    if (data.versions.length === 0) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    if (!data || !data.versions || data.versions.length === 0) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
     if (versionId) {
         const ver = data.versions.find(v => v.id === versionId);
+        if (ver) return JSON.parse(JSON.stringify(ver.categories));
+    }
+    const activeVerId = data.activeVersionId;
+    if (activeVerId) {
+        const ver = data.versions.find(v => v.id === activeVerId);
         if (ver) return JSON.parse(JSON.stringify(ver.categories));
     }
     return JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories));
@@ -107,6 +112,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [configVersions, setConfigVersions] = useState([]);
     const [activeVersionId, setActiveVersionId] = useState('');
     const [configCategories, setConfigCategories] = useState([]);
+    const [configActiveVersionId, setConfigActiveVersionId] = useState(null);
 
     // Form state
     const [formData, setFormData] = useState(() => {
@@ -541,7 +547,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
             const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
             projectTemplates[configProjectName] = {
-                versions: updatedVersions
+                versions: updatedVersions,
+                activeVersionId: configActiveVersionId
             };
             localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
             showToast('Đã lưu cấu hình danh mục vật tư cho công trình!');
@@ -1069,17 +1076,19 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     const proj = e.target.value;
                                     setConfigProjectName(proj);
                                     const data = getProjectMaterialTemplateData(proj);
-                                    if (data.versions.length > 0) {
+                                    if (data.versions && data.versions.length > 0) {
                                         setConfigVersions(data.versions);
-                                        const latestVer = data.versions[data.versions.length - 1];
-                                        setActiveVersionId(latestVer.id);
-                                        setConfigCategories(JSON.parse(JSON.stringify(latestVer.categories)));
+                                        const activeId = data.activeVersionId || data.versions[data.versions.length - 1].id;
+                                        setConfigActiveVersionId(activeId);
+                                        setActiveVersionId(data.versions[data.versions.length - 1].id);
+                                        setConfigCategories(JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories)));
                                     } else {
                                         const today = new Date().toISOString().split('T')[0];
                                         const newId = Date.now().toString();
                                         const defaultCats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
                                         setConfigVersions([{ id: newId, date: today, categories: defaultCats }]);
                                         setActiveVersionId(newId);
+                                        setConfigActiveVersionId(newId);
                                         setConfigCategories(defaultCats);
                                     }
                                 }}
@@ -1121,16 +1130,30 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             </div>
                         </div>
 
-                        <div className="mb-4">
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Ngày bắt đầu áp dụng (của đợt này):</label>
-                            <input 
-                                type="date" 
-                                value={configVersions.find(v => v.id === activeVersionId)?.date || ''}
-                                onChange={(e) => {
-                                    setConfigVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, date: e.target.value } : v));
-                                }}
-                                className="w-full md:w-48 p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
-                            />
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Giá vật tư hiện tại (áp dụng cho kho & báo cáo):</label>
+                                <select 
+                                    value={configActiveVersionId || (configVersions[configVersions.length - 1]?.id)}
+                                    onChange={(e) => setConfigActiveVersionId(e.target.value)}
+                                    className="w-full p-2.5 bg-indigo-50 border-2 border-indigo-200 rounded-xl font-bold text-indigo-700 outline-none focus:border-indigo-500 transition"
+                                >
+                                    {configVersions.map((v, i) => (
+                                        <option key={v.id} value={v.id}>Đợt {i + 1} - Áp dụng từ {formatDateVN(v.date)}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-2">Ngày bắt đầu áp dụng (của đợt đang sửa):</label>
+                                <input 
+                                    type="date" 
+                                    value={configVersions.find(v => v.id === activeVersionId)?.date || ''}
+                                    onChange={(e) => {
+                                        setConfigVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, date: e.target.value } : v));
+                                    }}
+                                    className="w-full p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
+                                />
+                            </div>
                         </div>
 
                         <div className="space-y-6">

@@ -35,7 +35,7 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
                 const allowedIps = systemConfig?.allowed_ips || {};
                 const userAllowedIp = allowedIps[user.username];
 
-                if (userAllowedIp) {
+                if (userAllowedIp && user.username !== 'admin' && user.role !== 'ADMIN') {
                     const ipList = userAllowedIp.split(',').map(ip => ip.trim()).filter(Boolean);
                     if (ipList.length > 0 && !ipList.includes(currentIp)) {
                         setError('Đăng nhập không thành công (Sai địa chỉ IP).');
@@ -48,7 +48,7 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
                 console.error("Lỗi lấy IP:", e);
                 const allowedIps = systemConfig?.allowed_ips || {};
                 const userAllowedIp = allowedIps[user.username];
-                if (userAllowedIp) {
+                if (userAllowedIp && user.username !== 'admin' && user.role !== 'ADMIN') {
                     setError('Đăng nhập không thành công (Không thể xác minh IP).');
                     setIsLoading(false);
                     return;

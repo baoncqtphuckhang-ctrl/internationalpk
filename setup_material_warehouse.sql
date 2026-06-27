@@ -16,3 +16,6 @@ CREATE TABLE IF NOT EXISTS material_warehouse (
 );
 
 -- Note: In Supabase, you can run this SQL query in the SQL Editor to create the table.
+
+-- Nếu gặp lỗi 42501 (new row violates row-level security policy), hãy chạy thêm lệnh sau:
+ALTER TABLE material_warehouse DISABLE ROW LEVEL SECURITY;

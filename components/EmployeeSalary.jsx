@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X } from 'lucide-react';
+import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X, ChevronDown, ChevronRight, Settings, Banknote, RotateCcw } from 'lucide-react';
 import { formatCurrency, getVietnameseHolidays } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
@@ -38,6 +38,7 @@ const NumberInput = ({ value, onChange, className, isDecimal = false }) => {
         if (isNegative) num = -num;
         onChange(num);
     };
+
 
     return (
         <input 
@@ -96,21 +97,39 @@ export const INITIAL_DATA = [
     { id: '29', name: 'Nguyễn Khắc Huỳnh', basic_salary: 14333333, phone_allowance: 0, parking_allowance: 0, makeup_allowance: 0, insurance_salary: 5000000, advance: 4000000, other_deductions: 0, other_additions: 4400000, cash: 0, notes: '', bank_account: '105869389545', bank_account_name: 'NGUYỄN KHÁC HUỲNH', bank_name: 'VIETINBANK' },
 ];
 
-export default function EmployeeSalary({ currentUser, usersList = [] }) {
+export default function EmployeeSalary({ currentUser, usersList = [], projects = [], refreshData }) {
+    const [draftPeriods, setDraftPeriods] = useState([]);
+    const [accountedTxs, setAccountedTxs] = useState([]);
+    
+    useEffect(() => {
+        const fetchAccountedTxs = async () => {
+            try {
+                const { data } = await supabase.from('transactions').select('note').ilike('note', '%[CHI LƯƠNG]%');
+                if (data) setAccountedTxs(data.map(d => d.note));
+            } catch (e) {}
+        };
+        fetchAccountedTxs();
+    }, []);
+    
     const [employees, setEmployees] = useState([]);
     const [activeTab, setActiveTab] = useState('salary'); // 'salary' | 'attendance' | 'history'
+    const [historySubTab, setHistorySubTab] = useState('salary'); // 'salary' | 'attendance'
     const [holidays, setHolidays] = useState({});
     const [systemModal, setSystemModal] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null, onCancel: null, password: '', error: '' });
+    const [allocationModal, setAllocationModal] = useState({ isOpen: false, empId: null, name: '', month: '', allocations: [] });
+    const [paymentModal, setPaymentModal] = useState({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 });
+    const [leaveModal, setLeaveModal] = useState({ isOpen: false, empId: null, name: '', currentBalance: 0 });
     const [addEmployeeModal, setAddEmployeeModal] = useState({ isOpen: false });
     const [newEmpData, setNewEmpData] = useState({
-        name: '', department: 'VĂN PHÒNG', customDepartment: '', basic_salary: '', phone_allowance: '', parking_allowance: '', makeup_allowance: '', gondola_allowance: '', laptop_allowance: '', insurance_salary: ''
+        name: '', department: 'VĂN PHÒNG', customDepartment: '', basic_salary: '', phone_allowance: '', parking_allowance: '', makeup_allowance: '', gondola_allowance: '', laptop_allowance: '', insurance_salary: '', leave_balance: ''
     });
     const [historyRecords, setHistoryRecords] = useState({});
+    const [historyTransactions, setHistoryTransactions] = useState({});
+    const [salaryTxModal, setSalaryTxModal] = useState({ isOpen: false, monthId: null, data: null, selectedProject: '' });
     const [viewingHistoryId, setViewingHistoryId] = useState(null);
-    const [showMonthPicker, setShowMonthPicker] = useState(false);
+    const [createPeriodModal, setCreatePeriodModal] = useState({ isOpen: false, periodName: '' });
     
     const today = new Date();
-    const [pickerYear, setPickerYear] = useState(today.getFullYear());
     const [selectedMonth, setSelectedMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
     const [globalStandardDays, setGlobalStandardDays] = useState(26);
     const [daysInMonthCount, setDaysInMonthCount] = useState(30);
@@ -133,6 +152,64 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         return isAuto ? !isManual : isManual;
     };
 
+    const getUsedLeaves = (emp, month) => {
+        let used = 0;
+        const monthAtt = emp.attendance?.[month] || {};
+        Object.values(monthAtt).forEach(val => {
+            if (val === 'P') used += 1;
+            else if (val === 'P/2') used += 0.5;
+        });
+        return used;
+    };
+
+    const getRemainingLeaves = (emp, month) => {
+        if (emp.leave_balance === 'N/A') return 'Không tính';
+        return (Number(emp.leave_balance) || 0) - getUsedLeaves(emp, month);
+    };
+
+    const getDraftPeriods = () => {
+        const drafts = new Set();
+        employees.forEach(emp => {
+            if (emp.attendance) {
+                Object.keys(emp.attendance).forEach(month => {
+                    if (!historyRecords[month]) {
+                        drafts.add(month);
+                    }
+                });
+            }
+        });
+        const arr = Array.from(drafts).sort().reverse();
+        if (arr.length === 0 && selectedMonth && !historyRecords[selectedMonth]) {
+            arr.push(selectedMonth);
+        }
+        return arr;
+    };
+
+    const handleCreateNewPeriod = () => {
+        const p = createPeriodModal.periodName.trim();
+        if (!p) return;
+        if (!/^\d{4}-\d{2}$/.test(p)) {
+            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng nhập định dạng YYYY-MM (ví dụ: 2026-07)' });
+            return;
+        }
+        if (historyRecords[p]) {
+            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương ${p} đã được chốt và nằm trong lịch sử. Bạn không thể tạo lại!` });
+            return;
+        }
+        
+        // Cập nhật selectedMonth, dữ liệu sẽ tự động trống đối với kỳ này nhờ cấu trúc của attendance
+        setSelectedMonth(p);
+        setCreatePeriodModal({ isOpen: false, periodName: '' });
+    };
+
+    useEffect(() => {
+        if (!initialLoaded) return;
+        const drafts = getDraftPeriods();
+        if (drafts.length > 0 && !drafts.includes(selectedMonth)) {
+            setSelectedMonth(drafts[0]);
+        }
+    }, [historyRecords, employees, initialLoaded]);
+
     useEffect(() => {
         const fetchBaseData = async () => {
             try {
@@ -143,7 +220,8 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                     setEmployees(data.map(e => ({
                         ...e,
                         isDepartment: e.is_department,
-                        isCustomDept: e.is_custom_dept
+                        isCustomDept: e.is_custom_dept,
+                        leave_balance: e.leave_balance === -1 ? 'N/A' : (Number(e.leave_balance) || 0)
                     })));
                 } else {
                     throw new Error("Empty DB");
@@ -224,7 +302,9 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                         bank_account: e.bank_account || '',
                         bank_account_name: e.bank_account_name || '',
                         bank_name: e.bank_name || '',
+                        leave_balance: e.leave_balance === 'N/A' ? -1 : (Number(e.leave_balance) || 0),
                         attendance: e.attendance || {},
+                        overtime_hours: Number(e.overtime_hours) || 0,
                         order_index: index
                     }));
                     await supabase.from('employees').upsert(upsertData, { onConflict: 'id' });
@@ -241,13 +321,34 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         if (viewingHistoryId && selectedMonth !== viewingHistoryId) {
             setViewingHistoryId(null);
         }
-        const [year, month] = selectedMonth.split('-');
-        const y = parseInt(year);
-        const m = parseInt(month);
+        let y, m;
+        try {
+            if (viewingHistoryId && historyRecords[viewingHistoryId] && historyRecords[viewingHistoryId].base_month) {
+                const [year, month] = historyRecords[viewingHistoryId].base_month.split('-');
+                y = parseInt(year);
+                m = parseInt(month);
+            } else if (selectedMonth.includes('-')) {
+                const [year, month] = selectedMonth.split('-');
+                y = parseInt(year);
+                m = parseInt(month);
+            }
+        } catch (e) { console.error(e); }
+        
+        if (!y || isNaN(y) || !m || isNaN(m)) {
+            const match = selectedMonth.match(/(\d{2})\/(\d{4})/);
+            if (match) {
+                m = parseInt(match[1]);
+                y = parseInt(match[2]);
+            } else {
+                const today = new Date();
+                y = today.getFullYear();
+                m = today.getMonth() + 1;
+            }
+        }
         setYearMonth({ y, m });
         
         const daysInMonth = new Date(y, m, 0).getDate();
-        setDaysInMonthCount(daysInMonth);
+        setDaysInMonthCount(daysInMonth || 30);
         
         let sundays = 0;
         for (let i = 1; i <= daysInMonth; i++) {
@@ -293,6 +394,7 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             gondola_allowance: Number(newEmpData.gondola_allowance) || 0,
             laptop_allowance: Number(newEmpData.laptop_allowance) || 0,
             insurance_salary: Number(newEmpData.insurance_salary) || 0,
+            leave_balance: Number(newEmpData.leave_balance) || 0,
             advance: 0, other_deductions: 0, other_additions: 0, cash: 0, notes: '', bank_account: '', bank_account_name: '', bank_name: '',
             attendance: { [selectedMonth]: getDefaultAttendance(y, m) },
             isDepartment: false
@@ -333,13 +435,14 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             title: 'Xác nhận xóa nhân viên',
             message: 'Vui lòng nhập mật khẩu quản trị để xóa nhân viên này.',
             onConfirm: async (pwd) => {
-                if (pwd === 'admin') {
+                if (pwd === currentUser?.password) {
                     setEmployees(employees.filter(e => e.id !== id));
                     if (isDbStorage) {
                         try {
                             await supabase.from('employees').delete().eq('id', id);
                         } catch(e) {}
                     }
+                    setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa nhân viên thành công!' }), 300);
                     return true;
                 } else {
                     return 'Sai mật khẩu!';
@@ -351,10 +454,12 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
     const handleSaveMonth = () => {
         setSystemModal({
             isOpen: true,
-            type: 'confirm',
+            type: 'warning',
             title: 'Chốt bảng lương',
-            message: `Bạn có chắc chắn muốn chốt và lưu dữ liệu bảng lương tháng ${selectedMonth} không? Hành động này sẽ tạo một bản lưu không thể thay đổi.`,
+            message: `Bạn có chắc muốn chốt bảng lương tháng ${selectedMonth} không? Toàn bộ dữ liệu của kỳ này sẽ được lưu vào lịch sử.`,
             onConfirm: async () => {
+                const finalPeriodName = selectedMonth;
+                
                 const [yStr, mStr] = selectedMonth.split('-');
                 const y = parseInt(yStr), m = parseInt(mStr);
                 const daysInMonth = new Date(y, m, 0).getDate();
@@ -362,41 +467,243 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                 for(let i=1; i<=daysInMonth; i++) {
                     if (getIsHoliday(i, selectedMonth, null)) evaluatedHolidays.push(i);
                 }
+                const newEmployeesState = employees.map(emp => {
+                    if (emp.isDepartment) return emp;
+                    let usedLeaves = 0;
+                    const monthAtt = emp.attendance?.[selectedMonth] || {};
+                    Object.values(monthAtt).forEach(val => {
+                        if (val === 'P') usedLeaves += 1;
+                        else if (val === 'P/2') usedLeaves += 0.5;
+                    });
+                    const currentBalance = emp.leave_balance === 'N/A' ? 'N/A' : (Number(emp.leave_balance) || 0);
+                    const newBalance = currentBalance === 'N/A' ? 'N/A' : (currentBalance - usedLeaves + 1); // Cộng 1 ngày phép cho tháng sau
+                    return { ...emp, leave_balance: newBalance };
+                });
+
                 const monthData = {
+                    base_month: selectedMonth,
                     timestamp: new Date().toISOString(),
                     globalStandardDays,
                     holidays: evaluatedHolidays,
-                    employees: employees.map(calculateRow)
+                    employees: newEmployeesState.map(calculateRow)
                 };
                 const newHistory = {
                     ...historyRecords,
-                    [selectedMonth]: monthData
+                    [finalPeriodName]: monthData
                 };
+                setEmployees(newEmployeesState);
                 setHistoryRecords(newHistory);
                 localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
                 
                 try {
                     await supabase.from('salary_history').upsert([{
-                        month_id: selectedMonth,
+                        month_id: finalPeriodName,
                         timestamp: monthData.timestamp,
                         global_standard_days: monthData.globalStandardDays,
-                        employees_data: [...monthData.employees, { id: 'metadata_holidays', holidays: monthData.holidays }]
+                        employees_data: [...monthData.employees, { id: 'metadata_holidays', holidays: monthData.holidays, base_month: selectedMonth }]
                     }], { onConflict: 'month_id' });
                 } catch(e) { console.error('History save error', e); }
 
-                setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã lưu dữ liệu tháng này vào Lịch sử!' }), 300);
+                setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã lưu dữ liệu vào Lịch sử với tên: ${finalPeriodName}!` }), 300);
                 return true;
             }
         });
     };
+    const handleCreateSalaryTransaction = async () => {
+        const { monthId, data, selectedProject } = salaryTxModal;
+        if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình mặc định'});
 
+        const transactions = [];
+
+        data.employees.forEach(emp => {
+            if (emp.isDepartment) return;
+            const salary = Number(emp.calculated?.total_actual_salary_8) || 0;
+            if (salary <= 0) return;
+
+            const allocs = emp.allocations?.[monthId];
+            if (allocs && allocs.length > 0) {
+                let sumRatio = 0;
+                allocs.forEach(a => {
+                    const amount = Math.round(salary * a.ratio / 100);
+                    if (amount > 0) {
+                        transactions.push({
+                            project_name: a.projectName,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: '6421',
+                            debit: amount,
+                            note: `[CHI LƯƠNG] ${emp.name} - ${monthId}`,
+                            created_by: currentUser.username
+                        });
+                    }
+                    sumRatio += a.ratio;
+                });
+                if (sumRatio < 100) {
+                    const unalloc = Math.round(salary * (100 - sumRatio) / 100);
+                    if (unalloc > 0) {
+                        transactions.push({
+                            project_name: selectedProject,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: '6421',
+                            debit: unalloc,
+                            note: `[CHI LƯƠNG] ${emp.name} - ${monthId}`,
+                            created_by: currentUser.username
+                        });
+                    }
+                }
+            } else {
+                transactions.push({
+                    project_name: selectedProject,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    code: '6421',
+                    debit: salary,
+                    note: `[CHI LƯƠNG] ${emp.name} - ${monthId}`,
+                    created_by: currentUser.username
+                });
+            }
+        });
+
+        if (transactions.length === 0) {
+            setSalaryTxModal({ isOpen: false, monthId: null, data: null, selectedProject: '' });
+            return setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: 'Không có tiền lương để chi!' });
+        }
+
+        try {
+            await supabase.from('transactions').insert(transactions);
+            setSalaryTxModal({ isOpen: false, monthId: null, data: null, selectedProject: '' });
+            setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã tạo ${transactions.length} phiếu chi lương thành công!` }), 300);
+        } catch (e) {
+            setSalaryTxModal({ isOpen: false, monthId: null, data: null, selectedProject: '' });
+            setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: 'Lỗi khi tạo phiếu chi!' }), 300);
+        }
+    };
+
+    const handleCreatePaymentTransaction = async () => {
+        const { empName, department, amount, code, corresponding_account, recipient, note, allocations, globalStandardDays, monthId } = paymentModal;
+        
+        const isTechnical = department === 'KỸ THUẬT' || department === 'KỸ THUẬT GONDOLA';
+        const stdDays = globalStandardDays || 26;
+        
+        let txsToInsert = [];
+        const baseNote = note || `[CHI LƯƠNG] ${empName} - Kỳ ${monthId}`;
+        const finalRecipient = recipient || empName;
+
+        if (isTechnical) {
+            // Lọc ra các dòng hợp lệ
+            const validAllocs = allocations.filter(a => a.project_name && a.from_date && a.to_date);
+            if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ ít nhất 1 dòng phân bổ (Công trình, Từ ngày, Đến ngày)!'});
+            
+            for (const a of validAllocs) {
+                const from = new Date(a.from_date);
+                const to = new Date(a.to_date);
+                if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
+                
+                // Tính số ngày
+                const diffTime = Math.abs(to - from);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Bao gồm cả 2 ngày
+                
+                // Số tiền = (Tổng tiền / Công chuẩn) * Số ngày
+                const allocAmount = Math.round((amount / stdDays) * diffDays);
+                
+                if (allocAmount > 0) {
+                    txsToInsert.push({
+                        project_name: a.project_name,
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        code: code,
+                        corresponding_account: corresponding_account,
+                        recipient: finalRecipient,
+                        debit: allocAmount,
+                        note: `${baseNote} (${diffDays} ngày)`,
+                        created_by: currentUser.username
+                    });
+                }
+            }
+        } else {
+            // Nhân viên bình thường
+            const selectedProject = allocations[0]?.project_name;
+            if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình!'});
+            
+            txsToInsert.push({
+                project_name: selectedProject,
+                accounting_date: new Date().toISOString().split('T')[0],
+                code: code,
+                corresponding_account: corresponding_account,
+                recipient: finalRecipient,
+                debit: amount,
+                note: baseNote,
+                created_by: currentUser.username
+            });
+        }
+
+        if (txsToInsert.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Không có dữ liệu hợp lệ để tạo phiếu!'});
+        
+        try {
+            await supabase.from('transactions').insert(txsToInsert);
+            setAccountedTxs(prev => [...prev, ...txsToInsert.map(t => t.note)]);
+            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 });
+            if (refreshData) refreshData();
+            
+            // Cập nhật local data
+            if (monthId) {
+                let updatedMonthData = null;
+                setHistoryRecords(prev => {
+                    const monthData = prev[monthId];
+                    if (!monthData) return prev;
+                    const newEmps = monthData.employees.map(emp => {
+                        if (emp.id === paymentModal.empId) {
+                            // Cập nhật số tiền cash (đã chi)
+                            const totalAdded = txsToInsert.reduce((sum, t) => sum + t.debit, 0);
+                            return { ...emp, cash: (Number(emp.cash) || 0) + totalAdded };
+                        }
+                        return emp;
+                    });
+                    updatedMonthData = { ...monthData, employees: newEmps };
+                    const newHistory = { ...prev, [monthId]: updatedMonthData };
+                    localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
+                    return newHistory;
+                });
+                
+                if (updatedMonthData) {
+                    await supabase.from('employees_data').update({ employees: updatedMonthData.employees }).eq('month', monthId);
+                }
+                
+                fetchHistoryTransactions(monthId);
+            }
+            
+            setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã tạo ${txsToInsert.length} phiếu chi thành công!` }), 300);
+        } catch (e) {
+            console.error(e);
+            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 });
+            setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: 'Lỗi khi tạo phiếu chi!' }), 300);
+        }
+    };
+
+    const handleRevertHistory = (monthId) => {
+        setSystemModal({
+            isOpen: true,
+            type: 'warning',
+            title: 'Hoàn tác kỳ lương',
+            message: `Bạn có chắc muốn HOÀN TÁC kỳ lương ${monthId} về trạng thái Nháp không? Dữ liệu lịch sử sẽ bị xóa nhưng bảng tính vẫn giữ nguyên.`,
+            onConfirm: async () => {
+                const newHistory = { ...historyRecords };
+                delete newHistory[monthId];
+                setHistoryRecords(newHistory);
+                localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
+                
+                try {
+                    await supabase.from('salary_history').delete().eq('month_id', monthId);
+                } catch(e) { console.error('Delete history error', e); }
+
+                setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã hoàn tác thành công!' });
+            }
+        });
+    };
 
     const handleDeleteHistory = (monthId) => {
         setSystemModal({
             isOpen: true,
             type: 'password',
             title: 'Xóa vĩnh viễn Lịch sử',
-            message: `Vui lòng nhập mật khẩu quản trị để xóa vĩnh viễn bảng lương tháng ${monthId}:`,
+            message: `Vui lòng nhập mật khẩu quản trị để xóa vĩnh viễn bảng lương tháng ${monthId} (Bao gồm cả dữ liệu nháp, không thể khôi phục):`,
             onConfirm: async (pwd) => {
                 if (pwd === 'admin') {
                     const newHistory = { ...historyRecords };
@@ -404,6 +711,14 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                     setHistoryRecords(newHistory);
                     localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
                     
+                    const newEmployees = employees.map(emp => {
+                        const updatedEmp = { ...emp };
+                        if (updatedEmp.attendance) delete updatedEmp.attendance[monthId];
+                        if (updatedEmp.allocations) delete updatedEmp.allocations[monthId];
+                        return updatedEmp;
+                    });
+                    setEmployees(newEmployees);
+
                     try {
                         await supabase.from('salary_history').delete().eq('month_id', monthId);
                     } catch(e) { console.error('Delete history error', e); }
@@ -416,13 +731,47 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             }
         });
     };
+
+    const handleDeleteDraftPeriod = (monthId) => {
+        setSystemModal({
+            isOpen: true,
+            type: 'warning',
+            title: 'Xóa kỳ lương nháp',
+            message: `Bạn có chắc muốn XÓA VĨNH VIỄN kỳ lương nháp ${monthId} không?`,
+            onConfirm: () => {
+                const newEmployees = employees.map(emp => {
+                    const updatedEmp = { ...emp };
+                    if (updatedEmp.attendance) delete updatedEmp.attendance[monthId];
+                    if (updatedEmp.allocations) delete updatedEmp.allocations[monthId];
+                    return updatedEmp;
+                });
+                setEmployees(newEmployees);
+                if (selectedMonth === monthId) setSelectedMonth('');
+                
+                // Show success notification
+                setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa kỳ lương nháp thành công!' });
+            }
+        });
+    };
     
+    const fetchHistoryTransactions = async (monthId) => {
+        if (historyTransactions[monthId]) return;
+        try {
+            const { data, error } = await supabase.from('transactions')
+                .select('*')
+                .ilike('note', `%[CHI LƯƠNG]%${monthId}%`)
+                .order('created_at', { ascending: false });
+            if (!error && data) {
+                setHistoryTransactions(prev => ({ ...prev, [monthId]: data }));
+            }
+        } catch (e) {}
+    };
+
     const handleViewHistory = (monthId) => {
-        const record = historyRecords[monthId];
-        if (!record) return;
-        setSelectedMonth(monthId);
-        setActiveTab('salary');
         setViewingHistoryId(monthId);
+        setSelectedMonth(monthId);
+        fetchHistoryTransactions(monthId);
+        setActiveTab('salary');
     };
 
     const handleChange = (id, field, value) => {
@@ -454,47 +803,78 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
     };
 
     const handleToggleAttendance = (empId, day) => {
-        setEmployees(prev => prev.map(emp => {
-            if (emp.id === empId) {
-                const [yStr, mStr] = selectedMonth.split('-');
-                const y = parseInt(yStr), m = parseInt(mStr);
-                const isSunday = new Date(y, m - 1, day).getDay() === 0;
-                const isHoliday = getIsHoliday(day);
-                
-                const defaultAtt = isHoliday || isSunday ? 0 : 1;
-                let currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
-                // Migrate old data: if it's a holiday but saved as 1, treat as 0
-                if (isHoliday && currentAtt === 1) currentAtt = 0;
-                
-                let nextAtt = 1;
-                
-                if (isHoliday) {
-                    if (currentAtt === 1) nextAtt = 1.5;
-                    else if (currentAtt === 1.5) nextAtt = 2;
-                    else if (currentAtt === 2) nextAtt = 0.5;
-                    else if (currentAtt === 0.5) nextAtt = 'P';
-                    else if (currentAtt === 'P') nextAtt = 0;
-                    else nextAtt = 1;
-                } else {
-                    if (currentAtt === 1) nextAtt = 0.5;
-                    else if (currentAtt === 0.5) nextAtt = 'P';
-                    else if (currentAtt === 'P') nextAtt = 0;
-                    else nextAtt = 1;
-                }
-                
-                return {
-                    ...emp,
-                    attendance: {
-                        ...emp.attendance,
-                        [selectedMonth]: {
-                            ...emp.attendance?.[selectedMonth],
-                            [day]: nextAtt
+        setEmployees(prev => {
+            const newEmployees = prev.map(emp => {
+                if (emp.id === empId) {
+                    const [yStr, mStr] = selectedMonth.split('-');
+                    const y = parseInt(yStr), m = parseInt(mStr);
+                    const isSunday = new Date(y, m - 1, day).getDay() === 0;
+                    const isHoliday = getIsHoliday(day);
+                    
+                    const defaultAtt = isHoliday || isSunday ? 0 : 1;
+                    let currentAtt = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
+                    if (isHoliday && currentAtt === 1) currentAtt = 0;
+                    
+                    let nextAtt = 1;
+                    
+                    if (isHoliday || isSunday) {
+                        if (currentAtt === 1) nextAtt = 1.5;
+                        else if (currentAtt === 1.5) nextAtt = 2;
+                        else if (currentAtt === 2) nextAtt = 0.5;
+                        else if (currentAtt === 0.5) nextAtt = 'P';
+                        else if (currentAtt === 'P') nextAtt = 'P/2';
+                        else if (currentAtt === 'P/2') nextAtt = 0;
+                        else nextAtt = 1;
+                    } else {
+                        if (currentAtt === 1) nextAtt = 0.5;
+                        else if (currentAtt === 0.5) nextAtt = 'P';
+                        else if (currentAtt === 'P') nextAtt = 'P/2';
+                        else if (currentAtt === 'P/2') nextAtt = 0;
+                        else nextAtt = 1;
+                    }
+
+                    if (nextAtt === 'P' || nextAtt === 'P/2') {
+                        let usedLeaves = 0;
+                        const monthAtt = emp.attendance?.[selectedMonth] || {};
+                        Object.entries(monthAtt).forEach(([d, val]) => {
+                            if (d !== day.toString()) {
+                                if (val === 'P') usedLeaves += 1;
+                                else if (val === 'P/2') usedLeaves += 0.5;
+                            }
+                        });
+                        
+                        const leaveBalance = Number(emp.leave_balance) || 0;
+                        
+                        if (nextAtt === 'P') {
+                            if (usedLeaves + 1 > leaveBalance) {
+                                if (usedLeaves + 0.5 > leaveBalance) {
+                                    nextAtt = 0;
+                                } else {
+                                    nextAtt = 'P/2';
+                                }
+                            }
+                        } else if (nextAtt === 'P/2') {
+                            if (usedLeaves + 0.5 > leaveBalance) {
+                                nextAtt = 0;
+                            }
                         }
                     }
-                };
-            }
-            return emp;
-        }));
+                    
+                    return {
+                        ...emp,
+                        attendance: {
+                            ...emp.attendance,
+                            [selectedMonth]: {
+                                ...emp.attendance?.[selectedMonth],
+                                [day]: nextAtt
+                            }
+                        }
+                    };
+                }
+                return emp;
+            });
+            return newEmployees;
+        });
     };
 
     const calculateRow = (emp) => {
@@ -520,8 +900,12 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             let attVal = emp.attendance?.[selectedMonth]?.[i] ?? defaultAtt;
             if (isHoliday && attVal === 1) attVal = 0;
             
-            actual += (attVal === 'P' ? 1 : (Number(attVal) || 0));
+            actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 0.5 : (Number(attVal) || 0));
         }
+        const overtimeHours = Number(emp.overtime_hours) || 0;
+        const overtimeDays = overtimeHours / 8;
+        actual += overtimeDays;
+
         const std = globalStandardDays || 1;
         
         const total_actual_salary_8_raw = (total_income_5 / std) * actual;
@@ -574,8 +958,8 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         acc.makeup_allowance += Number(emp.makeup_allowance) || 0;
         acc.gondola_allowance += Number(emp.gondola_allowance) || 0;
         acc.laptop_allowance += Number(emp.laptop_allowance) || 0;
-        acc.total_income_5 += emp.calculated.total_income_5;
-        acc.total_actual_salary_8 += emp.calculated.total_actual_salary_8;
+        acc.total_income_5 += emp.calculated.total_income_5 || 0;
+        acc.total_actual_salary_8 += emp.calculated.total_actual_salary_8 || 0;
         acc.insurance_salary += Number(emp.insurance_salary) || 0;
         
         acc.dn_bhxh += emp.calculated.dn_bhxh;
@@ -634,6 +1018,8 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                             <th rowspan="2">TỔNG THU NHẬP<br/>(5)=(1)+(2)+(3)+(4)</th>
                             <th rowspan="2">NGÀY CÔNG THỰC TẾ<br/>(6)</th>
                             <th rowspan="2">CÔNG CHUẨN<br/>(7)</th>
+                            <th rowspan="2">TĂNG CA<br/>(GIỜ)</th>
+                            <th rowspan="2">LƯƠNG TĂNG CA</th>
                             <th rowspan="2">TỔNG LƯƠNG THỰC TẾ<br/>(8)</th>
                             <th rowspan="2">LƯƠNG ĐÓNG BHXH</th>
                             <th colspan="5">CÁC KHOẢN PHÍ TÍNH VÀO CHI PHÍ DN</th>
@@ -671,7 +1057,7 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
         let stt = 0;
         calculatedEmployees.forEach(emp => {
             if (emp.isDepartment) {
-                html += `<tr><td colspan="32" class="department">${emp.isCustomDept ? emp.department : emp.department}</td></tr>`;
+                html += `<tr><td colspan="34" class="department">${emp.isCustomDept ? emp.department : emp.department}</td></tr>`;
             } else {
                 stt++;
                 html += `
@@ -725,6 +1111,8 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                 <td class="text-right">${fmt(totals.total_income_5)}</td>
                 <td></td>
                 <td></td>
+                <td></td>
+                <td class="text-right">${fmt(totals.overtime_pay)}</td>
                 <td class="text-right">${fmt(totals.total_actual_salary_8)}</td>
                 <td class="text-right">${fmt(totals.insurance_salary)}</td>
                 <td class="text-right">${fmt(totals.dn_bhxh)}</td>
@@ -758,6 +1146,359 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
 
     let stt = 0;
 
+    const renderTableContent = (forceTab) => {
+        const tabToRender = typeof forceTab === 'string' ? forceTab : activeTab;
+        return (
+<div className={`overflow-x-auto custom-scrollbar pb-4`} style={{ maxHeight: 'calc(100vh - 200px)' }}>
+        {tabToRender === 'salary' ? (
+    <table id="salary-table" className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
+        <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
+            <tr>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-10">STT</th>
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[150px] sticky left-0 z-40 bg-slate-100">HỌ VÀ TÊN</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">LƯƠNG CHÍNH<br/><span className="text-[10px] text-slate-500">(1)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-20">ĐIỆN THOẠI<br/><span className="text-[10px] text-slate-500">(2)</span></th>
+                <th colSpan="4" className="border border-slate-300 p-1 text-center font-bold text-slate-700">PHỤ CẤP</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">TỔNG THU NHẬP<br/><span className="text-[10px] text-slate-500">(5)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-amber-50 w-16">NC<br/>THỰC TẾ<br/><span className="text-[10px] text-slate-500">(6)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-amber-50 w-16">CÔNG<br/>CHUẨN<br/><span className="text-[10px] text-slate-500">(7)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">TỔNG LƯƠNG<br/>THỰC TẾ<br/><span className="text-[10px] text-slate-500">(8)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-blue-50 w-24">LƯƠNG ĐÓNG<br/>BHXH</th>
+                <th colSpan="5" className="border border-slate-300 p-1 text-center font-bold text-slate-700">CÁC KHOẢN PHÍ TÍNH VÀO CHI PHÍ DN</th>
+                <th colSpan="4" className="border border-slate-300 p-1 text-center font-bold text-slate-700">CÁC KHOẢN TRÍCH TRỪ VÀO LƯƠNG NLĐ</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TẠM ỨNG<br/><span className="text-[10px] text-slate-500">(10)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TRỪ KHÁC<br/><span className="text-[10px] text-slate-500">(11)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">CỘNG KHÁC<br/><span className="text-[10px] text-slate-500">(12)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">THỰC LÃNH<br/><span className="text-[10px] text-slate-500">(8)-(9)-(10)-(11)+(12)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CHI TIỀN MẶT</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CÒN LẠI</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 min-w-[150px]">GHI CHÚ</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-28">STK</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-32">TÊN CHỦ TK</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">NGÂN HÀNG</th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 print:hidden w-24">THAO TÁC</th>
+            </tr>
+            <tr>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GIỮ XE (3)</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">SON PHẤN (4)</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GONDOLA</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">LAPTOP</th>
+                
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHXH 17%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHYT 3%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">TNLĐ, BNN 0.5%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHTN 1%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-20">CỘNG</th>
+                
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHXH 8%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHYT 1.5%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHTN 1%</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-20">TRỪ VÀO LƯƠNG NLĐ (9)</th>
+            </tr>
+        </thead>
+        <tbody>
+            {calculatedEmployees.map((emp) => {
+                if (emp.isDepartment) {
+                    return (
+                        <tr key={emp.id} className="bg-slate-200/80 font-bold hover:bg-slate-300 transition-colors">
+                            <td className="border border-slate-300 p-1 text-center"></td>
+                            <td className="border border-slate-300 p-1 sticky left-[48px] md:left-[48px] z-20 bg-slate-200/80">
+                                {emp.isCustomDept ? (
+                                    <input 
+                                        type="text" 
+                                        value={emp.department} 
+                                        onChange={(e) => handleChange(emp.id, 'department', e.target.value)}
+                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 outline-none font-bold text-slate-800 uppercase focus:border-blue-500"
+                                        placeholder="Nhập tên phòng ban..."
+                                        autoFocus
+                                    />
+                                ) : (
+                                    <select 
+                                        value={DEPARTMENTS.includes(emp.department) ? emp.department : 'Khác...'} 
+                                        onChange={(e) => handleDepartmentChange(emp.id, e.target.value)}
+                                        className="w-full bg-transparent outline-none font-bold text-slate-800 uppercase cursor-pointer"
+                                    >
+                                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                                    </select>
+                                )}
+                            </td>
+                            <td colSpan={26} className="border border-slate-300"></td>
+                            <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
+                                {!viewingHistoryId && (
+                                    <div className="flex items-center justify-center gap-1">
+                                        <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition" title="Xóa phòng ban"><Trash2 size={14}/></button>
+                                    </div>
+                                )}
+                            </td>
+                        </tr>
+                    );
+                }
+
+                stt++;
+
+                return (
+                    <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors group">
+                        <td className="border border-slate-300 p-1 text-center text-slate-500">{stt}</td>
+                        <td className="border border-slate-300 p-0 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">
+                            <input type="text" value={emp.name} onChange={(e) => handleChange(emp.id, 'name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent" placeholder="Tên nhân viên..." />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.basic_salary} onChange={(val) => handleChange(emp.id, 'basic_salary', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.phone_allowance} onChange={(val) => handleChange(emp.id, 'phone_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.parking_allowance} onChange={(val) => handleChange(emp.id, 'parking_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.makeup_allowance} onChange={(val) => handleChange(emp.id, 'makeup_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.gondola_allowance} onChange={(val) => handleChange(emp.id, 'gondola_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.laptop_allowance} onChange={(val) => handleChange(emp.id, 'laptop_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right font-bold bg-slate-50 text-slate-700">{formatCurrency(emp.calculated.total_income_5).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-center font-bold text-amber-700 bg-amber-50/50 cursor-pointer hover:bg-amber-100 transition" onClick={() => setActiveTab('attendance')}>
+                            {emp.calculated.actual_days}
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-center font-bold text-amber-700 bg-amber-50/50">
+                            {viewingHistoryId && historyRecords[viewingHistoryId] ? historyRecords[viewingHistoryId].globalStandardDays : globalStandardDays}
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.total_actual_salary_8).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-0 bg-blue-50/50">
+                            <NumberInput value={emp.insurance_salary} onChange={(val) => handleChange(emp.id, 'insurance_salary', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right font-bold text-blue-700" />
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhxh).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhyt).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_tnld).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhtn).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] font-bold text-slate-700">{formatCurrency(emp.calculated.dn_total).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhxh).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhyt).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhtn).replace('₫', '')}</td>
+                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] font-bold bg-slate-50 text-slate-700">{formatCurrency(emp.calculated.nld_total_9).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-0 bg-emerald-50/50">
+                            <NumberInput value={emp.advance} onChange={(val) => handleChange(emp.id, 'advance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right text-emerald-700" />
+                        </td>
+                        <td className="border border-slate-300 p-0 bg-red-50/10">
+                            <NumberInput value={emp.other_deductions} onChange={(val) => handleChange(emp.id, 'other_deductions', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right font-bold text-red-600" />
+                        </td>
+                        <td className="border border-slate-300 p-0 bg-emerald-50/50">
+                            <NumberInput value={emp.other_additions} onChange={(val) => handleChange(emp.id, 'other_additions', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right text-emerald-700" />
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right font-black text-blue-700 text-sm">{formatCurrency(emp.calculated.actual_receive).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-0">
+                            <NumberInput value={emp.cash} onChange={(val) => handleChange(emp.id, 'cash', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
+                        </td>
+                        
+                        <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.remaining).replace('₫', '')}</td>
+                        
+                        <td className="border border-slate-300 p-0">
+                            <input type="text" value={emp.notes} onChange={(e) => handleChange(emp.id, 'notes', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <input type="text" value={emp.bank_account} onChange={(e) => handleChange(emp.id, 'bank_account', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <input type="text" value={emp.bank_account_name} onChange={(e) => handleChange(emp.id, 'bank_account_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
+                        </td>
+                        <td className="border border-slate-300 p-0">
+                            <input type="text" value={emp.bank_name} onChange={(e) => handleChange(emp.id, 'bank_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
+                        </td>
+                        <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
+                            <div className="flex items-center justify-center gap-1">
+                                {!viewingHistoryId ? (
+                                    <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition" title="Xóa nhân viên"><Trash2 size={14}/></button>
+                                ) : (
+                                    emp.calculated?.remaining > 0 ? (
+                                        accountedTxs.some(note => note && note.includes(`[CHI LƯƠNG] ${emp.name} - Kỳ ${viewingHistoryId}`)) ? (
+                                            <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded whitespace-nowrap border border-slate-200 cursor-not-allowed" title="Đã hạch toán">Đã hạch toán</span>
+                                        ) : (
+                                            <button 
+                                                onClick={() => setPaymentModal({ 
+                                                    isOpen: true, 
+                                                    empId: emp.id, 
+                                                    empName: emp.name, 
+                                                    department: emp.department, 
+                                                    amount: emp.calculated.remaining, 
+                                                    code: '6421', 
+                                                    corresponding_account: '1111', 
+                                                    recipient: emp.name, 
+                                                    note: `[CHI LƯƠNG] ${emp.name} - Kỳ ${viewingHistoryId}`, 
+                                                    allocations: [{id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: ''}], 
+                                                    monthId: viewingHistoryId,
+                                                    globalStandardDays: historyRecords[viewingHistoryId]?.globalStandardDays || 26 
+                                                })}
+                                                className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold px-2 py-1 rounded text-xs transition whitespace-nowrap"
+                                            >
+                                                Hạch toán
+                                            </button>
+                                        )
+                                    ) : (
+                                        <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded whitespace-nowrap border border-slate-200">Đã đủ</span>
+                                    )
+                                )}
+                            </div>
+                        </td>
+                    </tr>
+                );
+            })}
+        </tbody>
+        <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30 shadow-lg">
+            <tr>
+                <td colSpan={2} className="border border-slate-700 p-2 text-center sticky left-0 bg-slate-800 z-40 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">TỔNG CỘNG</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.basic_salary).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.phone_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.parking_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.makeup_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.gondola_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.laptop_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.total_income_5).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-center">-</td>
+                <td className="border border-slate-700 p-2 text-center">-</td>
+                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.total_actual_salary_8).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-blue-300">{formatCurrency(totals.insurance_salary).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhxh).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhyt).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_tnld).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhtn).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.dn_total).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhxh).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhyt).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhtn).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.nld_total_9).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.advance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_deductions).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_additions).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-blue-300 text-sm">{formatCurrency(totals.actual_receive).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.cash).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.remaining).replace('₫', '')}</td>
+                <td colSpan={5} className="border border-slate-700 p-2 text-center print:hidden"></td>
+            </tr>
+        </tfoot>
+    </table>
+        ) : (
+    <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
+        <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
+            <tr>
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-12 min-w-[48px] max-w-[48px] sticky left-0 z-40 bg-slate-100">STT</th>
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-[200px] min-w-[200px] max-w-[200px] sticky left-[48px] md:left-[48px] z-40 bg-slate-100">HỌ VÀ TÊN</th>
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-[80px] min-w-[80px] max-w-[80px] bg-slate-100">PHÉP CÓ</th>
+                {Array.from({ length: daysInMonthCount }).map((_, i) => {
+                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
+                    const dayOfWeek = date.getDay();
+                    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
+                    const isSunday = dayOfWeek === 0;
+                    
+                    return (
+                        <th key={`dow-${i}`} className={`border border-slate-300 p-1 text-center text-[10px] font-bold ${isSunday ? 'bg-red-100 text-red-600' : 'text-slate-500 bg-slate-50'}`}>
+                            {dayNames[dayOfWeek]}
+                        </th>
+                    );
+                })}
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-20 bg-amber-50">TĂNG CA<br/><span className="text-[10px] text-slate-500">(GIỜ)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-16 bg-blue-50">TỔNG CÔNG<br/><span className="text-[10px] text-slate-500">(ĐÃ CỘNG TĂNG CA)</span></th>
+            </tr>
+            <tr>
+                {Array.from({ length: daysInMonthCount }).map((_, i) => {
+                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
+                    const isSunday = date.getDay() === 0;
+                    const day = i + 1;
+                    const isHoliday = getIsHoliday(day);
+                    
+                    return (
+                        <th key={i} 
+                            onClick={() => handleToggleHoliday(day)}
+                            className={`border border-slate-300 p-1 text-center font-bold w-10 cursor-pointer transition ${isHoliday ? 'bg-blue-600 text-white shadow-inner' : isSunday ? 'bg-red-100 text-red-600' : 'text-slate-700 hover:bg-slate-200'}`}
+                            title="Click để đánh dấu/bỏ đánh dấu ngày lễ"
+                        >
+                            {day}
+                        </th>
+                    );
+                })}
+            </tr>
+        </thead>
+        <tbody>
+            {(() => {
+                let localStt = 0;
+                let currentDept = '';
+                return calculatedEmployees.map(emp => {
+                    if (emp.isDepartment) {
+                        currentDept = emp.department;
+                        return (
+                            <tr key={emp.id} className="bg-slate-200/80 font-bold">
+                                <td className="border border-slate-300 p-2 text-center sticky left-0 z-20 bg-slate-200/80"></td>
+                                <td className="border border-slate-300 p-2 sticky left-[48px] md:left-[48px] z-20 bg-slate-200/80 uppercase">{emp.department}</td>
+                                <td colSpan={daysInMonthCount + 2} className="border border-slate-300"></td>
+                            </tr>
+                        );
+                    }
+                    
+                    localStt++;
+                    const actualDays = emp.calculated.actual_days;
+                    
+                    const thisRowDept = currentDept?.trim().toUpperCase();
+                    
+                    return (
+                        <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors">
+                            <td className="border border-slate-300 p-2 text-center font-medium text-slate-500 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">{localStt}</td>
+                            <td className="border border-slate-300 p-2 font-medium text-slate-700 sticky left-[48px] md:left-[48px] z-20 bg-white group-hover:bg-blue-50/50 truncate max-w-[200px]">{emp.name || '---'}</td>
+                            <td 
+                                className={`border border-slate-300 p-2 text-center font-bold text-blue-600 bg-white transition ${!viewingHistoryId ? 'cursor-pointer hover:bg-blue-200 group-hover:bg-blue-100' : 'group-hover:bg-blue-50/50'}`}
+                                onClick={() => !viewingHistoryId && setLeaveModal({ isOpen: true, empId: emp.id, name: emp.name, currentBalance: emp.leave_balance === 'N/A' ? 'N/A' : (Number(emp.leave_balance) || 0) })}
+                                title={!viewingHistoryId ? "Click để điều chỉnh phép" : ""}
+                            >
+                                {getRemainingLeaves(emp, selectedMonth)}
+                            </td>
+                            {Array.from({ length: daysInMonthCount }).map((_, i) => {
+                                const day = i + 1;
+                                const isSunday = new Date(yearMonth.y, yearMonth.m - 1, day).getDay() === 0;
+                                const isHoliday = getIsHoliday(day);
+                                const defaultAtt = isHoliday || isSunday ? 0 : 1;
+                                let attValue = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
+                                if (isHoliday && attValue === 1) attValue = 0;
+                                
+                                return (
+                                    <td key={day} className={`border border-slate-300 p-0 text-center ${isHoliday ? 'bg-blue-200/80 shadow-inner' : (isSunday && attValue === 1 ? 'bg-red-50/30' : '')}`}>
+                                        <button 
+                                            onClick={() => handleToggleAttendance(emp.id, day)}
+                                            className={`w-full h-full min-h-[36px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 1.5 ? 'bg-purple-500 text-white' : attValue === 2 ? 'bg-indigo-600 text-white' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : attValue === 'P/2' ? 'bg-sky-400 text-white' : 'bg-red-500 text-white'}`}
+                                        >
+                                            {attValue === 1 ? 'X' : attValue === 1.5 ? '1.5' : attValue === 2 ? '2' : attValue === 0.5 ? '/' : attValue === 'P' ? 'P' : attValue === 'P/2' ? 'P/2' : ''}
+                                        </button>
+                                    </td>
+                                );
+                            })}
+                            <td className="border border-slate-300 p-0 bg-amber-50/50">
+                                <NumberInput value={emp.overtime_hours} onChange={(val) => handleChange(emp.id, 'overtime_hours', val)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-amber-700" />
+                            </td>
+                            <td className="border border-slate-300 p-2 text-center font-bold text-blue-700 bg-blue-50/50">
+                                {actualDays}
+                            </td>
+                        </tr>
+                    );
+                });
+            })()}
+        </tbody>
+    </table>
+        )}
+    </div>
+        );
+    };
+
     return (
         <>
         {systemModal.isOpen && (
@@ -769,19 +1510,21 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                             <p className="text-sm text-slate-500 mt-1">{systemModal.message}</p>
                         </div>
                     </div>
-                    {systemModal.type === 'password' && (
+                    {(systemModal.type === 'password' || systemModal.type === 'prompt') && (
                         <div className="p-6">
                             <input
-                                type="password"
+                                type={systemModal.type === 'password' ? "password" : "text"}
                                 autoFocus
-                                placeholder="Nhập mật khẩu..."
+                                placeholder={systemModal.type === 'password' ? "Nhập mật khẩu..." : "Nhập giá trị..."}
                                 value={systemModal.password || ''}
                                 onChange={(e) => setSystemModal({...systemModal, password: e.target.value, error: ''})}
-                                onKeyDown={(e) => {
+                                onKeyDown={async (e) => {
                                     if (e.key === 'Enter') {
-                                        const res = systemModal.onConfirm?.(systemModal.password);
-                                        if (res === true) setSystemModal({...systemModal, isOpen: false, password: '', error: ''});
-                                        else if (typeof res === 'string') setSystemModal({...systemModal, error: res});
+                                        if (systemModal.onConfirm) {
+                                            const res = await systemModal.onConfirm(systemModal.password);
+                                            if (res === true) setSystemModal({...systemModal, isOpen: false, password: '', error: ''});
+                                            else if (typeof res === 'string') setSystemModal({...systemModal, error: res});
+                                        }
                                     }
                                 }}
                                 className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
@@ -796,14 +1539,126 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                             </button>
                         )}
                         <button 
-                            onClick={() => {
-                                const res = systemModal.onConfirm?.(systemModal.password);
+                            onClick={async () => {
+                                let res;
+                                if (systemModal.onConfirm) {
+                                    res = await systemModal.onConfirm(systemModal.password);
+                                }
                                 if (res === true || systemModal.type === 'info') setSystemModal({...systemModal, isOpen: false, password: '', error: ''});
                                 else if (typeof res === 'string') setSystemModal({...systemModal, error: res});
                             }} 
                             className={`px-4 py-2 text-sm font-bold text-white shadow-md rounded-xl transition ${systemModal.type === 'info' || systemModal.type === 'confirm' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-red-600 hover:bg-red-700 shadow-red-200'}`}
                         >
                             {systemModal.type === 'info' ? 'Đóng' : 'Xác nhận'}
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {leaveModal.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-slate-100">
+                        <h3 className="text-xl font-bold text-slate-800">Điều chỉnh số phép</h3>
+                        <p className="text-sm text-slate-500 mt-1">Nhân viên: <span className="font-bold text-slate-700">{leaveModal.name}</span></p>
+                    </div>
+                    <div className="p-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Số phép đầu kỳ (Chưa trừ phép đã dùng)</label>
+                        <input 
+                            type={leaveModal.currentBalance === 'N/A' ? "text" : "number"} 
+                            value={leaveModal.currentBalance === 'N/A' ? 'Không tính' : leaveModal.currentBalance}
+                            disabled={leaveModal.currentBalance === 'N/A'}
+                            onChange={(e) => setLeaveModal({...leaveModal, currentBalance: e.target.value})}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-lg font-bold disabled:opacity-50 disabled:bg-slate-200"
+                            autoFocus
+                            onFocus={(e) => e.target.select()}
+                        />
+                        <label className="flex items-center gap-2 mt-4 cursor-pointer w-fit p-2 hover:bg-slate-50 rounded-lg transition">
+                            <input 
+                                type="checkbox" 
+                                checked={leaveModal.currentBalance === 'N/A'}
+                                onChange={(e) => setLeaveModal({...leaveModal, currentBalance: e.target.checked ? 'N/A' : 0})}
+                                className="w-5 h-5 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="font-bold text-slate-700 select-none">Không tính phép</span>
+                        </label>
+                        {leaveModal.empId && leaveModal.currentBalance !== 'N/A' && (
+                            <div className="mt-4 p-3 bg-blue-50 rounded-lg text-sm text-blue-800 border border-blue-100">
+                                Phép đã dùng trong tháng: <b>{getUsedLeaves(employees.find(e => e.id === leaveModal.empId) || {}, selectedMonth)}</b> ngày<br/>
+                                Phép còn lại thực tế: <b>{(Number(leaveModal.currentBalance) || 0) - getUsedLeaves(employees.find(e => e.id === leaveModal.empId) || {}, selectedMonth)}</b> ngày
+                            </div>
+                        )}
+                    </div>
+                    <div className="p-4 bg-slate-50 flex justify-end gap-3">
+                        <button onClick={() => setLeaveModal({ isOpen: false, empId: null, name: '', currentBalance: 0 })} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                            Hủy bỏ
+                        </button>
+                        <button onClick={() => {
+                            handleChange(leaveModal.empId, 'leave_balance', leaveModal.currentBalance);
+                            setLeaveModal({ isOpen: false, empId: null, name: '', currentBalance: 0 });
+                        }} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition">
+                            Cập nhật
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {createPeriodModal.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-slate-100">
+                        <h3 className="text-xl font-bold text-slate-800">Tạo kỳ lương mới</h3>
+                    </div>
+                    <div className="p-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Nhập tháng (YYYY-MM)</label>
+                        <input 
+                            type="month" 
+                            value={createPeriodModal.periodName}
+                            onChange={(e) => setCreatePeriodModal({...createPeriodModal, periodName: e.target.value})}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition font-bold text-slate-800"
+                        />
+                        <p className="text-xs text-slate-500 mt-2">Dữ liệu nhân sự và mức lương sẽ được kế thừa tự động từ danh sách hiện tại.</p>
+                    </div>
+                    <div className="p-4 bg-slate-50 flex justify-end gap-3">
+                        <button onClick={() => setCreatePeriodModal({ isOpen: false, periodName: '' })} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                            Hủy bỏ
+                        </button>
+                        <button onClick={handleCreateNewPeriod} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition">
+                            Tạo mới
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {salaryTxModal.isOpen && (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="p-6 border-b border-slate-100">
+                        <h3 className="text-xl font-bold text-slate-800">Tạo Phiếu Chi Lương</h3>
+                        <p className="text-sm text-slate-500 mt-1">Kỳ: <span className="font-bold text-slate-700">{salaryTxModal.monthId}</span></p>
+                    </div>
+                    <div className="p-6">
+                        <label className="block text-sm font-bold text-slate-700 mb-2">Chọn công trình mặc định (phần chưa phân bổ) <span className="text-red-500">*</span></label>
+                        <select 
+                            value={salaryTxModal.selectedProject}
+                            onChange={(e) => setSalaryTxModal({...salaryTxModal, selectedProject: e.target.value})}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                        >
+                            <option value="">-- Chọn công trình --</option>
+                            {projects.map(p => (
+                                <option key={p.name} value={p.name}>{p.name}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div className="p-4 bg-slate-50 flex justify-end gap-3">
+                        <button onClick={() => setSalaryTxModal({ isOpen: false, monthId: null, data: null, selectedProject: '' })} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                            Hủy bỏ
+                        </button>
+                        <button onClick={handleCreateSalaryTransaction} className="px-4 py-2 text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-200 rounded-xl transition">
+                            Tạo phiếu chi
                         </button>
                     </div>
                 </div>
@@ -917,42 +1772,48 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
             </div>
         )}
         
-        {viewingHistoryId && (
-            <div className="bg-amber-100 border border-amber-300 p-4 mb-6 rounded-2xl flex items-start md:items-center justify-between flex-col md:flex-row gap-4 shadow-sm animate-in fade-in slide-in-from-top-4">
-                <div>
-                    <h3 className="text-amber-800 font-bold text-lg flex items-center gap-2"><Archive size={20}/> Đang Xem Dữ Liệu Lịch Sử</h3>
-                    <p className="text-amber-700 text-sm mt-1">Bảng lương và chấm công tháng <span className="font-bold">{viewingHistoryId}</span> đang hiển thị ở chế độ <strong>chỉ xem</strong>.</p>
-                </div>
-                <button onClick={() => { setViewingHistoryId(null); setSelectedMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}`); }} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-lg text-sm font-bold shadow-sm transition whitespace-nowrap">
-                    Thoát & Quay lại hiện tại
-                </button>
-            </div>
-        )}
-
-        <div className={`animate-in fade-in duration-500 bg-white p-4 rounded-2xl shadow-sm border ${viewingHistoryId ? 'border-amber-300 ring-2 ring-amber-100 opacity-95' : 'border-slate-200'}`}>
+        <div className="animate-in fade-in duration-500 bg-white p-4 rounded-2xl shadow-sm border border-slate-200">
             <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
                 <div>
                     <h2 className="text-2xl font-black text-slate-800 uppercase">
                         {activeTab === 'salary' ? 'Bảng Lương Nhân Viên' : activeTab === 'attendance' ? 'Bảng Chấm Công' : 'Lịch Sử Lưu Trữ'}
                     </h2>
-                    <p className="text-slate-500 text-sm mt-1">
-                        {activeTab !== 'history' && <>Tháng <span className="font-bold text-blue-600">{selectedMonth}</span></>}
-                        {activeTab === 'salary' && ` • Công chuẩn: ${viewingHistoryId && historyRecords[viewingHistoryId] ? historyRecords[viewingHistoryId].globalStandardDays : globalStandardDays} ngày`}
-                    </p>
+                    <div className="flex items-center gap-2 mt-1">
+                        <p className="text-slate-500 text-sm">
+                            {activeTab !== 'history' && <>Tháng <span className="font-bold text-blue-600">{selectedMonth}</span></>}
+                            {activeTab === 'salary' && ` • Công chuẩn:`}
+                        </p>
+                        {activeTab === 'salary' && (
+                            viewingHistoryId && historyRecords[viewingHistoryId] ? (
+                                <span className="text-sm font-bold text-slate-700">{historyRecords[viewingHistoryId].globalStandardDays} ngày</span>
+                            ) : (
+                                <div className="flex items-center gap-1">
+                                    <input 
+                                        type="number" 
+                                        value={globalStandardDays} 
+                                        onChange={(e) => setGlobalStandardDays(Number(e.target.value) || 0)} 
+                                        className="w-16 px-2 py-0.5 text-sm border border-slate-300 rounded font-bold text-center focus:outline-none focus:border-blue-500 text-amber-700 bg-amber-50"
+                                        min="1"
+                                        max="31"
+                                    />
+                                    <span className="text-sm text-slate-500">ngày</span>
+                                </div>
+                            )
+                        )}
+                    </div>
                 </div>
                 
                 <div className="flex items-center gap-2 bg-slate-100 p-1 rounded-xl">
                     <button 
-                        onClick={() => setActiveTab('salary')}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition ${activeTab === 'salary' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+                        onClick={() => {
+                            if (activeTab === 'history') {
+                                setActiveTab('salary');
+                                setViewingHistoryId(null);
+                            }
+                        }}
+                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition ${activeTab !== 'history' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
                     >
-                        <List size={16} /> Lương NV
-                    </button>
-                    <button 
-                        onClick={() => setActiveTab('attendance')}
-                        className={`flex items-center gap-2 px-4 py-2 text-sm font-bold rounded-lg transition ${activeTab === 'attendance' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-                    >
-                        <CheckSquare size={16} /> Ngày Công
+                        <List size={16} /> Bảng Lương
                     </button>
                     <button 
                         onClick={() => setActiveTab('history')}
@@ -963,54 +1824,21 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                 </div>
 
                 <div className="flex flex-wrap gap-2 items-center">
-                    <div className="bg-slate-50 p-1.5 rounded-xl border border-slate-200 flex items-center relative">
-                        <Calendar size={18} className="text-slate-500 mx-2" />
-                        <div 
-                            onClick={() => {
-                                setPickerYear(parseInt(selectedMonth.split('-')[0]));
-                                setShowMonthPicker(!showMonthPicker);
-                            }}
-                            className="bg-transparent border-none px-2 py-1 text-sm font-bold outline-none cursor-pointer hover:bg-slate-200 rounded transition select-none"
-                        >
-                            {selectedMonth}
+                    {activeTab !== 'history' && !viewingHistoryId ? (
+                        <div className="flex items-center gap-2 border border-slate-200 rounded-xl p-1 bg-white shadow-sm">
+                            <button 
+                                onClick={() => setCreatePeriodModal({ isOpen: true, periodName: '' })}
+                                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition flex items-center gap-1 shadow-sm"
+                                title="Tạo kỳ lương mới"
+                            >
+                                <Plus size={16} /> Tạo Kỳ
+                            </button>
                         </div>
-                        
-                        {showMonthPicker && (
-                            <>
-                            <div className="fixed inset-0 z-40" onClick={() => setShowMonthPicker(false)}></div>
-                            <div className="absolute top-full right-0 mt-2 bg-white border border-slate-200 shadow-xl rounded-xl z-50 p-4 w-64 animate-in fade-in zoom-in-95">
-                                <div className="flex justify-between items-center mb-4 border-b border-slate-100 pb-2">
-                                    <button onClick={() => setPickerYear(pickerYear - 1)} className="p-1 hover:bg-slate-100 rounded text-slate-500 font-bold">&lt;</button>
-                                    <div className="font-bold text-slate-800 text-lg">{pickerYear}</div>
-                                    <button onClick={() => setPickerYear(pickerYear + 1)} className="p-1 hover:bg-slate-100 rounded text-slate-500 font-bold">&gt;</button>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2">
-                                    {Array.from({length: 12}).map((_, i) => {
-                                        const m = String(i + 1).padStart(2, '0');
-                                        const monthId = `${pickerYear}-${m}`;
-                                        const isPassed = new Date(pickerYear, i) < new Date(today.getFullYear(), today.getMonth());
-                                        const isSelected = selectedMonth === monthId;
-                                        const hasHistory = !!historyRecords[monthId];
-                                        
-                                        return (
-                                            <button 
-                                                key={i} 
-                                                onClick={() => {
-                                                    setSelectedMonth(monthId);
-                                                    setShowMonthPicker(false);
-                                                }}
-                                                className={`p-2 rounded-lg text-sm font-bold transition flex items-center justify-center relative ${isSelected ? 'bg-blue-600 text-white shadow-md' : isPassed ? 'text-slate-400 bg-slate-50 hover:bg-slate-100' : 'text-slate-700 bg-slate-100 hover:bg-slate-200'} ${hasHistory && !isSelected ? 'ring-2 ring-amber-300 !bg-amber-50 !text-amber-700' : ''}`}
-                                            >
-                                                Th {i + 1}
-                                                {hasHistory && !isSelected && <div className="absolute top-0 right-0 w-2 h-2 bg-amber-500 rounded-full transform translate-x-1/3 -translate-y-1/3"></div>}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-                            </>
-                        )}
-                    </div>
+                    ) : viewingHistoryId ? (
+                        <div className="bg-amber-100 text-amber-800 px-4 py-2 rounded-xl font-bold border border-amber-200 flex items-center gap-2 shadow-sm">
+                            <Calendar size={18} /> Đang xem kỳ đã chốt: {selectedMonth}
+                        </div>
+                    ) : null}
                     {activeTab === 'salary' && (
                         <>
                             {!viewingHistoryId && (
@@ -1024,340 +1852,162 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                             <button onClick={exportExcel} className="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-lg shadow-emerald-200">
                                 <Download size={16} /> Excel
                             </button>
-                            {!viewingHistoryId && (
-                                <button onClick={handleSaveMonth} className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-lg shadow-amber-200">
-                                    <Save size={16} /> Chốt Tháng
-                                </button>
-                            )}
                         </>
                     )}
                 </div>
             </div>
 
-            {activeTab === 'history' ? (
+            {activeTab === 'history' && (
                 <div className="bg-slate-50 border border-slate-200 rounded-xl p-6 min-h-[400px]">
-                    <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Archive size={20} className="text-blue-600"/> Danh Sách Lịch Sử Đã Lưu</h3>
+                    <h3 className="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2"><Archive size={20} className="text-blue-600"/> Lịch Sử Lương Đã Chốt</h3>
                     {Object.keys(historyRecords).length === 0 ? (
                         <div className="text-center text-slate-500 py-10">Chưa có dữ liệu lịch sử nào được lưu.</div>
                     ) : (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {Object.entries(historyRecords).sort((a,b) => b[0].localeCompare(a[0])).map(([monthId, data]) => (
-                                <div key={monthId} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition">
-                                    <div>
-                                        <div className="font-bold text-slate-800 text-lg">Tháng {monthId}</div>
-                                        <div className="text-xs text-slate-500 mt-1">Lưu lúc: {new Date(data.timestamp).toLocaleString('vi-VN')}</div>
+                        <div className="space-y-6">
+                            {Object.entries(historyRecords).sort((a,b) => b[0].localeCompare(a[0])).map(([monthId, data]) => {
+                                if (!historyTransactions[monthId]) {
+                                    fetchHistoryTransactions(monthId);
+                                }
+                                const isExpanded = viewingHistoryId === monthId;
+                                return (
+                                <div key={monthId} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden">
+                                    <div 
+                                        className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition ${isExpanded ? 'bg-slate-50 border-b border-slate-200' : 'bg-slate-100'}`}
+                                        onClick={() => {
+                                            if (isExpanded) {
+                                                setViewingHistoryId(null);
+                                                const drafts = getDraftPeriods();
+                                                setSelectedMonth(drafts.length > 0 ? drafts[0] : '');
+                                            } else {
+                                                setViewingHistoryId(monthId);
+                                                setSelectedMonth(monthId);
+                                                fetchHistoryTransactions(monthId);
+                                            }
+                                        }}
+                                    >
+                                        <div>
+                                            <h4 className="font-bold text-lg text-slate-800 flex items-center gap-2">
+                                                <Calendar size={20} className="text-blue-600"/> {monthId}
+                                            </h4>
+                                            <p className="text-sm text-slate-500 mt-1">Lưu lúc: {new Date(data.timestamp).toLocaleString('vi-VN')}</p>
+                                        </div>
+                                        <div className="flex items-center gap-3">
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleRevertHistory(monthId); }}
+                                                className="bg-amber-50 hover:bg-amber-100 text-amber-700 font-bold px-3 py-1.5 rounded-lg text-sm transition flex items-center justify-center gap-1"
+                                                title="Đưa kỳ này về trạng thái nháp"
+                                            >
+                                                <RotateCcw size={14} /> Hoàn tác
+                                            </button>
+                                            <button 
+                                                onClick={(e) => { e.stopPropagation(); handleDeleteHistory(monthId); }}
+                                                className="bg-red-50 hover:bg-red-100 text-red-700 font-bold px-3 py-1.5 rounded-lg text-sm transition flex items-center justify-center gap-1"
+                                                title="Xóa vĩnh viễn"
+                                            >
+                                                <Trash2 size={14} /> Xóa
+                                            </button>
+                                            {isExpanded ? <ChevronDown size={24} className="text-slate-400 ml-2"/> : <ChevronRight size={24} className="text-slate-400 ml-2"/>}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <button onClick={() => handleViewHistory(monthId)} className="bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold px-4 py-2 rounded-lg text-sm transition">
-                                            Xem
-                                        </button>
-                                        <button onClick={() => handleDeleteHistory(monthId)} className="bg-red-50 hover:bg-red-100 text-red-600 font-bold p-2 rounded-lg transition" title="Xóa dữ liệu">
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
+
+                                    {isExpanded && (
+                                        <div className="bg-white p-0 relative" onClick={(e) => e.stopPropagation()}>
+                                            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                                <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-lg">
+                                                    <button onClick={() => setHistorySubTab('salary')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${historySubTab === 'salary' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
+                                                    <button onClick={() => setHistorySubTab('attendance')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${historySubTab === 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
+                                                </div>
+                                            </div>
+                                            <div className="overflow-x-auto custom-scrollbar relative bg-white">
+                                                {renderTableContent(historySubTab)}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {isExpanded && historyTransactions[monthId] && historyTransactions[monthId].length > 0 && (
+                                        <div className="bg-slate-50 p-4 border-t border-slate-200">
+                                            <h5 className="font-bold text-slate-700 text-sm mb-2">Các phiếu chi đã xuất:</h5>
+                                            <div className="flex flex-wrap gap-2">
+                                                {historyTransactions[monthId].map(tx => (
+                                                    <div key={tx.id} className="bg-white border border-slate-200 rounded p-2 text-xs flex flex-col gap-1 shadow-sm">
+                                                        <span className="font-bold text-slate-700">{tx.note}</span>
+                                                        <span className="text-red-600 font-bold">{new Intl.NumberFormat('vi-VN').format(tx.debit)} đ</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
-                            ))}
+                                );
+                            })}
                         </div>
                     )}
                 </div>
-            ) : (
-            <div className={`overflow-x-auto custom-scrollbar pb-4`} style={{ maxHeight: 'calc(100vh - 200px)' }}>
-                {activeTab === 'salary' ? (
-                    <table id="salary-table" className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
-                        <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
-                            <tr>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-10">STT</th>
-                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[150px] sticky left-0 z-40 bg-slate-100">HỌ VÀ TÊN</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">LƯƠNG CHÍNH<br/><span className="text-[10px] text-slate-500">(1)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-20">ĐIỆN THOẠI<br/><span className="text-[10px] text-slate-500">(2)</span></th>
-                                <th colSpan="4" className="border border-slate-300 p-1 text-center font-bold text-slate-700">PHỤ CẤP</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">TỔNG THU NHẬP<br/><span className="text-[10px] text-slate-500">(5)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-amber-50 w-16">NC<br/>THỰC TẾ<br/><span className="text-[10px] text-slate-500">(6)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-amber-50 w-16">CÔNG<br/>CHUẨN<br/><span className="text-[10px] text-slate-500">(7)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">TỔNG LƯƠNG<br/>THỰC TẾ<br/><span className="text-[10px] text-slate-500">(8)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-blue-50 w-24">LƯƠNG ĐÓNG<br/>BHXH</th>
-                                <th colSpan="5" className="border border-slate-300 p-1 text-center font-bold text-slate-700">CÁC KHOẢN PHÍ TÍNH VÀO CHI PHÍ DN</th>
-                                <th colSpan="4" className="border border-slate-300 p-1 text-center font-bold text-slate-700">CÁC KHOẢN TRÍCH TRỪ VÀO LƯƠNG NLĐ</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TẠM ỨNG<br/><span className="text-[10px] text-slate-500">(10)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TRỪ KHÁC<br/><span className="text-[10px] text-slate-500">(11)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">CỘNG KHÁC<br/><span className="text-[10px] text-slate-500">(12)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">THỰC LÃNH<br/><span className="text-[10px] text-slate-500">(8)-(9)-(10)-(11)+(12)</span></th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CHI TIỀN MẶT</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CÒN LẠI</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 min-w-[150px]">GHI CHÚ</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-28">STK</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-32">TÊN CHỦ TK</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">NGÂN HÀNG</th>
-                                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 print:hidden w-10">Fix</th>
-                            </tr>
-                            <tr>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GIỮ XE (3)</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">SON PHẤN (4)</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GONDOLA</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">LAPTOP</th>
-                                
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHXH 17%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHYT 3%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">TNLĐ, BNN 0.5%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHTN 1%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-20">CỘNG</th>
-                                
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHXH 8%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHYT 1.5%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHTN 1%</th>
-                                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-20">TRỪ VÀO LƯƠNG NLĐ (9)</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {calculatedEmployees.map((emp) => {
-                                if (emp.isDepartment) {
-                                    return (
-                                        <tr key={emp.id} className="bg-slate-200/80 font-bold hover:bg-slate-300 transition-colors">
-                                            <td className="border border-slate-300 p-1 text-center"></td>
-                                            <td className="border border-slate-300 p-1 sticky left-0 z-20 bg-slate-200/80">
-                                                {emp.isCustomDept ? (
-                                                    <input 
-                                                        type="text" 
-                                                        value={emp.department} 
-                                                        onChange={(e) => handleChange(emp.id, 'department', e.target.value)}
-                                                        className="w-full bg-white border border-slate-300 rounded px-2 py-1 outline-none font-bold text-slate-800 uppercase focus:border-blue-500"
-                                                        placeholder="Nhập tên phòng ban..."
-                                                        autoFocus
-                                                    />
-                                                ) : (
-                                                    <select 
-                                                        value={DEPARTMENTS.includes(emp.department) ? emp.department : 'Khác...'} 
-                                                        onChange={(e) => handleDepartmentChange(emp.id, e.target.value)}
-                                                        className="w-full bg-transparent outline-none font-bold text-slate-800 uppercase cursor-pointer"
+            )}
+
+            {activeTab !== 'history' && (
+                <div className="space-y-4">
+                    {getDraftPeriods().length === 0 ? (
+                        <div className="text-center text-slate-500 py-10 bg-slate-50 rounded-xl border border-slate-200">
+                            Chưa có kỳ lương nào. Hãy bấm "Tạo Kỳ" để bắt đầu.
+                        </div>
+                    ) : (
+                        getDraftPeriods().map(period => {
+                            const isExpanded = selectedMonth === period;
+                            return (
+                                <div key={period} className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden transition">
+                                    <div 
+                                        className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition ${isExpanded ? 'bg-slate-50 border-b border-slate-200' : ''}`}
+                                        onClick={() => {
+                                            setSelectedMonth(isExpanded ? '' : period);
+                                            setViewingHistoryId(null);
+                                        }}
+                                    >
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                                <Calendar size={20} />
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-slate-800 text-lg">{period}</div>
+                                                <div className="text-xs text-slate-500 mt-1">Bảng lương và chấm công tạm tính</div>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-2 text-slate-400">
+                                            {isExpanded && (
+                                                <>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleDeleteDraftPeriod(period); }} 
+                                                        className="bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-sm mr-2"
                                                     >
-                                                        {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td colSpan={26} className="border border-slate-300"></td>
-                                            <td className="border border-slate-300 p-1 text-center print:hidden">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition" title="Xóa phòng ban"><Trash2 size={14}/></button>
+                                                        <Trash2 size={16} /> Xóa
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleSaveMonth(); }} 
+                                                        className="bg-amber-500 hover:bg-amber-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-lg shadow-amber-200 mr-2"
+                                                    >
+                                                        <Save size={16} /> Chốt Tháng
+                                                    </button>
+                                                </>
+                                            )}
+                                            {isExpanded ? <ChevronDown size={24}/> : <ChevronRight size={24}/>}
+                                        </div>
+                                    </div>
+                                    {isExpanded && (
+                                        <div className="bg-white p-0 relative" onClick={(e) => e.stopPropagation()}>
+                                            <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
+                                                <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-lg">
+                                                    <button onClick={() => setActiveTab('salary')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab !== 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
+                                                    <button onClick={() => setActiveTab('attendance')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
                                                 </div>
-                                            </td>
-                                        </tr>
-                                    );
-                                }
-
-                                stt++;
-
-                                return (
-                                    <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors group">
-                                        <td className="border border-slate-300 p-1 text-center text-slate-500">{stt}</td>
-                                        <td className="border border-slate-300 p-0 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">
-                                            <input type="text" value={emp.name} onChange={(e) => handleChange(emp.id, 'name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent" placeholder="Tên nhân viên..." />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.basic_salary} onChange={(val) => handleChange(emp.id, 'basic_salary', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.phone_allowance} onChange={(val) => handleChange(emp.id, 'phone_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.parking_allowance} onChange={(val) => handleChange(emp.id, 'parking_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.makeup_allowance} onChange={(val) => handleChange(emp.id, 'makeup_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.gondola_allowance} onChange={(val) => handleChange(emp.id, 'gondola_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.laptop_allowance} onChange={(val) => handleChange(emp.id, 'laptop_allowance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right font-bold bg-slate-50 text-slate-700">{formatCurrency(emp.calculated.total_income_5).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-center font-bold text-amber-700 bg-amber-50/50 cursor-pointer hover:bg-amber-100 transition" onClick={() => setActiveTab('attendance')}>
-                                            {emp.calculated.actual_days}
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-center font-bold text-amber-700 bg-amber-50/50">
-                                            {globalStandardDays}
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.total_actual_salary_8).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-0 bg-blue-50/50">
-                                            <NumberInput value={emp.insurance_salary} onChange={(val) => handleChange(emp.id, 'insurance_salary', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right font-bold text-blue-700" />
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhxh).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhyt).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_tnld).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.dn_bhtn).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] font-bold text-slate-700">{formatCurrency(emp.calculated.dn_total).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhxh).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhyt).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] text-slate-500">{formatCurrency(emp.calculated.nld_bhtn).replace('₫', '')}</td>
-                                        <td className="border border-slate-300 p-1 px-2 text-right text-[10px] font-bold bg-slate-50 text-slate-700">{formatCurrency(emp.calculated.nld_total_9).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-0 bg-emerald-50/50">
-                                            <NumberInput value={emp.advance} onChange={(val) => handleChange(emp.id, 'advance', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right text-emerald-700" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0 bg-red-50/10">
-                                            <NumberInput value={emp.other_deductions} onChange={(val) => handleChange(emp.id, 'other_deductions', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right font-bold text-red-600" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0 bg-emerald-50/50">
-                                            <NumberInput value={emp.other_additions} onChange={(val) => handleChange(emp.id, 'other_additions', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right text-emerald-700" />
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right font-black text-blue-700 text-sm">{formatCurrency(emp.calculated.actual_receive).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-0">
-                                            <NumberInput value={emp.cash} onChange={(val) => handleChange(emp.id, 'cash', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
-                                        </td>
-                                        
-                                        <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.remaining).replace('₫', '')}</td>
-                                        
-                                        <td className="border border-slate-300 p-0">
-                                            <input type="text" value={emp.notes} onChange={(e) => handleChange(emp.id, 'notes', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <input type="text" value={emp.bank_account} onChange={(e) => handleChange(emp.id, 'bank_account', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <input type="text" value={emp.bank_account_name} onChange={(e) => handleChange(emp.id, 'bank_account_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
-                                        </td>
-                                        <td className="border border-slate-300 p-0">
-                                            <input type="text" value={emp.bank_name} onChange={(e) => handleChange(emp.id, 'bank_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
-                                        </td>
-                                        <td className="border border-slate-300 p-1 text-center print:hidden">
-                                            <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition"><Trash2 size={14}/></button>
-                                        </td>
-                                    </tr>
-                                );
-                            })}
-                        </tbody>
-                        <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30 shadow-lg">
-                            <tr>
-                                <td colSpan={2} className="border border-slate-700 p-2 text-center sticky left-0 bg-slate-800 z-40 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">TỔNG CỘNG</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.basic_salary).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.phone_allowance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.parking_allowance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.makeup_allowance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.gondola_allowance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.laptop_allowance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.total_income_5).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-center">-</td>
-                                <td className="border border-slate-700 p-2 text-center">-</td>
-                                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.total_actual_salary_8).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-blue-300">{formatCurrency(totals.insurance_salary).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhxh).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhyt).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_tnld).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhtn).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.dn_total).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhxh).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhyt).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhtn).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.nld_total_9).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.advance).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_deductions).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_additions).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-blue-300 text-sm">{formatCurrency(totals.actual_receive).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.cash).replace('₫', '')}</td>
-                                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.remaining).replace('₫', '')}</td>
-                                <td colSpan={5} className="border border-slate-700 p-2 text-center print:hidden"></td>
-                            </tr>
-                        </tfoot>
-                    </table>
-                ) : (
-                    <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
-                        <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
-                            <tr>
-                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[50px] w-12 sticky left-0 z-40 bg-slate-100">STT</th>
-                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 min-w-[200px] sticky left-[50px] md:left-[50px] z-40 bg-slate-100">HỌ VÀ TÊN</th>
-                                {Array.from({ length: daysInMonthCount }).map((_, i) => {
-                                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
-                                    const dayOfWeek = date.getDay();
-                                    const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
-                                    const isSunday = dayOfWeek === 0;
-                                    
-                                    return (
-                                        <th key={`dow-${i}`} className={`border border-slate-300 p-1 text-center text-[10px] font-bold ${isSunday ? 'bg-red-100 text-red-600' : 'text-slate-500 bg-slate-50'}`}>
-                                            {dayNames[dayOfWeek]}
-                                        </th>
-                                    );
-                                })}
-                                <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-16 bg-blue-50">TỔNG</th>
-                            </tr>
-                            <tr>
-                                {Array.from({ length: daysInMonthCount }).map((_, i) => {
-                                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
-                                    const isSunday = date.getDay() === 0;
-                                    const day = i + 1;
-                                    const isHoliday = getIsHoliday(day);
-                                    
-                                    return (
-                                        <th key={i} 
-                                            onClick={() => handleToggleHoliday(day)}
-                                            className={`border border-slate-300 p-1 text-center font-bold w-10 cursor-pointer transition ${isHoliday ? 'bg-blue-600 text-white shadow-inner' : isSunday ? 'bg-red-100 text-red-600' : 'text-slate-700 hover:bg-slate-200'}`}
-                                            title="Click để đánh dấu/bỏ đánh dấu ngày lễ"
-                                        >
-                                            {day}
-                                        </th>
-                                    );
-                                })}
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {(() => {
-                                let localStt = 0;
-                                return calculatedEmployees.map(emp => {
-                                    if (emp.isDepartment) {
-                                        return (
-                                            <tr key={emp.id} className="bg-slate-200/80 font-bold">
-                                                <td className="border border-slate-300 p-2 text-center sticky left-0 z-20 bg-slate-200/80"></td>
-                                                <td className="border border-slate-300 p-2 sticky left-12 z-20 bg-slate-200/80 uppercase">{emp.department}</td>
-                                                <td colSpan={daysInMonthCount + 1} className="border border-slate-300"></td>
-                                            </tr>
-                                        );
-                                    }
-                                    
-                                    localStt++;
-                                    const actualDays = emp.calculated.actual_days;
-                                    
-                                    return (
-                                        <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors">
-                                            <td className="border border-slate-300 p-2 text-center font-medium text-slate-500 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">{localStt}</td>
-                                            <td className="border border-slate-300 p-2 font-medium text-slate-700 sticky left-12 z-20 bg-white group-hover:bg-blue-50/50">{emp.name || '---'}</td>
-                                            {Array.from({ length: daysInMonthCount }).map((_, i) => {
-                                                const day = i + 1;
-                                                const isSunday = new Date(yearMonth.y, yearMonth.m - 1, day).getDay() === 0;
-                                                const isHoliday = getIsHoliday(day);
-                                                const defaultAtt = isHoliday || isSunday ? 0 : 1;
-                                                let attValue = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
-                                                if (isHoliday && attValue === 1) attValue = 0;
-                                                
-                                                return (
-                                                    <td key={day} className={`border border-slate-300 p-0 text-center ${isHoliday ? 'bg-blue-200/80 shadow-inner' : (isSunday && attValue === 1 ? 'bg-red-50/30' : '')}`}>
-                                                        <button 
-                                                            onClick={() => handleToggleAttendance(emp.id, day)}
-                                                            className={`w-full h-full min-h-[36px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 1.5 ? 'bg-purple-500 text-white' : attValue === 2 ? 'bg-indigo-600 text-white' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : 'bg-red-500 text-white'}`}
-                                                        >
-                                                            {attValue === 1 ? 'X' : attValue === 1.5 ? '1.5' : attValue === 2 ? '2' : attValue === 0.5 ? '/' : attValue === 'P' ? 'P' : ''}
-                                                        </button>
-                                                    </td>
-                                                );
-                                            })}
-                                            <td className="border border-slate-300 p-2 text-center font-bold text-blue-700 bg-blue-50/50">
-                                                {actualDays}
-                                            </td>
-                                        </tr>
-                                    );
-                                });
-                            })()}
-                        </tbody>
-                    </table>
-                )}
-            </div>
+                                            </div>
+                                            {renderTableContent()}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             )}
             
             {activeTab === 'attendance' && (
@@ -1367,11 +2017,251 @@ export default function EmployeeSalary({ currentUser, usersList = [] }) {
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-indigo-600 text-white flex items-center justify-center rounded text-[10px] font-bold">2</span> : x2 (Lễ)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-orange-500 text-white flex items-center justify-center rounded text-xs font-bold">/</span> : Nửa ngày (0.5 ngày)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-blue-500 text-white flex items-center justify-center rounded text-xs font-bold">P</span> : Nghỉ có phép (1 ngày)</div>
+                    <div className="flex items-center gap-1"><span className="w-8 h-4 bg-sky-400 text-white flex items-center justify-center rounded text-[10px] font-bold">P/2</span> : Nghỉ nửa ngày phép</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-red-500 inline-block rounded"></span> : Nghỉ (0 ngày)</div>
                     <div className="w-full text-blue-600 mt-1">• Click vào tiêu đề ngày (1, 2, 3...) để đổi ngày đó thành Ngày Lễ. Ngày lễ sẽ có nền màu xanh.</div>
                 </div>
             )}
         </div>
+
+        {allocationModal.isOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+                <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
+                    <div className="flex items-center justify-between p-5 border-b border-slate-100 bg-slate-50">
+                        <div>
+                            <h3 className="text-xl font-bold text-slate-800">Phân bổ công trình</h3>
+                            <p className="text-sm text-slate-500 mt-1">
+                                {allocationModal.name} - Kỳ: {allocationModal.month}
+                            </p>
+                        </div>
+                        <button onClick={() => setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] })} className="text-slate-400 hover:text-slate-600 bg-white hover:bg-slate-100 rounded-full p-2 transition">
+                            <X size={20} />
+                        </button>
+                    </div>
+                    <div className="p-5 max-h-[60vh] overflow-y-auto space-y-4">
+                        <div className="bg-blue-50 text-blue-800 p-3 rounded-xl text-sm font-medium">
+                            Nhập tỷ lệ % phân bổ lương cho từng công trình. Tổng tỷ lệ nên là 100%.
+                        </div>
+                        
+                        {projects.map(proj => {
+                            const currentAlloc = allocationModal.allocations.find(a => a.projectId === proj.id)?.ratio || '';
+                            return (
+                                <div key={proj.id} className="flex items-center justify-between p-3 border border-slate-200 rounded-xl hover:border-blue-300 transition bg-slate-50/50">
+                                    <div className="font-bold text-slate-700">{proj.name}</div>
+                                    <div className="flex items-center gap-2">
+                                        <input 
+                                            type="number"
+                                            value={currentAlloc}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setAllocationModal(prev => {
+                                                    const newAllocs = [...prev.allocations];
+                                                    const idx = newAllocs.findIndex(a => a.projectId === proj.id);
+                                                    if (idx >= 0) {
+                                                        if (val === '') newAllocs.splice(idx, 1);
+                                                        else newAllocs[idx].ratio = Number(val);
+                                                    } else if (val !== '') {
+                                                        newAllocs.push({ projectId: proj.id, ratio: Number(val), projectName: proj.name });
+                                                    }
+                                                    return { ...prev, allocations: newAllocs };
+                                                });
+                                            }}
+                                            placeholder="0"
+                                            className="w-20 px-3 py-1.5 border border-slate-300 rounded-lg text-right font-bold focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+                                            min="0"
+                                            max="100"
+                                        />
+                                        <span className="text-slate-500 font-bold">%</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        
+                        {projects.length === 0 && (
+                            <div className="text-center text-slate-500 py-4">Không có công trình nào.</div>
+                        )}
+                        
+                        <div className="flex justify-between items-center pt-4 border-t border-slate-100 mt-4">
+                            <span className="font-bold text-slate-600">Tổng phân bổ:</span>
+                            <span className={`font-black text-lg ${allocationModal.allocations.reduce((s,a) => s + a.ratio, 0) === 100 ? 'text-emerald-600' : 'text-amber-600'}`}>
+                                {allocationModal.allocations.reduce((s,a) => s + a.ratio, 0)}%
+                            </span>
+                        </div>
+                    </div>
+                    <div className="p-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
+                        <button onClick={() => setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                            Hủy bỏ
+                        </button>
+                        <button 
+                            onClick={() => {
+                                setEmployees(prev => prev.map(emp => {
+                                    if (emp.id === allocationModal.empId) {
+                                        return {
+                                            ...emp,
+                                            allocations: {
+                                                ...(emp.allocations || {}),
+                                                [allocationModal.month]: allocationModal.allocations
+                                            }
+                                        };
+                                    }
+                                    return emp;
+                                }));
+                                setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] });
+                            }} 
+                            className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition"
+                        >
+                            Lưu Phân Bổ
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {paymentModal.isOpen && (() => {
+            const isTechnical = paymentModal.department === 'KỸ THUẬT' || paymentModal.department === 'KỸ THUẬT GONDOLA';
+            return (
+            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] pointer-events-auto">
+                    <div className="bg-slate-900 px-6 py-4 flex justify-between items-center shrink-0">
+                        <h3 className="text-xl font-bold text-white">Hạch toán Lương</h3>
+                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 })} className="text-slate-400 hover:text-white transition"><X /></button>
+                    </div>
+                    
+                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Nhân viên</label>
+                                <input type="text" value={paymentModal.empName} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Số tiền (Tổng cộng)</label>
+                                <input type="text" value={formatCurrency(paymentModal.amount)} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none cursor-not-allowed" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Người nhận</label>
+                                <input type="text" value={paymentModal.recipient} onChange={(e) => setPaymentModal({...paymentModal, recipient: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Ghi chú</label>
+                                <input type="text" value={paymentModal.note} onChange={(e) => setPaymentModal({...paymentModal, note: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Mã chi phí (Nợ)</label>
+                                <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none">
+                                    <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                    <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                    <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                    <option value="154">154 - Chi phí SXKD dở dang</option>
+                                    <option value="3341">3341 - Phải trả người lao động</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Tài khoản đối ứng (Có)</label>
+                                <select value={paymentModal.corresponding_account} onChange={(e) => setPaymentModal({...paymentModal, corresponding_account: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none">
+                                    <option value="1111">1111 - Tiền mặt</option>
+                                    <option value="1121">1121 - Tiền gửi ngân hàng</option>
+                                    <option value="3341">3341 - Phải trả người lao động</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-slate-200 mt-2">
+                            <h4 className="font-black text-slate-800 mb-2">Hạch toán công trình {isTechnical && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2">Bộ phận Kỹ thuật / Gondola</span>}</h4>
+                            
+                            {!isTechnical ? (
+                                <div>
+                                    <label className="block text-sm font-bold text-slate-700 mb-1">Chọn công trình duy nhất</label>
+                                    <select 
+                                        value={paymentModal.allocations[0]?.project_name || ''}
+                                        onChange={(e) => {
+                                            const newAllocs = [...paymentModal.allocations];
+                                            newAllocs[0].project_name = e.target.value;
+                                            setPaymentModal({...paymentModal, allocations: newAllocs});
+                                        }}
+                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 transition"
+                                    >
+                                        <option value="">-- Chọn công trình --</option>
+                                        {projects.map(p => (
+                                            <option key={p.name} value={p.name}>{p.name}</option>
+                                        ))}
+                                    </select>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {paymentModal.allocations.map((alloc, idx) => (
+                                        <div key={alloc.id} className="flex gap-2 items-center bg-slate-50 p-2 border border-slate-200 rounded-lg">
+                                            <div className="flex-1">
+                                                <select 
+                                                    value={alloc.project_name}
+                                                    onChange={(e) => {
+                                                        const newAllocs = [...paymentModal.allocations];
+                                                        newAllocs[idx].project_name = e.target.value;
+                                                        setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                    }}
+                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500 transition"
+                                                >
+                                                    <option value="">-- Chọn công trình --</option>
+                                                    {projects.map(p => (
+                                                        <option key={p.name} value={p.name}>{p.name}</option>
+                                                    ))}
+                                                </select>
+                                            </div>
+                                            <div className="w-32">
+                                                <input type="date" value={alloc.from_date} onChange={(e) => {
+                                                    const newAllocs = [...paymentModal.allocations];
+                                                    newAllocs[idx].from_date = e.target.value;
+                                                    setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Từ ngày" />
+                                            </div>
+                                            <div className="w-32">
+                                                <input type="date" value={alloc.to_date} onChange={(e) => {
+                                                    const newAllocs = [...paymentModal.allocations];
+                                                    newAllocs[idx].to_date = e.target.value;
+                                                    setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Đến ngày" />
+                                            </div>
+                                            <button onClick={() => {
+                                                const newAllocs = paymentModal.allocations.filter(a => a.id !== alloc.id);
+                                                setPaymentModal({...paymentModal, allocations: newAllocs});
+                                            }} className="p-1.5 text-red-500 hover:bg-red-100 rounded transition"><Trash2 size={16}/></button>
+                                        </div>
+                                    ))}
+                                    <button 
+                                        onClick={() => {
+                                            setPaymentModal({...paymentModal, allocations: [...paymentModal.allocations, {id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: ''}]});
+                                        }}
+                                        className="text-sm font-bold text-blue-600 flex items-center gap-1 hover:text-blue-800 transition"
+                                    >
+                                        <Plus size={16}/> Thêm dòng phân bổ
+                                    </button>
+                                    
+                                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-800 mt-2 leading-relaxed">
+                                        <b>Lưu ý (Cách 2):</b> Số tiền hạch toán cho mỗi công trình = (Tổng tiền / {paymentModal.globalStandardDays} ngày công chuẩn) × Số ngày trong khoảng (Từ ngày - Đến ngày).
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    </div>
+                    
+                    <div className="p-4 bg-slate-50 flex justify-end gap-3 shrink-0 border-t border-slate-200">
+                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                            Hủy bỏ
+                        </button>
+                        <button onClick={handleCreatePaymentTransaction} className="px-5 py-2.5 text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-200 rounded-xl transition">
+                            Tạo phiếu chi
+                        </button>
+                    </div>
+                </div>
+            </div>
+            );
+        })()}
+
         </>
     );
 }

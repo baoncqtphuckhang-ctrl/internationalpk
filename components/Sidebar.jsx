@@ -39,6 +39,7 @@ export default function Sidebar({
     const [deletePassword, setDeletePassword] = useState('');
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
+    const isKeToanThue = currentUser?.role?.toUpperCase() === 'KẾ TOÁN THUẾ';
 
     useEffect(() => {
         if (!isProjectsMenuOpen) {
@@ -69,16 +70,16 @@ export default function Sidebar({
 
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
-        { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard },
-        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports },
-        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports },
-        { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
-        { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: canInputData || isThuKy, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
-        { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && currentUser?.role !== 'KẾ TOÁN THUẾ', locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
-        { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isThuKy, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
+        { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard && !isKeToanThue },
+        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isKeToanThue },
+        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports && !isKeToanThue },
+        { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy && !isKeToanThue, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
+        { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: (canInputData || isThuKy) && !isKeToanThue, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
+        { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && !isKeToanThue, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
+        { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isThuKy && !isKeToanThue, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
         { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: true },
-        { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy },
-        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN') },
+        { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy || isKeToanThue },
+        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: (currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN')) && !isKeToanThue },
     ];
 
     const toggleTab = (id) => {
@@ -181,7 +182,7 @@ export default function Sidebar({
                         </button>
                     ))}
 
-                    {canManageSystem && (
+                    {canManageSystem && !isKeToanThue && (
                         <div className="pt-6 pb-2 space-y-1 border-t border-slate-800 mt-4">
                             <p className="text-[10px] text-slate-600 uppercase font-black px-4 tracking-widest mb-2">Hệ Thống</p>
                             <button onClick={() => toggleTab('projects')} className={`w-full flex items-center gap-3 p-3.5 rounded-xl font-bold transition ${activeTab === 'projects' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-500 hover:bg-slate-800 hover:text-slate-300'}`}>
@@ -210,14 +211,24 @@ export default function Sidebar({
                         </div>
                     )}
 
-                    <div className="pt-6 pb-2 space-y-1 border-t border-slate-800 mt-4">
-                        <button 
-                            onClick={() => setIsProjectsMenuOpen(!isProjectsMenuOpen)}
-                            className="w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group hover:bg-slate-800 text-slate-400 hover:text-slate-200 uppercase mb-1"
-                        >
-                            <span className="text-sm">Công trình</span>
-                            <ChevronRight size={16} className={`transition-transform duration-200 ${isProjectsMenuOpen ? 'rotate-90' : ''}`} />
-                        </button>
+                    {!isKeToanThue && (
+                        <div className="pt-6 pb-2 space-y-1 border-t border-slate-800 mt-4">
+                            <div className="w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group hover:bg-slate-800 text-slate-400 hover:text-slate-200 uppercase mb-1 cursor-pointer" onClick={() => setIsProjectsMenuOpen(!isProjectsMenuOpen)}>
+                                <span className="text-sm">Công trình</span>
+                                <div className="flex items-center gap-3">
+                                    <Search 
+                                        size={16} 
+                                        className="hover:text-blue-400 transition" 
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setIsProjectsMenuOpen(true);
+                                            setTimeout(() => document.getElementById('project-search-input')?.focus(), 100);
+                                        }} 
+                                        title="Tìm kiếm"
+                                    />
+                                    <ChevronRight size={16} className={`transition-transform duration-200 ${isProjectsMenuOpen ? 'rotate-90' : ''}`} />
+                                </div>
+                            </div>
                         
                         {isProjectsMenuOpen && (
                             <div className="space-y-1 pl-2">
@@ -225,6 +236,7 @@ export default function Sidebar({
                                     <div className="relative">
                                         <Search className="absolute left-3 top-2.5 text-slate-500" size={14} />
                                         <input 
+                                            id="project-search-input"
                                             type="text"
                                             placeholder="Tìm công trình..."
                                             value={projectSearchTerm}
@@ -294,9 +306,10 @@ export default function Sidebar({
                                         )}
                                     </div>
                                 ))}
-                            </div>
-                        )}
-                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                     
                     <div className="mt-8 mb-4 px-4 flex justify-center opacity-70 hover:opacity-100 transition-opacity">
                         <img src="https://visitor-badge.laobi.icu/badge?page_id=cbpro.misa.app&left_color=gray&right_color=blue&left_text=Lượt truy cập" alt="Visitor Count" className="rounded shadow" />

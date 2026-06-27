@@ -1243,10 +1243,10 @@ export default function Home() {
 
     const role = currentUser?.role?.toUpperCase();
     const canManageUsers = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(role);
-    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS'].includes(role);
+    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS'].includes(role);
     const canViewApprovals = canManageSystem || role === 'THƯ KÝ';
     const canInputData = canManageSystem || role === 'THƯ KÝ';
-    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'QS', 'THƯ KÝ'].includes(role);
+    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'THƯ KÝ'].includes(role);
     const canViewReports = currentUser?.canViewFinance !== false;
     const canCreateDNTT = true;
 
@@ -1619,7 +1619,7 @@ export default function Home() {
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
-                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} />}
+                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} projects={allowedProjects} refreshData={fetchData} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 
@@ -1697,6 +1697,7 @@ export default function Home() {
                                     setSelectedProject(projectName);
                                     setActiveTab('project-detail');
                                 }}
+                                refreshData={fetchData}
                             />
                         )}
                     </div>
