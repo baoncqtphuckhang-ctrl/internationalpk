@@ -6,7 +6,7 @@ import {
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
     Clock, AlertTriangle, XCircle, ArrowLeft, RefreshCw,
-    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera
+    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
