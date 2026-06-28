@@ -379,6 +379,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                     if (vName === pPhase) return true;
                     const genName = `đợt ${tmpl.versions.indexOf(v) + 1} - ${v.date}`.toLowerCase();
                     if (genName === pPhase) return true;
+                    const shortName = `đợt ${tmpl.versions.indexOf(v) + 1}`.toLowerCase();
+                    if (shortName === pPhase) return true;
+                    if (pPhase.includes(shortName) || shortName.includes(pPhase)) return true;
                     return false;
                 });
             }
@@ -399,7 +402,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                             (itemColor === cCode || (itemColor === '-' && cCode === '') || (itemColor === '' && cCode === '-'));
                             
                         if (isMatch) {
-                            return { price: Number(item.price) || 0, index: globalIndex };
+                            return { price: parseFloat(String(item.price).replace(/,/g, '')) || 0, index: globalIndex };
                         }
                     }
                 }
@@ -413,7 +416,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                         globalIndex++;
                         const itemName = (item.name || '').trim().toLowerCase();
                         if (itemName === mName) {
-                            return { price: Number(item.price) || 0, index: globalIndex };
+                            return { price: parseFloat(String(item.price).replace(/,/g, '')) || 0, index: globalIndex };
                         }
                     }
                 }
