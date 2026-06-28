@@ -1001,10 +1001,38 @@ export default function Home() {
     const handleUpdateApprovalStatus = async (id, newStatus) => {
         setIsLoading(true);
         try {
-            const { error } = await supabase.from('approval_requests').update({ status: newStatus }).eq('id', id);
+            let finalStatus = newStatus;
+            
+            // Auto-create Partner Debt for 'TRỰC TIẾP ORDER' material orders when approved
+            if (newStatus === STATUSES.PAID) {
+                const dntt = dnttList.find(d => d.id === id);
+                if (dntt && dntt.doc_type === 'Đơn Vật Tư') {
+                    const proj = projects.find(p => p.name === dntt.project_name);
+                    if (proj && proj.project_type !== 'TỔNG THẦU MUA HỘ') {
+                        finalStatus = STATUSES.ACCOUNTED; // Skip accountant DNTT queue
+                        
+                        let orderPhase = '';
+                        try {
+                            orderPhase = JSON.parse(dntt.reason).orderPhase || '';
+                        } catch(e) {}
+                        
+                        // Create Partner Debt
+                        await supabase.from('partner_debts').insert([{
+                            project_name: dntt.project_name,
+                            partner_name: dntt.recipient.split('(')[0].trim(),
+                            debt_type: 'CẦN TRẢ',
+                            amount: dntt.total_amount,
+                            status: 'CHƯA XONG',
+                            note: `[VẬT TƯ] [PAYLOAD][ID:${id}] ${orderPhase}`
+                        }]);
+                    }
+                }
+            }
+
+            const { error } = await supabase.from('approval_requests').update({ status: finalStatus }).eq('id', id);
             if (error) throw error;
             showToast('Đã cập nhật trạng thái!');
-            logActivity('Duyệt', 'Đề nghị thanh toán', `Cập nhật trạng thái phiếu (ID: ${id}) thành: ${newStatus}`);
+            logActivity('Duyệt', 'Đề nghị thanh toán', `Cập nhật trạng thái phiếu (ID: ${id}) thành: ${finalStatus}`);
             fetchData();
         } catch (error) {
             showToast('Lỗi khi cập nhật!', 'error');

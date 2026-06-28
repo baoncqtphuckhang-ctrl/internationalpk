@@ -176,9 +176,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 
                 // Fallback matching
                 return d.project_name === order.project_name && 
-                       d.recipient === order.recipient && 
-                       parsed.date === order.order_date &&
-                       parsed.items?.length > 0;
+                       parsed.orderPhase === order.order_phase &&
+                       parsed.date === order.order_date;
             } catch (e) {
                 return false;
             }
