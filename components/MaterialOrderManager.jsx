@@ -1654,8 +1654,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                             }
                                         }
 
-                                        const safeItems = Array.isArray(selectedOrder?.items) ? selectedOrder.items : [];
-                                        return safeItems.map((cat, catIdx) => {
+                                        const safeOrderItems = Array.isArray(selectedOrder?.items) ? selectedOrder.items : [];
+                                        return safeOrderItems.map((cat, catIdx) => {
                                             const currentCatItems = Array.isArray(cat?.items) ? cat.items : [];
                                             const catHasQuantity = currentCatItems.some(it => parseFloat(it.quantity) > 0);
                                             if (!catHasQuantity) return null;
