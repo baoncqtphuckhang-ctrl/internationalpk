@@ -6,7 +6,7 @@ import {
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
     Clock, AlertTriangle, XCircle, ArrowLeft, RefreshCw,
-    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3
+    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3, RotateCcw
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -234,6 +234,37 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     }
                 } catch (err) {
                     showToast('Lỗi khi xóa đơn đặt hàng!', 'error');
+                    console.error(err);
+                } finally {
+                    setIsLoading(false);
+                }
+            }
+        });
+    };
+
+    const handleRevertOrderStatus = async (reqId, e) => {
+        if (e) e.stopPropagation();
+        
+        setConfirmModal({
+            isOpen: true,
+            requirePassword: false,
+            message: 'Bạn có chắc chắn muốn hoàn tác trạng thái đơn hàng này về "Chờ QS duyệt" không?',
+            onConfirm: async () => {
+                setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null });
+                setIsLoading(true);
+                try {
+                    const { error } = await supabase
+                        .from('approval_requests')
+                        .update({ status: 'Waiting QS' })
+                        .eq('id', reqId);
+                    if (error) throw error;
+                    
+                    showToast('Đã hoàn tác trạng thái thành công!');
+                    if (refreshData) {
+                        refreshData();
+                    }
+                } catch (err) {
+                    showToast('Lỗi khi hoàn tác trạng thái!', 'error');
                     console.error(err);
                 } finally {
                     setIsLoading(false);
@@ -1191,7 +1222,16 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                     >
                                                                         <Download size={15} />
                                                                     </button>
-                                                                    {(status === 'Draft' || status === 'Rejected' || currentUser?.role === 'ADMIN') && (
+                                                                    {(status !== 'Draft' && status !== 'Waiting QS' && currentUser?.role?.toUpperCase() === 'ADMIN' && req) && (
+                                                                        <button 
+                                                                            onClick={(e) => handleRevertOrderStatus(req.id, e)}
+                                                                            className="bg-amber-50 text-amber-600 hover:bg-amber-100 p-1.5 rounded-xl transition"
+                                                                            title="Hoàn tác trạng thái"
+                                                                        >
+                                                                            <RotateCcw size={15} />
+                                                                        </button>
+                                                                    )}
+                                                                    {(status === 'Draft' || status === 'Rejected' || currentUser?.role?.toUpperCase() === 'ADMIN') && (
                                                                         <button 
                                                                             onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
                                                                             className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"

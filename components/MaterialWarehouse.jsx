@@ -99,6 +99,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             quantity: '',
             date: new Date().toISOString().split('T')[0],
             price_phase: '',
+            order_phase: '',
             note: ''
         });
         setShowModal(true);
@@ -121,7 +122,16 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 quantity: parseFloat(formData.quantity) || 0,
                 transaction_type: modalType,
                 date: formData.date,
-                note: formData.price_phase ? `[Đợt giá: ${formData.price_phase}] ${formData.note || ''}`.trim() : (formData.note || '').trim() || null,
+                note: (() => {
+                    let finalNote = formData.note || '';
+                    if (formData.order_phase && !finalNote.includes('Theo Đơn vật tư')) {
+                        finalNote = `Theo Đơn vật tư ${formData.order_phase}. ${finalNote}`;
+                    }
+                    if (formData.price_phase) {
+                        finalNote = `[Đợt giá: ${formData.price_phase}] ${finalNote}`;
+                    }
+                    return finalNote.trim() || null;
+                })(),
                 created_by: currentUser?.username || 'Hệ thống'
             };
 
@@ -663,7 +673,21 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                                                 <td className="py-3 px-6 text-slate-600">{cleanNote || <span className="italic text-slate-400">Không có vị trí/ghi chú</span>}</td>
                                                                                 <td className="py-3 px-6 text-center">
                                                                                     <div className="flex items-center justify-center gap-1">
-                                                                                        <button onClick={(e) => { e.stopPropagation(); const phaseMatch = ex.note ? ex.note.match(/\[Đợt giá: (.*?)\]/) : null; const phase = phaseMatch ? phaseMatch[1] : ''; setFormData({ project_name: ex.project_name, material_name: ex.material_name, color_code: ex.color_code || '', unit: ex.unit, quantity: ex.quantity, date: ex.date, price_phase: phase, note: cleanNote }); setModalType('XUẤT'); setEditingId(ex.id); setShowModal(true); }} className="text-slate-400 hover:text-amber-500 hover:bg-amber-50 p-1.5 rounded-md transition" title="Sửa phiếu xuất"><Edit2 size={14} /></button>
+                                                                                        <button onClick={(e) => { 
+                                                                                            e.stopPropagation(); 
+                                                                                            const phaseMatch = ex.note ? ex.note.match(/\[Đợt giá: (.*?)\]/) : null; 
+                                                                                            const phase = phaseMatch ? phaseMatch[1] : ''; 
+                                                                                            
+                                                                                            const orderMatch = ex.note ? ex.note.match(/Theo Đơn vật tư ([^.]*)/) : null;
+                                                                                            const oPhase = orderMatch ? orderMatch[1].trim() : item.order_phase;
+
+                                                                                            const cleanNote = ex.note ? ex.note.replace(/\[Đợt giá: .*?\]\s*/g, '').replace(/Theo Đơn vật tư .*?\.\s*/g, '').replace(/Tự động từ ĐVT: .*?\s*/g, '').trim() : '';
+                                                                                            
+                                                                                            setFormData({ project_name: ex.project_name, material_name: ex.material_name, color_code: ex.color_code || '', unit: ex.unit, quantity: ex.quantity, date: ex.date, price_phase: phase, order_phase: oPhase || '', note: cleanNote }); 
+                                                                                            setModalType('XUẤT'); 
+                                                                                            setEditingId(ex.id); 
+                                                                                            setShowModal(true); 
+                                                                                        }} className="text-slate-400 hover:text-amber-500 hover:bg-amber-50 p-1.5 rounded-md transition" title="Sửa phiếu xuất"><Edit2 size={14} /></button>
                                                                                         <button onClick={async (e) => { e.stopPropagation(); handleDelete(ex.id); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition" title="Xóa phiếu xuất"><Trash2 size={14} /></button>
                                                                                     </div>
                                                                                 </td>
@@ -928,22 +952,23 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                         {modalType === 'XUẤT' && formData.project_name ? (
                                             <select 
                                                 required
-                                                value={formData.material_name ? JSON.stringify({name: formData.material_name, color: formData.color_code || '', phase: formData.price_phase || ''}) : ''}
+                                                value={formData.material_name ? JSON.stringify({name: formData.material_name, color: formData.color_code || '', phase: formData.price_phase || '', oPhase: formData.order_phase || ''}) : ''}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
                                                     if (!val) {
-                                                        setFormData({...formData, material_name: '', color_code: '', unit: '', price_phase: ''});
+                                                        setFormData({...formData, material_name: '', color_code: '', unit: '', price_phase: '', order_phase: ''});
                                                         return;
                                                     }
                                                     try {
-                                                        const { name, color, phase } = JSON.parse(val);
-                                                        const matchedMat = inventoryList.find(i => i.project_name === formData.project_name && i.material_name === name && (i.color_code || '') === color && (i.price_phase || '') === (phase || ''));
+                                                        const { name, color, phase, oPhase } = JSON.parse(val);
+                                                        const matchedMat = inventoryList.find(i => i.project_name === formData.project_name && i.material_name === name && (i.color_code || '') === color && (i.price_phase || '') === (phase || '') && (i.order_phase || '') === (oPhase || ''));
                                                         setFormData({
                                                             ...formData, 
                                                             material_name: name,
                                                             unit: matchedMat ? matchedMat.unit : formData.unit,
                                                             color_code: color,
-                                                            price_phase: phase || formData.price_phase
+                                                            price_phase: phase || formData.price_phase,
+                                                            order_phase: oPhase || formData.order_phase
                                                         });
                                                     } catch(err) {}
                                                 }}
@@ -951,8 +976,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                             >
                                                 <option value="">-- Chọn vật tư để xuất --</option>
                                                 {inventoryList.filter(i => i.project_name === formData.project_name && i.remaining > 0).map(i => (
-                                                    <option key={`${i.material_name}-${i.color_code}-${i.price_phase}`} value={JSON.stringify({name: i.material_name, color: i.color_code || '', phase: i.price_phase || ''})}>
-                                                        {i.material_name} {i.color_code ? `(Mã: ${i.color_code})` : ''} {i.price_phase ? `[${i.price_phase}]` : ''} - Tồn: {i.remaining} {i.unit}
+                                                    <option key={`${i.material_name}-${i.color_code}-${i.price_phase}-${i.order_phase}`} value={JSON.stringify({name: i.material_name, color: i.color_code || '', phase: i.price_phase || '', oPhase: i.order_phase || ''})}>
+                                                        {i.material_name} {i.color_code ? `(Mã: ${i.color_code})` : ''} {i.price_phase ? `[Giá: ${i.price_phase}]` : ''} {i.order_phase ? `[Đơn: ${i.order_phase}]` : ''} - Tồn: {i.remaining} {i.unit}
                                                     </option>
                                                 ))}
                                             </select>

@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer } from 'lucide-react';
+import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw } from 'lucide-react';
 import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import ConfirmModal from './ConfirmModal';
 
@@ -657,6 +657,9 @@ export default function ApprovalWorkflow({
                                                     }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
                                                     <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                 </>
+                                            )}
+                                            {currentUser?.role?.toUpperCase() === 'ADMIN' && item.status !== STATUSES.WAITING_QS && item.status !== STATUSES.DRAFT && (
+                                                <button onClick={() => onUpdateStatus(item.id, STATUSES.WAITING_QS)} className="flex-1 lg:flex-none whitespace-nowrap bg-amber-50 text-amber-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-amber-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-amber-100" title="Hoàn tác về trạng thái ban đầu"><RotateCcw size={18}/> Hoàn tác</button>
                                             )}
                                             {showApproveButtons && item.status === STATUSES.WAITING_PRINT && (
                                                 <button onClick={() => {
