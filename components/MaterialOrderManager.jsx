@@ -173,7 +173,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const matchesStatus = selectedStatusFilter === '' || normalizedStatus === selectedStatusFilter;
         
         const isDeadStatus = normalizedStatus === 'Draft' || normalizedStatus === 'Rejected';
-        // Removed the hiding of Draft/Rejected by default so users can see their drafts
+        if (isDeadStatus) return false;
         
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
@@ -991,11 +991,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-600 outline-none focus:border-indigo-500 focus:bg-white transition"
                             >
                                 <option value="">-- Trạng thái --</option>
-                                <option value="Draft">Nháp / Chưa gửi</option>
                                 <option value="Waiting QS">Chờ QS duyệt</option>
                                 <option value="Paid">Chờ hạch toán</option>
                                 <option value="Accounted">Đã hoàn tất</option>
-                                <option value="Rejected">Bị từ chối</option>
                             </select>
                         </div>
                         </div>
