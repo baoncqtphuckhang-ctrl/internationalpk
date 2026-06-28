@@ -480,6 +480,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     });
 
     const filteredInventory = inventoryList.filter(item => {
+        const allowedProjectNames = projects.map(p => p.name);
+        if (!allowedProjectNames.includes(item.project_name)) return false;
+
         const matchesProject = selectedProject ? item.project_name === selectedProject : true;
         const matchesSearch = item.material_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (item.color_code || '').toLowerCase().includes(searchTerm.toLowerCase());
@@ -487,6 +490,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     });
 
     const filteredTransactions = transactions.filter(t => {
+        const allowedProjectNames = projects.map(p => p.name);
+        if (!allowedProjectNames.includes(t.project_name)) return false;
+
         const matchesProject = selectedProject ? t.project_name === selectedProject : true;
         const matchesSearch = t.material_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                               (t.note || '').toLowerCase().includes(searchTerm.toLowerCase());

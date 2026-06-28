@@ -285,9 +285,25 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             return;
         }
 
-        setIsLoading(true);
         const selectedProjForSave = projects.find(p => p.name === formData.project_name);
         const isMainContractorSave = selectedProjForSave?.project_type === 'TỔNG THẦU MUA HỘ';
+
+        if (!isMainContractorSave) {
+            if (!formData.address || !formData.address.trim()) {
+                alert('Vui lòng nhập địa chỉ dự án!');
+                return;
+            }
+            if (!formData.company || !formData.company.trim()) {
+                alert('Vui lòng chọn/nhập nhà cung cấp!');
+                return;
+            }
+            if (!formData.recipient || !formData.recipient.trim()) {
+                alert('Vui lòng nhập người nhận hàng!');
+                return;
+            }
+        }
+
+        setIsLoading(true);
 
         const payload = {
             project_name: formData.project_name,
@@ -858,6 +874,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
     // Filtered orders
     const filteredOrders = orders.filter(o => {
+        const allowedProjectNames = projects.map(p => p.name);
+        if (!allowedProjectNames.includes(o.project_name)) return false;
+
         const matchesProject = selectedProjectFilter ? o.project_name === selectedProjectFilter : true;
         const matchesSearch = o.project_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               o.order_phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -1120,7 +1139,29 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     ))}
                                 </select>
                             </div>
-                            <div className="flex gap-2 w-full md:w-auto">
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                <button 
+                                    onClick={() => {
+                                        const projName = window.prompt("Nhập chính xác tên Công trình bạn muốn chép danh mục sang đây (Ví dụ: AA TEST):");
+                                        if (projName) {
+                                            const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
+                                            const dataToCopy = projectTemplates[projName];
+                                            if (dataToCopy && dataToCopy.versions && dataToCopy.versions.length > 0) {
+                                                setConfigVersions(dataToCopy.versions);
+                                                const activeId = dataToCopy.activeVersionId || dataToCopy.versions[dataToCopy.versions.length - 1].id;
+                                                setConfigActiveVersionId(activeId);
+                                                setActiveVersionId(dataToCopy.versions[dataToCopy.versions.length - 1].id);
+                                                setConfigCategories(JSON.parse(JSON.stringify(dataToCopy.versions[dataToCopy.versions.length - 1].categories)));
+                                                alert("Đã chép danh mục từ " + projName + ". Vui lòng ấn LƯU CẤU HÌNH để lưu lại!");
+                                            } else {
+                                                alert("Không tìm thấy danh mục vật tư nào của công trình '" + projName + "'!");
+                                            }
+                                        }
+                                    }}
+                                    className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-indigo-200"
+                                >
+                                    <Download size={18} /> Chép từ công trình khác
+                                </button>
                                 <button 
                                     onClick={handleAddVersion}
                                     className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-emerald-200"

@@ -107,9 +107,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 
                 // Fallback matching
                 return d.project_name === order.project_name && 
-                       d.recipient === order.recipient && 
-                       parsed.date === order.order_date &&
-                       parsed.items?.length > 0;
+                       parsed.orderPhase === order.order_phase &&
+                       parsed.date === order.order_date;
             } catch (e) {
                 return false;
             }
@@ -175,7 +174,11 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         // Removed the hiding of Draft/Rejected by default so users can see their drafts
         
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
+        // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
         if (order.is_deleted && !req) return false;
+        
+        const allowedProjectNames = projects.map(p => p.name);
+        if (!allowedProjectNames.includes(order.project_name)) return false;
         
         return matchesSearch && matchesProject && matchesStatus;
     });
@@ -423,7 +426,16 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 .getPublicUrl(filePath);
 
             const newHistory = [...currentItem.received_history];
-            newHistory[historyIdx] = { ...newHistory[historyIdx], receipt_url: publicUrl };
+            
+            // Allow multiple receipt urls
+            const urls = newHistory[historyIdx].receipt_urls || (newHistory[historyIdx].receipt_url ? [newHistory[historyIdx].receipt_url] : []);
+            urls.push(publicUrl);
+
+            newHistory[historyIdx] = { 
+                ...newHistory[historyIdx], 
+                receipt_urls: urls,
+                receipt_url: urls[0] // fallback for backward compatibility
+            };
 
             const newOrderItems = [...order.items];
             newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
@@ -449,11 +461,10 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }
     };
 
-    const handleDeleteReceiptOnly = async (order, catIdx, itemIdx, historyIdx) => {
+    const handleDeleteReceiptOnly = async (order, catIdx, itemIdx, historyIdx, fileUrl) => {
         try {
             setIsLoading(true);
             const currentItem = order.items[catIdx].items[itemIdx];
-            const fileUrl = currentItem.received_history[historyIdx].receipt_url;
             
             if (fileUrl && fileUrl.includes('/public/invoices/')) {
                 const parts = fileUrl.split('/public/invoices/');
@@ -464,7 +475,16 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             }
 
             const newHistory = [...currentItem.received_history];
-            delete newHistory[historyIdx].receipt_url;
+            let urls = newHistory[historyIdx].receipt_urls || (newHistory[historyIdx].receipt_url ? [newHistory[historyIdx].receipt_url] : []);
+            urls = urls.filter(u => u !== fileUrl);
+
+            if (urls.length === 0) {
+                delete newHistory[historyIdx].receipt_urls;
+                delete newHistory[historyIdx].receipt_url;
+            } else {
+                newHistory[historyIdx].receipt_urls = urls;
+                newHistory[historyIdx].receipt_url = urls[0];
+            }
 
             const newOrderItems = [...order.items];
             newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
@@ -1228,52 +1248,63 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                         <td className="px-4 py-2.5 text-right font-black text-indigo-600">{h.qty}</td>
                                                                                                         <td className="px-4 py-2.5">{h.note || '-'}</td>
                                                                                                         <td className="px-4 py-2.5 text-center">
-                                                                                                            {h.receipt_url ? (
-                                                                                                                <div className="flex items-center justify-center gap-1.5">
-                                                                                                                    <a href={h.receipt_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem Phiếu PDF/Ảnh">
-                                                                                                                        <Eye size={15} />
-                                                                                                                    </a>
-                                                                                                                    <button 
-                                                                                                                        onClick={() => handleDeleteReceiptOnly(order, catIdx, itemIdx, i)}
-                                                                                                                        className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200"
-                                                                                                                        title="Xóa phiếu đã tải"
-                                                                                                                    >
-                                                                                                                        <Trash2 size={15} />
-                                                                                                                    </button>
-                                                                                                                </div>
-                                                                                                            ) : (
-                                                                                                                <div className="flex items-center justify-center gap-1.5">
-                                                                                                                    {/* Camera Upload */}
-                                                                                                                    <div className="relative group/camera">
-                                                                                                                        <input 
-                                                                                                                            type="file" 
-                                                                                                                            accept="image/*"
-                                                                                                                            capture="environment"
-                                                                                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                                                                                            onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
-                                                                                                                            disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
-                                                                                                                            title="Chụp ảnh phiếu"
-                                                                                                                        />
-                                                                                                                        <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/camera:bg-indigo-600 group-hover/camera:text-white group-hover/camera:border-indigo-600 group-hover/camera:scale-105'} rounded-lg transition-all duration-200`} title="Chụp ảnh phiếu">
-                                                                                                                            <Camera size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
-                                                                                                                        </button>
+                                                                                                            {(() => {
+                                                                                                                const urls = h.receipt_urls || (h.receipt_url ? [h.receipt_url] : []);
+                                                                                                                return (
+                                                                                                                    <div className="flex flex-col items-center gap-2">
+                                                                                                                        {urls.length > 0 && (
+                                                                                                                            <div className="flex flex-wrap justify-center gap-2">
+                                                                                                                                {urls.map((url, uIdx) => (
+                                                                                                                                    <div key={uIdx} className="flex items-center gap-1 bg-slate-50 p-1 rounded-lg border border-slate-200 shadow-sm">
+                                                                                                                                        <a href={url} target="_blank" rel="noopener noreferrer" className="p-1 text-blue-600 hover:text-blue-800 transition-colors" title={`Xem ảnh ${uIdx + 1}`}>
+                                                                                                                                            <Eye size={14} />
+                                                                                                                                        </a>
+                                                                                                                                        <button 
+                                                                                                                                            onClick={() => handleDeleteReceiptOnly(order, catIdx, itemIdx, i, url)}
+                                                                                                                                            className="p-1 text-rose-500 hover:text-rose-700 transition-colors"
+                                                                                                                                            title="Xóa ảnh này"
+                                                                                                                                        >
+                                                                                                                                            <XCircle size={14} />
+                                                                                                                                        </button>
+                                                                                                                                    </div>
+                                                                                                                                ))}
+                                                                                                                            </div>
+                                                                                                                        )}
+                                                                                                                        
+                                                                                                                        <div className="flex items-center justify-center gap-1.5">
+                                                                                                                            {/* Camera Upload */}
+                                                                                                                            <div className="relative group/camera">
+                                                                                                                                <input 
+                                                                                                                                    type="file" 
+                                                                                                                                    accept="image/*"
+                                                                                                                                    capture="environment"
+                                                                                                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                                                                                    onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
+                                                                                                                                    disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
+                                                                                                                                    title="Chụp thêm ảnh"
+                                                                                                                                />
+                                                                                                                                <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/camera:bg-indigo-600 group-hover/camera:text-white group-hover/camera:border-indigo-600 group-hover/camera:scale-105'} rounded-lg transition-all duration-200`} title="Chụp thêm ảnh">
+                                                                                                                                    <Camera size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
+                                                                                                                                </button>
+                                                                                                                            </div>
+                                                                                                                            {/* Normal Upload */}
+                                                                                                                            <div className="relative group/upload">
+                                                                                                                                <input 
+                                                                                                                                    type="file" 
+                                                                                                                                    accept=".pdf,image/*"
+                                                                                                                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                                                                                    onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
+                                                                                                                                    disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
+                                                                                                                                    title="Tải thêm phiếu (PDF/Ảnh)"
+                                                                                                                                />
+                                                                                                                                <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-emerald-600 group-hover/upload:text-white group-hover/upload:border-emerald-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải thêm phiếu">
+                                                                                                                                    <Upload size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
+                                                                                                                                </button>
+                                                                                                                            </div>
+                                                                                                                        </div>
                                                                                                                     </div>
-                                                                                                                    {/* Normal Upload */}
-                                                                                                                    <div className="relative group/upload">
-                                                                                                                        <input 
-                                                                                                                            type="file" 
-                                                                                                                            accept=".pdf,image/*"
-                                                                                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                                                                                                                            onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
-                                                                                                                            disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
-                                                                                                                            title="Tải phiếu nhận hàng (PDF/Ảnh)"
-                                                                                                                        />
-                                                                                                                        <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-emerald-600 group-hover/upload:text-white group-hover/upload:border-emerald-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải phiếu nhận hàng">
-                                                                                                                            <Upload size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
-                                                                                                                        </button>
-                                                                                                                    </div>
-                                                                                                                </div>
-                                                                                                            )}
+                                                                                                                );
+                                                                                                            })()}
                                                                                                         </td>
                                                                                                         <td className="px-4 py-2.5 text-center">
                                                                                                             <button 
