@@ -1136,7 +1136,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
                                 >
                                     {configVersions.map((v, i) => (
-                                        <option key={v.id} value={v.id}>Đợt {i + 1} - Áp dụng từ ngày {formatDateVN(v.date)}</option>
+                                        <option key={v.id} value={v.id}>Áp dụng từ ngày {formatDateVN(v.date)}</option>
                                     ))}
                                 </select>
                             </div>
@@ -1171,7 +1171,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     className="w-full p-2.5 bg-indigo-50 border-2 border-indigo-200 rounded-xl font-bold text-indigo-700 outline-none focus:border-indigo-500 transition"
                                 >
                                     {configVersions.map((v, i) => (
-                                        <option key={v.id} value={v.id}>Đợt {i + 1} - Áp dụng từ {formatDateVN(v.date)}</option>
+                                        <option key={v.id} value={v.id}>Áp dụng từ {formatDateVN(v.date)}</option>
                                     ))}
                                 </select>
                             </div>

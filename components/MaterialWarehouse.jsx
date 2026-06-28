@@ -464,6 +464,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
         }
         if (t.transaction_type === 'NHẬP') {
             inventory[key].totalImport += Number(t.quantity);
+            if (t.price && !inventory[key].recorded_price) {
+                inventory[key].recorded_price = Number(t.price);
+            }
         } else if (t.transaction_type === 'XUẤT') {
             inventory[key].totalExport += Number(t.quantity);
             inventory[key].export_transactions.push(t);
@@ -473,13 +476,14 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     const inventoryList = Object.values(inventory).map(item => {
         const remaining = item.totalImport - item.totalExport;
         const info = getMaterialConfigInfo(item.project_name, item.material_name, item.color_code, item.price_phase);
+        const finalPrice = item.recorded_price || info.price;
         return {
             ...item,
             remaining,
-            price: info.price,
+            price: finalPrice,
             orderIndex: info.index,
-            totalImportValue: item.totalImport * info.price,
-            totalValue: remaining * info.price
+            totalImportValue: item.totalImport * finalPrice,
+            totalValue: remaining * finalPrice
         };
     });
 

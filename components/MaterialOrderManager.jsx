@@ -330,7 +330,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 date: itemData.date,
                 price: priceVal,
                 total_value: priceVal * parseFloat(itemData.qty),
-                note: `[Đợt giá: ${order.order_phase}] Theo Đơn vật tư ngày ${formatDateVN(order.order_date)}. ${itemData.note || ''}`
+                note: `[Đợt giá: ${formatDateVN(order.order_date)}] Theo Đơn vật tư ${order.order_phase}. ${itemData.note || ''}`
             };
 
             const { error: whError } = await supabase
@@ -457,7 +457,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 date: edData.date,
                 price: priceVal,
                 total_value: priceVal * parseFloat(edData.qty),
-                note: `[Đợt giá: ${order.order_phase}] Theo Đơn vật tư ngày ${formatDateVN(order.order_date)}. ${edData.note || ''}`
+                note: `[Đợt giá: ${formatDateVN(order.order_date)}] Theo Đơn vật tư ${order.order_phase}. ${edData.note || ''}`
             };
 
             const { error: whError } = await supabase
