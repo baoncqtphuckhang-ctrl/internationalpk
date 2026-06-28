@@ -115,6 +115,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [configActiveVersionId, setConfigActiveVersionId] = useState(null);
     const [copyModal, setCopyModal] = useState({ isOpen: false });
     const [copyFromProject, setCopyFromProject] = useState('');
+    const [isEditingConfig, setIsEditingConfig] = useState(false);
 
     // Form state
     const [formData, setFormData] = useState(() => {
@@ -325,25 +326,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         }
 
         try {
-            // Save project material template to localStorage so it remembers the material names/units for next time
-            try {
-                const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-                const cleanCategoriesForTemplate = formData.categories.map(cat => ({
-                    name: cat.name,
-                    items: cat.items.map(it => ({
-                        stt: it.stt,
-                        name: it.name,
-                        unit: it.unit,
-                        colorCode: it.colorCode || "",
-                        quantity: "", // template has blank quantity
-                        price: it.price || ""
-                    }))
-                }));
-                projectTemplates[formData.project_name] = cleanCategoriesForTemplate;
-                localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
-            } catch (tempErr) {
-                console.error("Error saving project material template:", tempErr);
-            }
+            // NOTE: We no longer auto-overwrite the material template when placing an order.
+            // The template is now strictly managed in the "Cấu hình Danh mục" view.
+            // This prevents the bug where saving an order wipes out all configured price versions.
 
             if (isDbStorage) {
                 if (formData.id) {
@@ -595,16 +580,19 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
     const handleSwitchVersion = (vid) => {
         // Save current changes to current version before switching
-        const currentUpdated = configVersions.map(v => 
-            v.id === activeVersionId ? { ...v, categories: configCategories } : v
-        );
-        setConfigVersions(currentUpdated);
+        if (isEditingConfig) {
+            const currentUpdated = configVersions.map(v => 
+                v.id === activeVersionId ? { ...v, categories: configCategories } : v
+            );
+            setConfigVersions(currentUpdated);
+        }
         
         setActiveVersionId(vid);
-        const ver = currentUpdated.find(v => v.id === vid);
+        const ver = configVersions.find(v => v.id === vid);
         if (ver) {
             setConfigCategories(JSON.parse(JSON.stringify(ver.categories)));
         }
+        setIsEditingConfig(false);
     };
 
     const handleAddVersion = () => {
@@ -1149,24 +1137,44 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 </select>
                             </div>
                             <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                <button 
-                                    onClick={() => setCopyModal({ isOpen: true })}
-                                    className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-indigo-200"
-                                >
-                                    <Download size={18} /> Chép từ công trình khác
-                                </button>
-                                <button 
-                                    onClick={handleAddVersion}
-                                    className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-emerald-200"
-                                >
-                                    <Copy size={18} /> Thêm đợt giá (từ đợt hiện tại)
-                                </button>
-                                <button 
-                                    onClick={handleDeleteVersion}
-                                    className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-red-200"
-                                >
-                                    <Trash2 size={18} /> Xóa đợt này
-                                </button>
+                                {!isEditingConfig ? (
+                                    <button 
+                                        onClick={() => setIsEditingConfig(true)}
+                                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-blue-200"
+                                    >
+                                        <Edit2 size={18} /> Chỉnh sửa đợt giá này
+                                    </button>
+                                ) : (
+                                    <>
+                                        <button 
+                                            onClick={() => setCopyModal({ isOpen: true })}
+                                            className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-indigo-200"
+                                        >
+                                            <Download size={18} /> Chép từ công trình khác
+                                        </button>
+                                        <button 
+                                            onClick={handleAddVersion}
+                                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-emerald-200"
+                                        >
+                                            <Copy size={18} /> Thêm đợt giá (từ đợt hiện tại)
+                                        </button>
+                                        <button 
+                                            onClick={handleDeleteVersion}
+                                            className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-red-200"
+                                        >
+                                            <Trash2 size={18} /> Xóa đợt này
+                                        </button>
+                                        <button 
+                                            onClick={() => {
+                                                setIsEditingConfig(false);
+                                                handleSwitchVersion(activeVersionId); // Revert changes
+                                            }}
+                                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-slate-300"
+                                        >
+                                            <X size={18} /> Hủy sửa
+                                        </button>
+                                    </>
+                                )}
                             </div>
                         </div>
 
@@ -1187,16 +1195,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 <label className="block text-sm font-bold text-slate-700 mb-2">Ngày bắt đầu áp dụng (của đợt đang sửa):</label>
                                 <input 
                                     type="date" 
+                                    disabled={!isEditingConfig}
                                     value={configVersions.find(v => v.id === activeVersionId)?.date || ''}
                                     onChange={(e) => {
                                         setConfigVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, date: e.target.value } : v));
                                     }}
-                                    className="w-full p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
+                                    className={`w-full p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none transition ${isEditingConfig ? 'focus:border-blue-500' : 'opacity-70 cursor-not-allowed'}`}
                                 />
                             </div>
                         </div>
 
-                        <div className="space-y-6">
+                        <div className={`space-y-6 ${!isEditingConfig ? 'pointer-events-none opacity-90' : ''}`}>
                             {configCategories.map((cat, catIdx) => (
                                 <div key={catIdx} className="border-2 border-slate-200 rounded-2xl overflow-hidden group">
                                     <div className="bg-slate-100 p-3 border-b-2 border-slate-200 flex items-center justify-between">
@@ -1287,23 +1296,25 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                 </div>
                                             ))}
                                         </div>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => {
-                                                const updated = [...configCategories];
-                                                updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', price: '', colorCode: '' });
-                                                setConfigCategories(updated);
-                                            }}
-                                            className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                        >
-                                            <Plus size={14} /> Thêm vật tư
-                                        </button>
+                                        {isEditingConfig && (
+                                            <button 
+                                                type="button" 
+                                                onClick={() => {
+                                                    const updated = [...configCategories];
+                                                    updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', price: '', colorCode: '' });
+                                                    setConfigCategories(updated);
+                                                }}
+                                                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
+                                            >
+                                                <Plus size={14} /> Thêm vật tư
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             ))}
                         </div>
                         
-                        <div className="mt-4">
+                        {isEditingConfig && (
                             <button 
                                 type="button" 
                                 onClick={() => {
@@ -1315,14 +1326,14 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             >
                                 <Plus size={16} /> Thêm Hạng Mục Mới
                             </button>
-                        </div>
+                        )}
                     </div>
                     
                     <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
                         <button type="button" onClick={() => setView('list')} className="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition">
                             Hủy
                         </button>
-                        <button onClick={handleSaveConfig} className="bg-blue-600 hover:bg-blue-700 text-white px-8 py-3 rounded-xl font-black shadow-lg shadow-blue-600/20 transition flex items-center gap-2">
+                        <button disabled={!isEditingConfig} onClick={handleSaveConfig} className={`px-8 py-3 rounded-xl font-black transition flex items-center gap-2 ${isEditingConfig ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
                             <Save size={18} /> LƯU CẤU HÌNH
                         </button>
                     </div>
