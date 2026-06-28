@@ -1125,10 +1125,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     <option key={p.name} value={p.name}>{p.name}</option>
                                 ))}
                             </select>
-                            <p className="text-xs text-slate-500 mt-2 italic">Lưu ý: Bạn đang định nghĩa danh sách vật tư mặc định sẽ hiện ra mỗi khi lập Đơn đặt hàng mới cho công trình này.</p>
-                        </div>
-                        
-                        <div className="mb-6 flex flex-col md:flex-row items-start md:items-end gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+<p className="text-xs text-slate-500 mt-2 italic">Lưu ý: Bạn đang định nghĩa danh sách vật tư mặc định sẽ hiện ra mỗi khi lập Đơn đặt hàng mới cho công trình này.</p>
+</div>
+<div className="mb-6 flex flex-col md:flex-row items-start md:items-end gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
                             <div className="w-full md:w-auto flex-1">
                                 <label className="block text-sm font-bold text-slate-700 mb-2">Đợt giá (Ngày áp giá):</label>
                                 <select
@@ -1142,6 +1141,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 </select>
                             </div>
                             <div className="flex flex-wrap gap-2 w-full md:w-auto">
+                                <button 
                                     onClick={() => setCopyModal({ isOpen: true })}
                                     className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-indigo-200"
                                 >
