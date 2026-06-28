@@ -130,7 +130,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             company: '',
             recipient: firstProj?.cht_name ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) : '',
             categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-            show_signature: true
+            show_signature: true,
+            price_batch: ''
         };
     });
 
@@ -319,6 +320,10 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             created_by: currentUser.username
         };
 
+        if (payload.items && payload.items.length > 0) {
+            payload.items[0]._price_batch = formData.price_batch;
+        }
+
         try {
             // Save project material template to localStorage so it remembers the material names/units for next time
             try {
@@ -411,6 +416,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             project: formData.project_name,
                             paymentMethod: 'chuyen_khoan',
                             orderPhase: formData.order_phase,
+                            priceBatch: formData.price_batch,
                             material_order_id: formData.id,
                             items: itemsList
                         })
@@ -524,6 +530,10 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     };
 
     const openEdit = (order) => {
+        let pb = '';
+        if (order.items && order.items.length > 0 && order.items[0]._price_batch) {
+            pb = order.items[0]._price_batch;
+        }
         setFormData({
             id: order.id,
             project_name: order.project_name,
@@ -534,7 +544,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             company: order.company,
             recipient: order.recipient,
             categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-            show_signature: order.show_signature !== undefined ? order.show_signature : true
+            show_signature: order.show_signature !== undefined ? order.show_signature : true,
+            price_batch: pb
         });
         setView('create');
     };
@@ -1406,6 +1417,45 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     />
                                 </div>
                             )}
+
+                            <div className="space-y-2">
+                                <label className="block text-xs font-black text-slate-900 uppercase">Đợt giá áp dụng (Thay đổi đơn giá)</label>
+                                <select 
+                                    value={formData.price_batch || ''}
+                                    onChange={(e) => {
+                                        const selectedVerId = e.target.value;
+                                        setFormData(prev => {
+                                            const newData = { ...prev, price_batch: selectedVerId };
+                                            if (selectedVerId) {
+                                                const projData = getProjectMaterialTemplateData(prev.project_name);
+                                                const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.date || v.id}` === selectedVerId);
+                                                if (selectedVer && selectedVer.categories) {
+                                                    const newCats = JSON.parse(JSON.stringify(prev.categories));
+                                                    newCats.forEach(cat => {
+                                                        cat.items.forEach(item => {
+                                                            const verCat = selectedVer.categories.find(c => c.name === cat.name);
+                                                            if (verCat) {
+                                                                const verItem = verCat.items.find(i => i.name === item.name && (i.colorCode || '') === (item.colorCode || ''));
+                                                                if (verItem) {
+                                                                    item.price = verItem.price;
+                                                                }
+                                                            }
+                                                        });
+                                                    });
+                                                    newData.categories = newCats;
+                                                }
+                                            }
+                                            return newData;
+                                        });
+                                    }}
+                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
+                                >
+                                    <option value="">-- Giữ nguyên đơn giá hiện tại --</option>
+                                    {(getProjectMaterialTemplateData(formData.project_name)?.versions || []).map(v => (
+                                        <option key={v.id} value={`Đợt giá: ${v.date || v.id}`}>{`Đợt giá: ${v.date || v.id}`}</option>
+                                    ))}
+                                </select>
+                            </div>
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Hạng mục thi công</label>

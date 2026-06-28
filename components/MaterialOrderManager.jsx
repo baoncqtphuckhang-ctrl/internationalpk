@@ -352,6 +352,14 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             // Insert into material_warehouse
             const priceVal = parseFloat(currentItem.price?.toString().replace(/\D/g, '') || 0);
             
+            let priceBatchStr = (order.items && order.items[0] && order.items[0]._price_batch) || `Đợt giá: ${formatDateVN(order.order_date)}`;
+            // Make sure it doesn't duplicate the [Đợt giá:] prefix
+            if (priceBatchStr.startsWith('Đợt giá: ')) {
+                priceBatchStr = `[${priceBatchStr}]`;
+            } else if (!priceBatchStr.startsWith('[')) {
+                priceBatchStr = `[Đợt giá: ${priceBatchStr}]`;
+            }
+
             const warehousePayload = {
                 project_name: order.project_name,
                 transaction_type: 'NHẬP',
@@ -362,7 +370,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 date: itemData.date,
                 price: priceVal,
                 total_value: priceVal * parseFloat(itemData.qty),
-                note: `[Đợt giá: ${formatDateVN(order.order_date)}] Theo Đơn vật tư ${order.order_phase}. ${itemData.note || ''}`
+                note: `${priceBatchStr} Theo Đơn vật tư ${order.order_phase}. ${itemData.note || ''}`
             };
 
             const { error: whError } = await supabase
