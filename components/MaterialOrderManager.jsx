@@ -1578,12 +1578,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                         <th className="px-3 py-3 border-r border-black text-center w-20">Mã màu</th>
                                         <th className="px-3 py-3 border-r border-black text-center w-16">DVT</th>
                                         <th className="px-3 py-3 border-r border-black text-center w-16">Số lượng</th>
-                                        {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
-                                            <>
-                                                <th className="px-3 py-3 border-r border-black text-right w-24">Đơn giá</th>
-                                                <th className="px-3 py-3 border-r border-black text-right w-28">Thành tiền</th>
-                                            </>
-                                        )}
+                                        <th className="px-3 py-3 border-r border-black text-right w-24">Đơn giá</th>
+                                        <th className="px-3 py-3 border-r border-black text-right w-28">Thành tiền</th>
                                         <th className="px-3 py-3 w-[16%]">Ghi chú</th>
                                     </tr>
                                 </thead>
@@ -1611,7 +1607,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 <React.Fragment key={cat.id || cat.name || catIdx}>
                                                     {/* Category Header Row */}
                                                     <tr className="font-bold border-b border-black">
-                                                        <td colSpan={matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) ? "8" : "6"} className="px-4 py-2 border-r border-black">
+                                                        <td colSpan="8" className="px-4 py-2 border-r border-black">
                                                             {cat.name}
                                                         </td>
                                                     </tr>
@@ -1628,7 +1624,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         }
 
                                                         const allocatedAmount = matchedAllocated ? matchedAllocated.amount : 0;
-                                                        const unitPrice = qty > 0 ? (allocatedAmount / qty) : 0;
+                                                        const unitPrice = matchedAllocated ? (allocatedAmount / qty) : (parseFloat(it.price) || 0);
+                                                        const finalAllocated = matchedAllocated ? allocatedAmount : (unitPrice * qty);
                                                         const note = matchedAllocated?.note || it.note || '';
 
                                                         return (
@@ -1638,16 +1635,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-medium">{it.colorCode || '-'}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center">{it.unit}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-bold">{qty}</td>
-                                                                {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
-                                                                    <>
-                                                                        <td className="px-4 py-2.5 border-r border-black text-right">
-                                                                            {formatCurrency(unitPrice)}
-                                                                        </td>
-                                                                        <td className="px-4 py-2.5 border-r border-black text-right font-bold text-blue-800">
-                                                                            {formatCurrency(allocatedAmount)}
-                                                                        </td>
-                                                                    </>
-                                                                )}
+                                                                <td className="px-4 py-2.5 border-r border-black text-right">
+                                                                    {formatCurrency(unitPrice)}
+                                                                </td>
+                                                                <td className="px-4 py-2.5 border-r border-black text-right font-bold text-blue-800">
+                                                                    {formatCurrency(finalAllocated)}
+                                                                </td>
                                                                 <td className="px-4 py-2.5 text-xs text-slate-500">{note}</td>
                                                             </tr>
                                                         );
@@ -1657,16 +1650,32 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                         });
                                     })()}
 
-                                    {/* Grand Total Row (Only if Accounted) */}
-                                    {matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0) && (
-                                        <tr className="font-bold border-t-2 border-black text-base">
-                                            <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng hạch toán thực tế:</td>
-                                            <td className="px-4 py-3 border-r border-black text-right font-bold text-lg">
-                                                {formatCurrency(matchedRequest.total_amount)}
-                                            </td>
-                                            <td className="px-4 py-3"></td>
-                                        </tr>
-                                    )}
+                                    {/* Grand Total Row */}
+                                    <tr className="font-bold border-t-2 border-black text-base">
+                                        <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng:</td>
+                                        <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-blue-800">
+                                            {formatCurrency(
+                                                safeItems.reduce((total, cat) => {
+                                                    let globalItemsList = [];
+                                                    if (matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0)) {
+                                                        try {
+                                                            globalItemsList = JSON.parse(matchedRequest.reason).items || [];
+                                                        } catch (e) { }
+                                                    }
+                                                    return total + (Array.isArray(cat?.items) ? cat.items : []).reduce((sum, item) => {
+                                                        const qty = parseFloat(item.quantity) || 0;
+                                                        let matched = null;
+                                                        if (globalItemsList.length > 0) {
+                                                            matched = globalItemsList.find(ai => ai.content.includes(item.name));
+                                                        }
+                                                        if (matched) return sum + matched.amount;
+                                                        return sum + (parseFloat(item.price) || 0) * qty;
+                                                    }, 0);
+                                                }, 0)
+                                            )}
+                                        </td>
+                                        <td className="px-4 py-3"></td>
+                                    </tr>
                                 </tbody>
                             </table>
                         </div>
