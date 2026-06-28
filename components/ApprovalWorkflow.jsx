@@ -299,12 +299,16 @@ export default function ApprovalWorkflow({
             debit: parseFloat(d.amount) || 0,
             note: `[${distributeItem.orderPhase ? distributeItem.orderPhase : `Đợt ${distributeItem.phase || 1}`}] [${distributeItem.doc_type}] ${d.content}`,
             recipient: distributeItem.recipient,
-            corresponding_account: status === 'CHƯA XONG' ? '331' : (d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121')),
+            corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate,
             invoice_no: d.invoiceNumber
         }));
 
-        onAccountDNTT(distributeItem.id, payload);
+        if (status === 'ĐÃ XONG') {
+            onAccountDNTT(distributeItem.id, payload);
+        } else {
+            onAccountDNTT(distributeItem.id, []);
+        }
 
         if (onAddDebt) {
             const hasVatTu = distributionData.some(d => ['621', '623'].includes(d.code));
