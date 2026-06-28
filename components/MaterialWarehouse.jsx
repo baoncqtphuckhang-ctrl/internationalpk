@@ -441,14 +441,21 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     const inventory = {};
     transactions.forEach(t => {
         const phase = extractPhaseFromNote(t.note);
-        const key = `${t.project_name}_${t.material_name}_${t.color_code}_${t.unit}_${phase}`;
+        const pName = (t.project_name || '').trim().toUpperCase();
+        const mName = (t.material_name || '').trim().toUpperCase();
+        const cCode = (t.color_code || '').trim().toUpperCase();
+        const unit = (t.unit || '').trim().toUpperCase();
+        const pPhase = phase.trim().toUpperCase();
+        
+        const key = `${pName}_${mName}_${cCode}_${unit}_${pPhase}`;
+        
         if (!inventory[key]) {
             inventory[key] = {
-                project_name: t.project_name,
-                material_name: t.material_name,
-                color_code: t.color_code,
-                unit: t.unit,
-                price_phase: phase,
+                project_name: (t.project_name || '').trim(),
+                material_name: (t.material_name || '').trim(),
+                color_code: (t.color_code || '').trim(),
+                unit: (t.unit || '').trim(),
+                price_phase: phase.trim(),
                 totalImport: 0,
                 totalExport: 0,
                 export_transactions: [],
