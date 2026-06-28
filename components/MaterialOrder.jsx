@@ -884,14 +884,12 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                               o.order_phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
                               o.recipient.toLowerCase().includes(searchTerm.toLowerCase());
         
-        // Hide orders whose DNTT was deleted
         const req = getMatchedRequest(o);
-        const isDeleted = dnttList && dnttList.length > 0 && req === null && o.id && !o.id.toString().startsWith('local_');
-
         // Hide successfully placed orders (only show Rejected or Draft)
-        const isPlaced = req && req.status !== 'Rejected' && req.status !== 'Draft';
+        const status = req ? req.status : 'Draft';
+        const isPlaced = status !== 'Rejected' && status !== 'Bị từ chối' && status !== 'Draft';
 
-        return matchesProject && matchesSearch && !isDeleted && !isPlaced;
+        return matchesProject && matchesSearch && !isPlaced;
     });
 
     return (
@@ -992,7 +990,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
                                     : 0;
                                 const req = getMatchedRequest(order);
-                                const isRejected = req && req.status === 'Rejected';
+                                const isRejected = req && (req.status === 'Rejected' || req.status === 'Bị từ chối');
                                 return (
                                     <div 
                                         key={order.id} 
