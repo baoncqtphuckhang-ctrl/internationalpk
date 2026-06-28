@@ -61,6 +61,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     
     const [expandedItems, setExpandedItems] = useState({});
     const [uploadingId, setUploadingId] = useState(null);
+    const [editReceiveModal, setEditReceiveModal] = useState({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null });
 
     const toggleItemExpansion = (key) => {
         setExpandedItems(prev => ({...prev, [key]: !prev[key]}));
@@ -317,6 +318,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             if (updateError) throw updateError;
 
             // Insert into material_warehouse
+            const priceVal = parseFloat(currentItem.price?.toString().replace(/\D/g, '') || 0);
+            
             const warehousePayload = {
                 project_name: order.project_name,
                 transaction_type: 'NHẬP',
@@ -325,6 +328,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 unit: currentItem.unit,
                 quantity: parseFloat(itemData.qty),
                 date: itemData.date,
+                price: priceVal,
+                total_value: priceVal * parseFloat(itemData.qty),
                 note: `[Đợt giá: ${order.order_phase}] Theo Đơn vật tư ngày ${formatDateVN(order.order_date)}. ${itemData.note || ''}`
             };
 
@@ -391,6 +396,82 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         } catch (err) {
             console.error('Delete Receive Error:', err);
             showToast('Có lỗi xảy ra khi xóa!', 'error');
+        } finally {
+            setIsSavingReceive(false);
+        }
+    };
+
+    const handleSaveEditReceive = async () => {
+        const { data: edData, order, catIdx, itemIdx, historyIdx, oldItem } = editReceiveModal;
+        if (!edData.qty || edData.qty <= 0 || !edData.date) {
+            showToast('Vui lòng nhập đủ ngày và số lượng hợp lệ!', 'error');
+            return;
+        }
+
+        setIsSavingReceive(true);
+        try {
+            const currentItem = order.items[catIdx].items[itemIdx];
+            const newHistory = [...currentItem.received_history];
+            newHistory[historyIdx] = {
+                ...oldItem,
+                date: edData.date,
+                qty: parseFloat(edData.qty),
+                note: edData.note || ''
+            };
+
+            // Cập nhật mảng history trong order
+            const newOrderItems = [...order.items];
+            newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
+            newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
+            newOrderItems[catIdx].items[itemIdx] = {
+                ...currentItem,
+                received_history: newHistory
+            };
+
+            const { error: updateError } = await supabase
+                .from('material_orders')
+                .update({ items: newOrderItems })
+                .eq('id', order.id);
+
+            if (updateError) throw updateError;
+
+            // Xóa record cũ trong kho
+            await supabase
+                .from('material_warehouse')
+                .delete()
+                .eq('project_name', order.project_name)
+                .eq('material_name', currentItem.name)
+                .eq('quantity', oldItem.qty)
+                .eq('date', oldItem.date)
+                .eq('transaction_type', 'NHẬP');
+
+            // Insert record mới vào kho
+            const priceVal = parseFloat(currentItem.price?.toString().replace(/\D/g, '') || 0);
+            const warehousePayload = {
+                project_name: order.project_name,
+                transaction_type: 'NHẬP',
+                material_name: currentItem.name,
+                color_code: currentItem.colorCode || currentItem.color_code || '',
+                unit: currentItem.unit,
+                quantity: parseFloat(edData.qty),
+                date: edData.date,
+                price: priceVal,
+                total_value: priceVal * parseFloat(edData.qty),
+                note: `[Đợt giá: ${order.order_phase}] Theo Đơn vật tư ngày ${formatDateVN(order.order_date)}. ${edData.note || ''}`
+            };
+
+            const { error: whError } = await supabase
+                .from('material_warehouse')
+                .insert([warehousePayload]);
+
+            if (whError) throw whError;
+
+            showToast('Đã sửa đợt nhận hàng thành công!');
+            setEditReceiveModal({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null, oldItem: null });
+            await fetchOrders();
+        } catch (err) {
+            console.error('Save Edit Receive Error:', err);
+            showToast('Có lỗi xảy ra khi sửa!', 'error');
         } finally {
             setIsSavingReceive(false);
         }
@@ -1327,13 +1408,15 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                             <div className="flex items-center justify-center gap-1.5">
                                                                                                                 <button 
                                                                                                                     onClick={() => {
-                                                                                                                        const newQty = window.prompt('Nhập số lượng mới:', h.qty);
-                                                                                                                        const newDate = window.prompt('Nhập ngày mới (YYYY-MM-DD):', h.date);
-                                                                                                                        const newNote = window.prompt('Nhập ghi chú mới:', h.note || '');
-                                                                                                                        if (newQty && newDate) {
-                                                                                                                            // We don't have an edit function yet, so notify user to delete and re-add for now, or just alert "Sắp ra mắt"
-                                                                                                                            showToast('Tính năng sửa trực tiếp đang được cập nhật. Vui lòng xóa và nhập lại đợt mới!', 'error');
-                                                                                                                        }
+                                                                                                                        setEditReceiveModal({
+                                                                                                                            isOpen: true,
+                                                                                                                            order: order,
+                                                                                                                            catIdx: catIdx,
+                                                                                                                            itemIdx: itemIdx,
+                                                                                                                            historyIdx: i,
+                                                                                                                            oldItem: h,
+                                                                                                                            data: { qty: h.qty, date: h.date, note: h.note || '' }
+                                                                                                                        });
                                                                                                                     }}
                                                                                                                     className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200"
                                                                                                                     title="Sửa đợt này"
@@ -1666,6 +1749,82 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-red-600/20 transition"
                             >
                                 Xóa vĩnh viễn
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Receive Modal */}
+            {editReceiveModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl w-full max-w-md shadow-2xl overflow-hidden flex flex-col">
+                        <div className="bg-indigo-600 px-5 py-4 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                                <Edit3 size={18} />
+                                Chỉnh sửa đợt nhận hàng
+                            </h3>
+                            <button 
+                                onClick={() => setEditReceiveModal({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null, oldItem: null })}
+                                className="text-white/70 hover:text-white transition"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+                        <div className="p-5 space-y-4">
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Ngày nhận <span className="text-red-500">*</span></label>
+                                <input 
+                                    type="date" 
+                                    value={editReceiveModal.data.date}
+                                    onChange={(e) => setEditReceiveModal(prev => ({...prev, data: {...prev.data, date: e.target.value}}))}
+                                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Số lượng <span className="text-red-500">*</span></label>
+                                <input 
+                                    type="number" 
+                                    value={editReceiveModal.data.qty}
+                                    onChange={(e) => setEditReceiveModal(prev => ({...prev, data: {...prev.data, qty: e.target.value}}))}
+                                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm font-medium"
+                                    placeholder="Nhập số lượng..."
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-bold text-slate-700 mb-1">Ghi chú</label>
+                                <textarea 
+                                    value={editReceiveModal.data.note}
+                                    onChange={(e) => setEditReceiveModal(prev => ({...prev, data: {...prev.data, note: e.target.value}}))}
+                                    className="w-full border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-sm resize-none"
+                                    rows="2"
+                                    placeholder="Nhập ghi chú nếu có..."
+                                />
+                            </div>
+                        </div>
+                        <div className="bg-slate-50 px-5 py-4 border-t border-slate-200 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setEditReceiveModal({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null, oldItem: null })}
+                                className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-white border border-slate-300 hover:bg-slate-50 transition"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                onClick={handleSaveEditReceive}
+                                disabled={isSavingReceive}
+                                className="px-5 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {isSavingReceive ? (
+                                    <>
+                                        <RefreshCw size={18} className="animate-spin" />
+                                        Đang lưu...
+                                    </>
+                                ) : (
+                                    <>
+                                        <Save size={18} />
+                                        Lưu thay đổi
+                                    </>
+                                )}
                             </button>
                         </div>
                     </div>
