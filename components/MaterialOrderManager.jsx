@@ -964,15 +964,15 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 </div>
                             ) : (
                                 <div className="overflow-x-auto custom-scrollbar">
-                                    <table className="w-full text-left border-collapse" style={{ minWidth: '1100px' }}>
+                                    <table className="w-full text-left border-collapse min-w-max md:min-w-full">
                                         <thead>
                                             <tr className="bg-slate-50/70 border-b border-slate-100 text-[11px] font-black uppercase text-slate-400 tracking-wider whitespace-nowrap">
-                                                <th className="px-6 py-4">Ngày đặt</th>
+                                                <th className="px-6 py-4 hidden md:table-cell">Ngày đặt</th>
                                                 <th className="px-6 py-4">Công trình</th>
                                                 <th className="px-6 py-4">Đợt đặt hàng</th>
-                                                <th className="px-6 py-4">Người nhận</th>
-                                                <th className="px-6 py-4">Người đặt</th>
-                                                <th className="px-6 py-4 text-center">Số vật tư</th>
+                                                <th className="px-6 py-4 hidden lg:table-cell">Người nhận</th>
+                                                <th className="px-6 py-4 hidden xl:table-cell">Người đặt</th>
+                                                <th className="px-6 py-4 text-center hidden sm:table-cell">Số vật tư</th>
                                                 <th className="px-6 py-4">Trạng thái</th>
                                                 <th className="px-6 py-4 text-right">Hạch toán thực tế</th>
                                                 <th className="px-6 py-4 text-center">Thao tác</th>
@@ -1011,6 +1011,11 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         statusConfig = { label: 'Chờ nhận hàng', color: 'bg-amber-50 text-amber-700 border-amber-100', icon: Clock };
                                                         StatusIcon = Clock;
                                                     }
+                                                } else {
+                                                    // For regular orders, combine receive status with accounting status
+                                                    if (isFullyReceived && (status === 'Paid' || status === 'Waiting QS' || status === 'Pending')) {
+                                                        statusConfig = { ...statusConfig, label: `Đã nhận đủ - ${statusConfig.label}` };
+                                                    }
                                                 }
                                                 
                                                 const itemCount = Array.isArray(order.items) 
@@ -1020,14 +1025,16 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 return (
                                                     <React.Fragment key={order.id}>
                                                         <tr 
-                                                            className={`hover:bg-slate-50/50 transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
-                                                            onDoubleClick={() => {
+                                                            className={`transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
+                                                            onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
+                                                            onDoubleClick={(e) => {
+                                                                e.stopPropagation();
                                                                 if (onNavigateToProject) {
                                                                     onNavigateToProject(order.project_name);
                                                                 }
                                                             }}
                                                         >
-                                                            <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400">
+                                                            <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400 hidden md:table-cell">
                                                                 {formatDateVN(order.order_date)}
                                                             </td>
                                                             <td className="px-6 py-4 font-bold text-slate-800">
@@ -1038,13 +1045,13 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                     {order.order_phase}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-6 py-4 truncate max-w-[150px]">
+                                                            <td className="px-6 py-4 truncate max-w-[150px] hidden lg:table-cell">
                                                                 {order.recipient.split('(')[0]}
                                                             </td>
-                                                            <td className="px-6 py-4 truncate max-w-[120px] text-slate-500 italic">
+                                                            <td className="px-6 py-4 truncate max-w-[120px] text-slate-500 italic hidden xl:table-cell">
                                                                 {order.created_by || '-'}
                                                             </td>
-                                                            <td className="px-6 py-4 text-center font-bold">
+                                                            <td className="px-6 py-4 text-center font-bold hidden sm:table-cell">
                                                                 {itemCount}
                                                             </td>
                                                             <td className="px-6 py-4 whitespace-nowrap">
@@ -1053,7 +1060,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                     {statusConfig.label}
                                                                 </span>
                                                             </td>
-                                                            <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold">
+                                                            <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold hidden md:table-cell">
                                                                 {status === 'Approved' || (req && req.total_amount > 0) ? (
                                                                      <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
                                                                 ) : (
@@ -1115,18 +1122,15 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                             <h4 className="font-bold text-slate-800 text-sm">Theo dõi lượng hàng về (Đơn: {order.order_phase})</h4>
                                                                         </div>
                                                                         <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
-                                                                            <table className="w-full text-xs text-left min-w-[700px]">
+                                                                            <table className="w-full text-xs text-left min-w-[500px] md:min-w-[700px]">
                                                                                 <thead className="bg-slate-50 text-slate-500 uppercase font-black border-b border-slate-200">
                                                                                     <tr>
-                                                                                        <th className="px-4 py-3">Vật tư</th>
-                                                                                        <th className="px-4 py-3 text-center w-16">ĐVT</th>
-                                                                                        <th className="px-4 py-3 text-center w-20">Tổng Đặt</th>
-                                                                                        <th className="px-4 py-3 text-center w-20">Đã Về</th>
-                                                                                        <th className="px-4 py-3 text-center w-20">Còn Thiếu</th>
-                                                                                        <th className="px-4 py-3 bg-blue-50/50 w-32">Ngày Về đợt này</th>
-                                                                                        <th className="px-4 py-3 bg-blue-50/50 text-center w-20">Số lượng</th>
-                                                                                        <th className="px-4 py-3 bg-blue-50/50">Ghi chú</th>
-                                                                                        <th className="px-4 py-3 bg-blue-50/50 w-12"></th>
+                                                                                        <th className="px-3 py-3">Vật tư & ĐVT</th>
+                                                                                        <th className="px-3 py-3 text-center">SL (Tổng/Về/Thiếu)</th>
+                                                                                        <th className="px-3 py-3 bg-blue-50/50 w-28">Ngày Về</th>
+                                                                                        <th className="px-3 py-3 bg-blue-50/50 text-center w-20">SL Nhập</th>
+                                                                                        <th className="px-3 py-3 bg-blue-50/50">Ghi chú</th>
+                                                                                        <th className="px-3 py-3 bg-blue-50/50 w-12"></th>
                                                                                     </tr>
                                                                                 </thead>
                                                                                 <tbody className="divide-y divide-slate-100">
@@ -1145,26 +1149,29 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 return (
                                                                     <React.Fragment key={itemIdx}>
                                                                         <tr className="hover:bg-slate-50/50 transition">
-                                                                            <td className="px-4 py-3 font-bold text-slate-700">
-                                                                                <div className="flex items-center justify-between">
+                                                                            <td 
+                                                                                className={`px-3 py-3 font-bold text-slate-700 transition ${receivedHistory.length > 0 ? 'cursor-pointer hover:text-indigo-600' : ''}`}
+                                                                                onClick={() => receivedHistory.length > 0 && toggleItemExpansion(`${order.id}_${catIdx}_${itemIdx}`)}
+                                                                                title={receivedHistory.length > 0 ? "Nhấn để xem các đợt nhận hàng" : ""}
+                                                                            >
+                                                                                <div className="flex flex-col gap-1">
                                                                                     <div>
                                                                                         {item.name} <span className="text-slate-400 font-normal">{item.colorCode || item.color_code ? `(${item.colorCode || item.color_code})` : ''}</span>
                                                                                     </div>
+                                                                                    <div className="text-slate-500 text-[10px] uppercase">{item.unit}</div>
                                                                                     {receivedHistory.length > 0 && (
-                                                                                        <button 
-                                                                                            onClick={() => toggleItemExpansion(`${order.id}_${catIdx}_${itemIdx}`)}
-                                                                                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md transition flex items-center gap-1 border border-slate-200"
-                                                                                        >
+                                                                                        <div className="mt-1 inline-flex items-center gap-1 text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded w-max">
                                                                                             {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? 'Ẩn đợt nhận' : `Xem ${receivedHistory.length} đợt`}
-                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-                                                                                        </button>
+                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                                                                        </div>
                                                                                     )}
                                                                                 </div>
                                                                             </td>
-                                                                            <td className="px-4 py-3 text-center text-slate-500 font-bold">{item.unit}</td>
-                                                                            <td className="px-4 py-3 text-center font-bold text-slate-900">{orderQty}</td>
-                                                                            <td className="px-4 py-3 text-center font-black text-sky-600">{totalReceived}</td>
-                                                                            <td className={`px-4 py-3 text-center font-black ${statusColor}`}>{remaining > 0 ? remaining : 0}</td>
+                                                                            <td className="px-3 py-3 text-center text-[10px] leading-relaxed">
+                                                                                <div className="text-slate-500">Đặt: <strong className="text-slate-900">{orderQty}</strong></div>
+                                                                                <div className="text-slate-500">Về: <strong className="text-sky-600">{totalReceived}</strong></div>
+                                                                                <div className="text-slate-500">Thiếu: <strong className={statusColor}>{remaining > 0 ? remaining : 0}</strong></div>
+                                                                            </td>
                                                                             
                                                                             <td className="px-4 py-2 bg-blue-50/20">
                                                                                 {remaining > 0 ? (
@@ -1181,21 +1188,21 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                     <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded">Đã giao đủ</span>
                                                                                 )}
                                                                             </td>
-                                                                            <td className="px-4 py-2 bg-blue-50/20 text-center">
+                                                                            <td className="px-3 py-2 bg-blue-50/20 text-center">
                                                                                 {remaining > 0 && (
                                                                                     <input 
                                                                                         type="number"
                                                                                         min="0"
                                                                                         max={remaining}
                                                                                         step="any"
-                                                                                        placeholder="Số lượng về"
-                                                                                        className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-center outline-none focus:border-blue-500 font-bold text-slate-700 text-xs"
+                                                                                        placeholder="Số lượng"
+                                                                                        className="w-16 md:w-24 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-center outline-none focus:border-blue-500 font-bold text-slate-700 text-xs"
                                                                                         value={itemInputData.qty || ''}
                                                                                         onChange={(e) => setReceiveData(prev => ({...prev, [inputKey]: { ...prev[inputKey], qty: e.target.value }}))}
                                                                                     />
                                                                                 )}
                                                                             </td>
-                                                                            <td className="px-4 py-2 bg-blue-50/20">
+                                                                            <td className="px-3 py-2 bg-blue-50/20">
                                                                                 {remaining > 0 && (
                                                                                     <input 
                                                                                         type="text"
@@ -1227,8 +1234,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                         </tr>
                                                                         {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] && receivedHistory.length > 0 && (
                                                                             <tr className="bg-slate-50/50">
-                                                                                <td colSpan="9" className="p-3 pl-8">
-                                                                                    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                                                                                <td colSpan="6" className="p-2 md:p-3 md:pl-8">
+                                                                                    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-x-auto">
                                                                                         <table className="w-full text-xs text-left">
                                                                                             <thead className="bg-indigo-50/50 text-indigo-800 border-b border-slate-200">
                                                                                                 <tr>

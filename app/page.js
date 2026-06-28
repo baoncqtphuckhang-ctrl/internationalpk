@@ -1666,11 +1666,11 @@ export default function Home() {
                         <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm">
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
-                            {currentUser?.role === 'ADMIN' && (
+                            {['ADMIN', 'CHỈ HUY TRƯỞNG'].includes(currentUser?.role?.toUpperCase()) && (
                                 <button onClick={() => setMaterialSubTab('warehouse')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
                             )}
                         </div>
-                        {materialSubTab === 'warehouse' && currentUser?.role === 'ADMIN' ? (
+                        {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG'].includes(currentUser?.role?.toUpperCase()) ? (
                             <MaterialWarehouse 
                                 currentUser={currentUser} 
                                 projects={allowedProjects} 

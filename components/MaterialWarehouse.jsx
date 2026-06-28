@@ -112,6 +112,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
         fetchTransactions();
     }, []);
 
+    const [infoModal, setInfoModal] = useState({ isOpen: false, message: '' });
+
     const handleOpenModal = (type) => {
         setModalType(type);
         setFormData({
@@ -337,7 +339,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
 
                     if (autoCount > 0) {
                         showToast('Lưu ý: Không thể xóa dữ liệu Tự động!', 'warning');
-                        alert(`Trong nhóm vật tư này có chứa ${autoCount} dữ liệu được nhập tự động từ Đơn Đặt Hàng.\n\nKho Vật Tư chỉ cho phép quản lý tồn kho. Để xóa hoàn toàn các đợt giá tự động này (hoặc để reset lại Đợt 1), bạn vui lòng sang tab "Quản lý Đơn Vật tư" để xóa Đơn Hàng tương ứng.`);
+                        setInfoModal({ isOpen: true, message: `Trong nhóm vật tư này có chứa ${autoCount} dữ liệu được nhập tự động từ Đơn Đặt Hàng.\n\nKho Vật Tư chỉ cho phép quản lý tồn kho. Để xóa hoàn toàn các đợt giá tự động này (hoặc để reset lại Đợt 1), bạn vui lòng sang tab "Quản lý Đơn Vật tư" để xóa Đơn Hàng tương ứng.`});
                     } else {
                         showToast('Đã xóa toàn bộ dữ liệu vật tư này!');
                     }
@@ -556,9 +558,11 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        <button onClick={() => handleOpenModal('NHẬP')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-sm shadow-blue-600/20">
-                            <ArrowDownToLine size={18} /> Nhập Kho
-                        </button>
+                        {currentUser?.role?.toUpperCase() !== 'CHỈ HUY TRƯỞNG' && (
+                            <button onClick={() => handleOpenModal('NHẬP')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-sm shadow-blue-600/20">
+                                <ArrowDownToLine size={18} /> Nhập Kho
+                            </button>
+                        )}
                         <button onClick={() => handleOpenModal('XUẤT')} className="bg-amber-500 hover:bg-amber-600 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-sm shadow-amber-500/20">
                             <ArrowUpFromLine size={18} /> Xuất Kho
                         </button>
@@ -1149,6 +1153,18 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 onConfirm={confirmModal.onConfirm}
                 onCancel={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })}
             />
+
+            {infoModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-[9999]">
+                    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
+                        <h3 className="text-xl font-black text-slate-800 mb-4">Thông báo</h3>
+                        <p className="text-sm text-slate-600 mb-6 whitespace-pre-line">{infoModal.message}</p>
+                        <div className="flex justify-end">
+                            <button onClick={() => setInfoModal({ isOpen: false, message: '' })} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition">OK</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
