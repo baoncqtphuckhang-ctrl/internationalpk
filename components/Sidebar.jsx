@@ -30,7 +30,8 @@ export default function Sidebar({
     onDeleteProject,
     handleExportBackup,
     systemConfig,
-    onOpenSystemConfig
+    onOpenSystemConfig,
+    usersList = []
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
     const [isProjectsMenuOpen, setIsProjectsMenuOpen] = useState(false);
@@ -40,6 +41,7 @@ export default function Sidebar({
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
     const isKeToanThue = currentUser?.role?.toUpperCase() === 'KẾ TOÁN THUẾ';
+    const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
 
     useEffect(() => {
         if (!isProjectsMenuOpen) {
@@ -262,7 +264,7 @@ export default function Sidebar({
                                                 <input type="password" value={deletePassword} onChange={(e) => setDeletePassword(e.target.value)} className="w-full bg-slate-900 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-white outline-none focus:border-red-500 mb-3" placeholder="Mật khẩu..." />
                                                 <div className="flex gap-2">
                                                     <button onClick={() => { 
-                                                        if (deletePassword === '123456') {
+                                                        if (deletePassword === adminPassword) {
                                                             onDeleteProject(p.name); 
                                                             setDeleteProjectConfirmName(null); 
                                                             setDeletePassword('');

@@ -39,6 +39,7 @@ const getSignatureName = (commanderName) => {
 };
 
 export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToProject, refreshData }) {
+    const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [isDbStorage, setIsDbStorage] = useState(false);
@@ -1739,7 +1740,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 onClick={() => {
                                     if (confirmModal.requirePassword) {
                                         const pwd = document.getElementById('deletePasswordInput')?.value;
-                                        if (pwd !== '123456') {
+                                        if (pwd !== adminPassword) {
                                             showToast('Mật khẩu không đúng!', 'error');
                                             return;
                                         }

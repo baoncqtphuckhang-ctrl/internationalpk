@@ -1585,6 +1585,7 @@ export default function Home() {
                 onDeleteProject={handleDeleteProject}
                 systemConfig={systemConfig}
                 onOpenSystemConfig={() => setIsSystemConfigModalOpen(true)}
+                usersList={usersList}
             />
 
             <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible">
@@ -1622,6 +1623,8 @@ export default function Home() {
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} />}
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
+                
+                {activeTab === 'expected-invoices' && <ExpectedInvoices invoices={expectedInvoices} incomes={allowedIncomes} setInvoices={setExpectedInvoices} projects={allowedProjects} projectDetails={projectDetails} showToast={showToast} currentUser={currentUser} transactions={allowedTransactions} onNavigateToProject={(projectName) => { setSelectedProject(projectName); setActiveTab('project-detail'); }} usersList={usersList} />}
                 
                 {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} projects={allowedProjects} refreshData={fetchData} />}
                 

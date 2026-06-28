@@ -5,6 +5,7 @@ import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronL
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
 export default function ProjectManager({ currentUser, projects, projectDetails, onUpsertProject, onDeleteProject, isLoading, usersList = [] }) {
+    const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [isAdding, setIsAdding] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -69,7 +70,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     };
 
     const confirmDelete = () => {
-        if (deleteModal.password !== '123456') {
+        if (deleteModal.password !== adminPassword) {
             alert('Mật khẩu không đúng!');
             return;
         }
