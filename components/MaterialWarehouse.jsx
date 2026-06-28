@@ -1099,20 +1099,22 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                 </div>
 
                                 <div className="grid grid-cols-2 gap-4">
-                                    <div>
-                                        <label className="block text-xs font-bold text-slate-500 mb-1">Đợt giá (Tùy chọn)</label>
-                                        <select 
-                                            value={formData.price_phase} 
-                                            onChange={(e) => setFormData({...formData, price_phase: e.target.value})}
-                                            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 focus:border-indigo-500 outline-none font-bold text-indigo-700 bg-indigo-50"
-                                        >
-                                            <option value="">-- Không chọn --</option>
-                                            {projectVersions.map((v, i) => (
-                                                <option key={v.id} value={v.name || `Đợt ${i + 1} - ${v.date}`}>{v.name || `Đợt ${i + 1} - Áp dụng từ ${formatDateVN(v.date)}`}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
+                                    {modalType === 'NHẬP' && (
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Đợt giá (Tùy chọn)</label>
+                                            <select 
+                                                value={formData.price_phase} 
+                                                onChange={(e) => setFormData({...formData, price_phase: e.target.value})}
+                                                className="w-full border border-slate-200 rounded-xl px-3 py-2.5 focus:border-indigo-500 outline-none font-bold text-indigo-700 bg-indigo-50"
+                                            >
+                                                <option value="">-- Không chọn --</option>
+                                                {projectVersions.map((v, i) => (
+                                                    <option key={v.id} value={v.name || `Đợt ${i + 1} - ${v.date}`}>{v.name || `Đợt ${i + 1} - Áp dụng từ ${formatDateVN(v.date)}`}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                    )}
+                                    <div className={modalType === 'XUẤT' ? 'col-span-2' : ''}>
                                         <label className="block text-xs font-bold text-slate-500 mb-1">Ghi chú</label>
                                         <input 
                                             type="text" 

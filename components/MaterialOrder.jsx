@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    ClipboardList, Plus, Trash2, Edit3, Printer, 
+    ClipboardList, Plus, Trash2, Edit3, Edit2, Printer, 
     Download, Save, X, Search, MapPin, Briefcase, 
     User, Calendar, Info, Check, Copy
 } from 'lucide-react';
@@ -12,7 +12,7 @@ import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
 import CurrencyInput from './CurrencyInput';
 
-const DEFAULT_CATEGORIES = [
+export const DEFAULT_CATEGORIES = [
     {
         name: "Hệ nội thất",
         items: [
@@ -43,7 +43,7 @@ const getNextOrderPhaseForProject = (projectName, ordersList) => {
     return `ĐỢT ${maxPhase + 1}`;
 };
 
-const getProjectMaterialTemplateData = (projectName) => {
+export const getProjectMaterialTemplateData = (projectName) => {
     if (!projectName) return { versions: [] };
     try {
         const savedTemplates = localStorage.getItem('misa_project_material_templates');
@@ -107,49 +107,44 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [isCustomCompany, setIsCustomCompany] = useState(false);
 
-    // Config state
-    const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
-    const [configVersions, setConfigVersions] = useState([]);
-    const [activeVersionId, setActiveVersionId] = useState('');
-    const [configCategories, setConfigCategories] = useState([]);
-    const [configActiveVersionId, setConfigActiveVersionId] = useState(null);
-    const [copyModal, setCopyModal] = useState({ isOpen: false });
-    const [copyFromProject, setCopyFromProject] = useState('');
-    const [isEditingConfig, setIsEditingConfig] = useState(false);
-
     // Form state
-    const [formData, setFormData] = useState(() => {
-        const firstProj = projects[0];
-        const projName = firstProj?.name || '';
-        return {
-            id: null,
-            project_name: projName,
-            order_phase: 'ĐỢT 1',
-            order_date: new Date().toISOString().split('T')[0],
-            address: firstProj?.address || '',
-            category: 'THI CÔNG SƠN NƯỚC',
-            company: '',
-            recipient: firstProj?.cht_name ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) : '',
-            categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-            show_signature: true,
-            price_batch: ''
-        };
+    const [formData, setFormData] = useState({
+        id: null,
+        project_name: '',
+        order_phase: '',
+        order_date: new Date().toISOString().split('T')[0],
+        address: '',
+        category: '',
+        company: '',
+        recipient: '',
+        categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+        show_signature: true,
+        configVersionId: ''
     });
+
+    const updateFormDataForProject = (projectName) => {
+        const proj = projects.find(p => p.name === projectName);
+        if (!proj) return;
+        const nextPhase = getNextOrderPhaseForProject(proj.name, orders);
+        const templateData = getProjectMaterialTemplateData(proj.name);
+        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+        const template = getProjectMaterialTemplate(proj.name, activeVerId);
+        
+        setFormData(prev => ({
+            ...prev,
+            project_name: projectName,
+            order_phase: nextPhase,
+            address: proj.address || '',
+            recipient: proj.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '',
+            categories: template,
+            configVersionId: activeVerId
+        }));
+    };
 
     // Auto-update initial project selections on asynchronous projects load
     useEffect(() => {
         if (projects?.length > 0 && !formData.id && !formData.project_name) {
-            const firstProj = projects[0];
-            const nextPhase = getNextOrderPhaseForProject(firstProj.name, orders);
-            const template = getProjectMaterialTemplate(firstProj.name);
-            setFormData(prev => ({
-                ...prev,
-                project_name: firstProj.name,
-                order_phase: nextPhase,
-                address: firstProj.address || '',
-                categories: template,
-                recipient: firstProj.cht_name ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) : ''
-            }));
+            updateFormDataForProject(projects[0].name);
         }
     }, [projects, orders]);
 
@@ -206,12 +201,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, data);
-                        const template = getProjectMaterialTemplate(firstProj.name);
+                        const templateData = getProjectMaterialTemplateData(firstProj.name);
+                        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+                        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
                         return {
                             ...prev,
                             project_name: firstProj.name,
                             order_phase: nextPhase,
                             categories: template,
+                            configVersionId: activeVerId,
                             address: firstProj.address || '',
                             recipient: firstProj.cht_name 
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
@@ -220,10 +218,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     } else if (!prev.id) {
                         // Project name already set by state default, let's update phase and template
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, data);
-                        const template = getProjectMaterialTemplate(prev.project_name);
+                        const templateData = getProjectMaterialTemplateData(prev.project_name);
+                        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+                        const template = getProjectMaterialTemplate(prev.project_name, activeVerId);
                         return {
                             ...prev,
                             order_phase: nextPhase,
+                            configVersionId: activeVerId,
                             categories: template
                         };
                     }
@@ -248,12 +249,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders);
-                        const template = getProjectMaterialTemplate(firstProj.name);
+                        const templateData = getProjectMaterialTemplateData(firstProj.name);
+                        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+                        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
                         return {
                             ...prev,
                             project_name: firstProj.name,
                             order_phase: nextPhase,
                             categories: template,
+                            configVersionId: activeVerId,
                             address: firstProj.address || '',
                             recipient: firstProj.cht_name 
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
@@ -261,10 +265,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         };
                     } else if (!prev.id) {
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders);
-                        const template = getProjectMaterialTemplate(prev.project_name);
+                        const templateData = getProjectMaterialTemplateData(prev.project_name);
+                        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+                        const template = getProjectMaterialTemplate(prev.project_name, activeVerId);
                         return {
                             ...prev,
                             order_phase: nextPhase,
+                            configVersionId: activeVerId,
                             categories: template
                         };
                     }
@@ -322,14 +329,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         };
 
         if (payload.items && payload.items.length > 0) {
-            payload.items[0]._price_batch = formData.price_batch;
+            let pbName = '';
+            if (formData.configVersionId) {
+                const parts = formData.configVersionId.split('__');
+                pbName = parts[1] || parts[0];
+            }
+            payload.items[0]._price_batch = pbName;
         }
 
         try {
-            // NOTE: We no longer auto-overwrite the material template when placing an order.
-            // The template is now strictly managed in the "Cấu hình Danh mục" view.
-            // This prevents the bug where saving an order wipes out all configured price versions.
-
             if (isDbStorage) {
                 if (formData.id) {
                     const { error } = await supabase
@@ -346,7 +354,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     showToast('Lưu đơn đặt hàng thành công!');
                 }
             } else {
-                // Lưu LocalStorage
                 const localOrders = [...orders];
                 if (formData.id) {
                     const idx = localOrders.findIndex(o => o.id === formData.id);
@@ -366,7 +373,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 showToast('Đã lưu đơn hàng cục bộ trên thiết bị!');
             }
 
-            // Tự động chuyển tiếp đơn hàng vật tư sang cho kế toán hạch toán
             const selectedProj = projects.find(p => p.name === formData.project_name);
             const isMainContractor = selectedProj?.project_type === 'TỔNG THẦU MUA HỘ';
 
@@ -393,7 +399,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         project_name: formData.project_name,
                         recipient: formData.company || formData.recipient,
                         total_amount: grandTotal,
-                        status: 'Waiting QS', // Phải được QS duyệt trước
+                        status: 'Waiting QS', 
                         reason: JSON.stringify({
                             docType: 'Đơn Vật Tư',
                             date: formData.order_date,
@@ -401,7 +407,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             project: formData.project_name,
                             paymentMethod: 'chuyen_khoan',
                             orderPhase: formData.order_phase,
-                            priceBatch: formData.price_batch,
+                            priceBatch: formData.configVersionId,
                             material_order_id: formData.id,
                             items: itemsList
                         })
@@ -420,7 +426,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         } catch (err) {
             console.error(err);
             showToast(`Lỗi khi lưu đơn hàng: ${err?.message || err}. Đang chuyển sang lưu cục bộ!`, 'error');
-            // Fallback ngay lập tức sang local
             setIsDbStorage(false);
             const localOrders = [...orders];
             const newOrder = {
@@ -454,7 +459,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             .eq('id', id);
                         if (error) throw error;
                         
-                        // Đồng bộ xóa DNTT
                         if (orderToDelete) {
                              const { data: dntts } = await supabase.from('approval_requests')
                                  .select('id, reason')
@@ -493,23 +497,25 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         const firstProj = projects[0];
         const projName = firstProj?.name || '';
         const nextPhase = getNextOrderPhaseForProject(projName, orders);
-        const template = getProjectMaterialTemplate(projName);
-        const address = firstProj?.address || '';
+        const templateData = getProjectMaterialTemplateData(firstProj.name);
+        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
         const recipient = firstProj?.cht_name 
             ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
             : '';
 
         setFormData({
             id: null,
-            project_name: projName,
+            project_name: firstProj.name,
             order_phase: nextPhase,
             order_date: new Date().toISOString().split('T')[0],
-            address: address,
-            category: 'THI CÔNG SƠN NƯỚC',
+            address: firstProj.address || '',
+            category: '',
             company: '',
             recipient: recipient,
             categories: template,
-            show_signature: true
+            show_signature: true,
+            configVersionId: activeVerId
         });
         setView('create');
     };
@@ -530,143 +536,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             recipient: order.recipient,
             categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
             show_signature: order.show_signature !== undefined ? order.show_signature : true,
-            price_batch: pb
+            configVersionId: pb
         });
         setView('create');
     };
 
-    const handleOpenConfig = (projName = null) => {
-        const proj = typeof projName === 'string' ? projName : (configProjectName || projects[0]?.name);
-        if (proj) {
-            setConfigProjectName(proj);
-            const data = getProjectMaterialTemplateData(proj);
-            if (data.versions.length > 0) {
-                setConfigVersions(data.versions);
-                const latestVer = data.versions[data.versions.length - 1];
-                setActiveVersionId(latestVer.id);
-                setConfigCategories(JSON.parse(JSON.stringify(latestVer.categories)));
-            } else {
-                const today = new Date().toISOString().split('T')[0];
-                const newId = Date.now().toString();
-                const defaultCats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-                setConfigVersions([{ id: newId, date: today, categories: defaultCats }]);
-                setActiveVersionId(newId);
-                setConfigCategories(defaultCats);
-            }
-        }
-        setView('config');
-    };
-
-    const handleSaveConfig = () => {
-        if (!configProjectName) return;
-        try {
-            const updatedVersions = configVersions.map(v => 
-                v.id === activeVersionId ? { ...v, categories: configCategories } : v
-            );
-
-            const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-            projectTemplates[configProjectName] = {
-                versions: updatedVersions,
-                activeVersionId: configActiveVersionId
-            };
-            localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
-            showToast('Đã lưu cấu hình danh mục vật tư cho công trình!');
-            setView('list');
-        } catch (err) {
-            console.error("Error saving project material template:", err);
-            showToast('Lỗi khi lưu cấu hình!', 'error');
-        }
-    };
-
-    const handleSwitchVersion = (vid) => {
-        // Save current changes to current version before switching
-        if (isEditingConfig) {
-            const currentUpdated = configVersions.map(v => 
-                v.id === activeVersionId ? { ...v, categories: configCategories } : v
-            );
-            setConfigVersions(currentUpdated);
-        }
-        
-        setActiveVersionId(vid);
-        const ver = configVersions.find(v => v.id === vid);
-        if (ver) {
-            setConfigCategories(JSON.parse(JSON.stringify(ver.categories)));
-        }
-        setIsEditingConfig(false);
-    };
-
-    const handleAddVersion = () => {
-        const newId = Date.now().toString();
-        const today = new Date().toISOString().split('T')[0];
-        const newVer = { id: newId, date: today, categories: JSON.parse(JSON.stringify(configCategories)) };
-        setConfigVersions(prev => [...prev, newVer]);
-        setActiveVersionId(newId);
-    };
-
-    const handleDeleteVersion = () => {
-        if (configVersions.length <= 1) {
-            showToast('Không thể xóa đợt giá duy nhất!', 'error');
-            return;
-        }
-        if (!window.confirm('Bạn có chắc chắn muốn xóa đợt giá này?')) return;
-        const updated = configVersions.filter(v => v.id !== activeVersionId);
-        setConfigVersions(updated);
-        const lastVer = updated[updated.length - 1];
-        setActiveVersionId(lastVer.id);
-        setConfigCategories(JSON.parse(JSON.stringify(lastVer.categories)));
-    };
-
     // Form logic helpers
-    const handleCategoryNameChange = (catIdx, newName) => {
-        const updated = [...formData.categories];
-        updated[catIdx].name = newName;
-        setFormData({ ...formData, categories: updated });
-    };
-
     const handleItemChange = (catIdx, itemIdx, field, value) => {
         const updated = [...formData.categories];
         updated[catIdx].items[itemIdx][field] = value;
-        setFormData({ ...formData, categories: updated });
-    };
-
-    const addItem = (catIdx) => {
-        const updated = [...formData.categories];
-        const nextStt = updated[catIdx].items.length + 1;
-        updated[catIdx].items.push({
-            stt: nextStt,
-            name: '',
-            unit: 'Thùng/18lit',
-            quantity: '',
-            colorCode: ''
-        });
-        setFormData({ ...formData, categories: updated });
-    };
-
-    const removeItem = (catIdx, itemIdx) => {
-        const updated = [...formData.categories];
-        updated[catIdx].items.splice(itemIdx, 1);
-        // Re-number STT
-        updated[catIdx].items.forEach((item, idx) => {
-            item.stt = idx + 1;
-        });
-        setFormData({ ...formData, categories: updated });
-    };
-
-    const addCategory = () => {
-        const updated = [...formData.categories];
-        updated.push({
-            name: 'Hệ vật tư mới',
-            items: [
-                { stt: 1, name: '', unit: 'Thùng/18lit', quantity: '', colorCode: '' }
-            ]
-        });
-        setFormData({ ...formData, categories: updated });
-    };
-
-    const removeCategory = (catIdx) => {
-        if (formData.categories.length <= 1) return;
-        const updated = [...formData.categories];
-        updated.splice(catIdx, 1);
         setFormData({ ...formData, categories: updated });
     };
 
@@ -930,12 +808,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     </div>
                     <div className="flex gap-2 flex-wrap">
                         <button 
-                            onClick={handleOpenConfig}
-                            className="bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-2xl font-black shadow-xl shadow-slate-800/20 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
-                        >
-                            <Edit3 size={18} /> THÔNG TIN VẬT TƯ
-                        </button>
-                        <button 
                             onClick={openCreate}
                             className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-2xl font-black shadow-xl shadow-blue-600/20 hover:-translate-y-0.5 transition-all duration-200 flex items-center gap-2"
                         >
@@ -1078,267 +950,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 </div>
             )}
 
-            {/* CONFIG VIEW */}
-            {view === 'config' && (
-                <div className="bg-white rounded-3xl shadow-lg border border-slate-200 overflow-hidden mt-6">
-                    <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
-                        <h3 className="font-black text-xl text-slate-800 flex items-center gap-2">
-                            <Edit3 className="text-blue-600" /> Thông tin Danh mục Vật tư
-                        </h3>
-                        <button onClick={() => setView('list')} className="p-2 bg-slate-200 hover:bg-slate-300 rounded-full transition">
-                            <X size={20} className="text-slate-600" />
-                        </button>
-                    </div>
-                    
-                    <div className="p-6">
-                        <div className="mb-6">
-                            <label className="block text-sm font-bold text-slate-700 mb-2">Chọn công trình cần cấu hình:</label>
-                            <select
-                                value={configProjectName}
-                                onChange={(e) => {
-                                    const proj = e.target.value;
-                                    setConfigProjectName(proj);
-                                    const data = getProjectMaterialTemplateData(proj);
-                                    if (data.versions && data.versions.length > 0) {
-                                        setConfigVersions(data.versions);
-                                        const activeId = data.activeVersionId || data.versions[data.versions.length - 1].id;
-                                        setConfigActiveVersionId(activeId);
-                                        setActiveVersionId(data.versions[data.versions.length - 1].id);
-                                        setConfigCategories(JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories)));
-                                    } else {
-                                        const today = new Date().toISOString().split('T')[0];
-                                        const newId = Date.now().toString();
-                                        const defaultCats = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-                                        setConfigVersions([{ id: newId, date: today, categories: defaultCats }]);
-                                        setActiveVersionId(newId);
-                                        setConfigActiveVersionId(newId);
-                                        setConfigCategories(defaultCats);
-                                    }
-                                }}
-                                className="w-full md:w-1/2 p-3 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
-                            >
-                                {projects.map(p => (
-                                    <option key={p.name} value={p.name}>{p.name}</option>
-                                ))}
-                            </select>
-<p className="text-xs text-slate-500 mt-2 italic">Lưu ý: Bạn đang định nghĩa danh sách vật tư mặc định sẽ hiện ra mỗi khi lập Đơn đặt hàng mới cho công trình này.</p>
-</div>
-<div className="mb-6 flex flex-col md:flex-row items-start md:items-end gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
-                            <div className="w-full md:w-auto flex-1">
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Đợt giá (Ngày áp giá):</label>
-                                <select
-                                    value={activeVersionId}
-                                    onChange={(e) => handleSwitchVersion(e.target.value)}
-                                    className="w-full p-2.5 bg-white border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
-                                >
-                                    {configVersions.map((v, i) => (
-                                        <option key={v.id} value={v.id}>Áp dụng từ ngày {formatDateVN(v.date)}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
-                                {!isEditingConfig ? (
-                                    <button 
-                                        onClick={() => setIsEditingConfig(true)}
-                                        className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-blue-200"
-                                    >
-                                        <Edit2 size={18} /> Chỉnh sửa đợt giá này
-                                    </button>
-                                ) : (
-                                    <>
-                                        <button 
-                                            onClick={() => setCopyModal({ isOpen: true })}
-                                            className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-indigo-200"
-                                        >
-                                            <Download size={18} /> Chép từ công trình khác
-                                        </button>
-                                        <button 
-                                            onClick={handleAddVersion}
-                                            className="bg-emerald-50 text-emerald-600 hover:bg-emerald-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-emerald-200"
-                                        >
-                                            <Copy size={18} /> Thêm đợt giá (từ đợt hiện tại)
-                                        </button>
-                                        <button 
-                                            onClick={handleDeleteVersion}
-                                            className="bg-red-50 text-red-600 hover:bg-red-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-red-200"
-                                        >
-                                            <Trash2 size={18} /> Xóa đợt này
-                                        </button>
-                                        <button 
-                                            onClick={() => {
-                                                setIsEditingConfig(false);
-                                                handleSwitchVersion(activeVersionId); // Revert changes
-                                            }}
-                                            className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-slate-300"
-                                        >
-                                            <X size={18} /> Hủy sửa
-                                        </button>
-                                    </>
-                                )}
-                            </div>
-                        </div>
 
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Giá vật tư hiện tại (áp dụng cho kho & báo cáo):</label>
-                                <select 
-                                    value={configActiveVersionId || (configVersions[configVersions.length - 1]?.id)}
-                                    onChange={(e) => setConfigActiveVersionId(e.target.value)}
-                                    className="w-full p-2.5 bg-indigo-50 border-2 border-indigo-200 rounded-xl font-bold text-indigo-700 outline-none focus:border-indigo-500 transition"
-                                >
-                                    {configVersions.map((v, i) => (
-                                        <option key={v.id} value={v.id}>Áp dụng từ {formatDateVN(v.date)}</option>
-                                    ))}
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-bold text-slate-700 mb-2">Ngày bắt đầu áp dụng (của đợt đang sửa):</label>
-                                <input 
-                                    type="date" 
-                                    disabled={!isEditingConfig}
-                                    value={configVersions.find(v => v.id === activeVersionId)?.date || ''}
-                                    onChange={(e) => {
-                                        setConfigVersions(prev => prev.map(v => v.id === activeVersionId ? { ...v, date: e.target.value } : v));
-                                    }}
-                                    className={`w-full p-2.5 bg-slate-50 border-2 border-slate-200 rounded-xl font-bold outline-none transition ${isEditingConfig ? 'focus:border-blue-500' : 'opacity-70 cursor-not-allowed'}`}
-                                />
-                            </div>
-                        </div>
-
-                        <div className={`space-y-6 ${!isEditingConfig ? 'pointer-events-none opacity-90' : ''}`}>
-                            {configCategories.map((cat, catIdx) => (
-                                <div key={catIdx} className="border-2 border-slate-200 rounded-2xl overflow-hidden group">
-                                    <div className="bg-slate-100 p-3 border-b-2 border-slate-200 flex items-center justify-between">
-                                        <input
-                                            type="text"
-                                            value={cat.name}
-                                            onChange={(e) => {
-                                                const updated = [...configCategories];
-                                                updated[catIdx].name = e.target.value;
-                                                setConfigCategories(updated);
-                                            }}
-                                            className="font-bold text-blue-900 bg-transparent border-none outline-none w-1/2 focus:ring-2 focus:ring-blue-500 rounded px-2"
-                                            placeholder="Tên hạng mục..."
-                                        />
-                                        <button 
-                                            type="button" 
-                                            onClick={() => {
-                                                if (configCategories.length <= 1) return;
-                                                const updated = [...configCategories];
-                                                updated.splice(catIdx, 1);
-                                                setConfigCategories(updated);
-                                            }}
-                                            className="text-red-500 hover:bg-red-200 p-1.5 rounded transition"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </div>
-                                    <div className="p-4 bg-white">
-                                        <div className="space-y-2 mb-3">
-                                            {cat.items.map((item, itemIdx) => (
-                                                <div key={itemIdx} className="flex gap-2 items-center">
-                                                    <span className="w-8 text-center text-xs font-bold text-slate-400">{itemIdx + 1}</span>
-                                                    <input 
-                                                        type="text" 
-                                                        value={item.name}
-                                                        onChange={(e) => {
-                                                            const updated = [...configCategories];
-                                                            updated[catIdx].items[itemIdx].name = e.target.value;
-                                                            setConfigCategories(updated);
-                                                        }}
-                                                        placeholder="Tên vật tư / chủng loại"
-                                                        className="flex-1 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-medium outline-none focus:border-blue-500"
-                                                    />
-                                                    <input 
-                                                        type="text" 
-                                                        value={item.colorCode || ''}
-                                                        onChange={(e) => {
-                                                            const updated = [...configCategories];
-                                                            updated[catIdx].items[itemIdx].colorCode = e.target.value;
-                                                            setConfigCategories(updated);
-                                                        }}
-                                                        placeholder="Mã màu"
-                                                        className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-medium outline-none focus:border-blue-500"
-                                                    />
-                                                    <input 
-                                                        type="text" 
-                                                        value={item.unit}
-                                                        onChange={(e) => {
-                                                            const updated = [...configCategories];
-                                                            updated[catIdx].items[itemIdx].unit = e.target.value;
-                                                            setConfigCategories(updated);
-                                                        }}
-                                                        placeholder="ĐVT"
-                                                        className="w-24 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center font-medium outline-none focus:border-blue-500"
-                                                    />
-                                                    <CurrencyInput 
-                                                        value={item.price || 0}
-                                                        onChange={(val) => {
-                                                            const updated = [...configCategories];
-                                                            updated[catIdx].items[itemIdx].price = val;
-                                                            setConfigCategories(updated);
-                                                        }}
-                                                        placeholder="Đơn giá"
-                                                        className="w-32 p-2 bg-slate-50 border border-slate-200 rounded-lg text-sm text-right font-medium outline-none focus:border-blue-500"
-                                                    />
-                                                    <button 
-                                                        type="button" 
-                                                        onClick={() => {
-                                                            const updated = [...configCategories];
-                                                            updated[catIdx].items.splice(itemIdx, 1);
-                                                            updated[catIdx].items.forEach((it, idx) => it.stt = idx + 1);
-                                                            setConfigCategories(updated);
-                                                        }}
-                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            ))}
-                                        </div>
-                                        {isEditingConfig && (
-                                            <button 
-                                                type="button" 
-                                                onClick={() => {
-                                                    const updated = [...configCategories];
-                                                    updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', price: '', colorCode: '' });
-                                                    setConfigCategories(updated);
-                                                }}
-                                                className="text-xs font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1"
-                                            >
-                                                <Plus size={14} /> Thêm vật tư
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                        
-                        {isEditingConfig && (
-                            <button 
-                                type="button" 
-                                onClick={() => {
-                                    const updated = [...configCategories];
-                                    updated.push({ name: 'Hạng mục mới', items: [{ stt: 1, name: '', unit: '', quantity: '', price: '', colorCode: '' }] });
-                                    setConfigCategories(updated);
-                                }}
-                                className="text-sm font-bold text-slate-600 hover:text-slate-800 border-2 border-dashed border-slate-300 w-full py-3 rounded-xl hover:border-slate-400 transition flex items-center justify-center gap-2"
-                            >
-                                <Plus size={16} /> Thêm Hạng Mục Mới
-                            </button>
-                        )}
-                    </div>
-                    
-                    <div className="p-6 border-t border-slate-100 bg-slate-50 flex justify-end gap-3">
-                        <button type="button" onClick={() => setView('list')} className="px-6 py-3 rounded-xl font-bold text-slate-600 hover:bg-slate-200 transition">
-                            Hủy
-                        </button>
-                        <button disabled={!isEditingConfig} onClick={handleSaveConfig} className={`px-8 py-3 rounded-xl font-black transition flex items-center gap-2 ${isEditingConfig ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20' : 'bg-slate-300 text-slate-500 cursor-not-allowed'}`}>
-                            <Save size={18} /> LƯU CẤU HÌNH
-                        </button>
-                    </div>
-                </div>
-            )}
 
             {/* CREATE / EDIT FORM */}
             {view === 'create' && (
@@ -1673,37 +1285,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
                                                 {/* CATEGORY ITEMS */}
                                                 {cat.items.map((item, itemIdx) => (
-                                                    <tr key={itemIdx} className="group/row">
-                                                        <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
-                                                        <td className="border border-black p-2">
-                                                            <input 
-                                                                type="text"
-                                                                value={item.name}
-                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'name', e.target.value)}
-                                                                placeholder="Nhập tên vật tư..."
-                                                                className="w-full outline-none bg-transparent"
-                                                                required
-                                                            />
+                                                    <tr key={itemIdx} className="group/row hover:bg-slate-50/50">
+                                                        <td className="border border-black p-2 text-center font-medium text-sm text-slate-500">{itemIdx + 1}</td>
+                                                        <td className="border border-black p-2 font-bold text-slate-800">
+                                                            {item.name}
                                                         </td>
-                                                        <td className="border border-black p-2">
-                                                            <input 
-                                                                type="text"
-                                                                value={item.colorCode || ''}
-                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'colorCode', e.target.value)}
-                                                                className="w-full outline-none bg-transparent text-center"
-                                                                placeholder="Mã màu..."
-                                                            />
+                                                        <td className="border border-black p-2 text-center text-sm font-medium text-slate-600">
+                                                            {item.colorCode}
                                                         </td>
-                                                        <td className="border border-black p-2">
-                                                            <input 
-                                                                type="text"
-                                                                value={item.unit}
-                                                                onChange={(e) => handleItemChange(catIdx, itemIdx, 'unit', e.target.value)}
-                                                                className="w-full outline-none bg-transparent text-center"
-                                                                placeholder="Bao/40kg..."
-                                                            />
+                                                        <td className="border border-black p-2 text-center text-sm font-medium text-slate-600">
+                                                            {item.unit}
                                                         </td>
-                                                        <td className="border border-black p-2">
+                                                        <td className="border border-black p-2 bg-yellow-50/30">
                                                             <input 
                                                                 type="number"
                                                                 min="0"
@@ -1713,43 +1306,19 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                                     if (val !== '' && val < 0) val = 0;
                                                                     handleItemChange(catIdx, itemIdx, 'quantity', val);
                                                                 }}
-                                                                className="w-full outline-none text-right font-bold bg-transparent text-slate-900"
-                                                                placeholder="-"
+                                                                className="w-full outline-none text-right font-bold bg-transparent text-blue-700 placeholder:text-slate-300"
+                                                                placeholder="Nhập SL..."
                                                             />
                                                         </td>
-                                                        <td className="border border-black p-2">
-                                                            <CurrencyInput 
-                                                                value={item.price || 0}
-                                                                onChange={() => {}}
-                                                                disabled={true}
-                                                                placeholder="Đơn giá"
-                                                                className="w-full outline-none text-right font-medium bg-transparent text-slate-900 cursor-not-allowed opacity-60"
-                                                                title="Đơn giá chỉ được thiết lập ở Danh Mục Vật Tư"
-                                                            />
+                                                        <td className="border border-black p-2 text-right text-sm font-medium text-slate-500">
+                                                            {formatCurrency(item.price)}
                                                         </td>
-                                                        <td className="border border-black p-2 text-right font-bold text-blue-800">
+                                                        <td className="border border-black p-2 text-right font-bold text-red-600">
                                                             {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : ''}
                                                         </td>
-                                                        <td className="border-none align-middle pl-2">
-                                                            <button 
-                                                                type="button" 
-                                                                onClick={() => removeItem(catIdx, itemIdx)}
-                                                                className="text-red-400 hover:text-red-600 opacity-0 group-hover/row:opacity-100 transition p-1"
-                                                                title="Xóa dòng"
-                                                            >
-                                                                <X size={16} />
-                                                            </button>
-                                                        </td>
+                                                        <td className="border-none"></td>
                                                     </tr>
                                                 ))}
-
-                                                {/* ADD ROW BUTTON */}
-                                                <tr>
-                                                    <td colSpan="7" className="border border-black p-1 text-center bg-slate-50/50 hover:bg-slate-50 cursor-pointer text-blue-600 transition font-sans text-xs font-bold" onClick={() => addItem(catIdx)}>
-                                                        + Thêm dòng vật tư vào &quot;{cat.name}&quot;
-                                                    </td>
-                                                    <td className="border-none"></td>
-                                                </tr>
                                             </React.Fragment>
                                         ))}
                                         <tr>
@@ -2079,49 +1648,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 onCancel={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })}
             />
 
-            {copyModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/50 flex items-center justify-center p-4 z-[9999]">
-                    <div className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl animate-in zoom-in-95 duration-200">
-                        <h3 className="text-xl font-black text-slate-800 mb-4">Chép danh mục từ công trình</h3>
-                        <p className="text-sm text-slate-500 mb-4">Chọn công trình để sao chép toàn bộ danh mục vật tư sang công trình hiện tại.</p>
-                        <select 
-                            value={copyFromProject} 
-                            onChange={(e) => setCopyFromProject(e.target.value)}
-                            className="w-full border-2 border-slate-200 p-3 rounded-xl outline-none focus:border-indigo-500 mb-6 font-bold"
-                        >
-                            <option value="">-- Chọn công trình --</option>
-                            {projects.map(p => (
-                                <option key={p.name} value={p.name}>{p.name}</option>
-                            ))}
-                        </select>
-                        <div className="flex justify-end gap-3">
-                            <button onClick={() => setCopyModal({ isOpen: false })} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-xl font-bold text-slate-600 transition">Hủy</button>
-                            <button 
-                                disabled={!copyFromProject}
-                                onClick={() => {
-                                    if (copyFromProject) {
-                                        const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-                                        const dataToCopy = projectTemplates[copyFromProject];
-                                        if (dataToCopy && dataToCopy.versions && dataToCopy.versions.length > 0) {
-                                            setConfigVersions(dataToCopy.versions);
-                                            const activeId = dataToCopy.activeVersionId || dataToCopy.versions[dataToCopy.versions.length - 1].id;
-                                            setConfigActiveVersionId(activeId);
-                                            setActiveVersionId(dataToCopy.versions[dataToCopy.versions.length - 1].id);
-                                            setConfigCategories(JSON.parse(JSON.stringify(dataToCopy.versions[dataToCopy.versions.length - 1].categories)));
-                                            showToast(`Đã chép danh mục từ ${copyFromProject}. Vui lòng ấn LƯU CẤU HÌNH để lưu lại!`);
-                                        } else {
-                                            showToast(`Không tìm thấy danh mục vật tư nào của công trình '${copyFromProject}'!`, "error");
-                                        }
-                                        setCopyModal({ isOpen: false });
-                                        setCopyFromProject('');
-                                    }
-                                }} 
-                                className={`px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold transition shadow-sm ${!copyFromProject ? 'opacity-50 cursor-not-allowed' : 'hover:bg-indigo-700 shadow-indigo-600/20'}`}
-                            >Chép dữ liệu</button>
-                        </div>
-                    </div>
-                </div>
-            )}
+
         </div>
     );
 }

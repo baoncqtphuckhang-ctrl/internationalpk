@@ -352,7 +352,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             // Insert into material_warehouse
             const priceVal = parseFloat(currentItem.price?.toString().replace(/\D/g, '') || 0);
             
-            let priceBatchStr = (order.items && order.items[0] && order.items[0]._price_batch) || `Đợt giá: ${formatDateVN(order.order_date)}`;
+            let priceBatchStr = (order.items && order.items[0] && order.items[0]._price_batch) || 'Không rõ đợt';
             // Make sure it doesn't duplicate the [Đợt giá:] prefix
             if (priceBatchStr.startsWith('Đợt giá: ')) {
                 priceBatchStr = `[${priceBatchStr}]`;

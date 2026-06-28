@@ -300,7 +300,7 @@ export default function ApprovalWorkflow({
             note: `[${distributeItem.orderPhase ? distributeItem.orderPhase : `Đợt ${distributeItem.phase || 1}`}] [${distributeItem.doc_type}] ${d.content}`,
             recipient: distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
-            invoice_date: d.invoiceDate,
+            invoice_date: d.invoiceDate || null,
             invoice_no: d.invoiceNumber
         }));
 

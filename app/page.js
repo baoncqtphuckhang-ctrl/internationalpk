@@ -18,6 +18,7 @@ import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
 import MaterialWarehouse from '@/components/MaterialWarehouse';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
+import MaterialCatalog from '@/components/MaterialCatalog';
 import ExpectedInvoices from '@/components/ExpectedInvoices';
 import ConfirmModal from '@/components/ConfirmModal';
 import UserModal from '@/components/UserModal';
@@ -163,7 +164,7 @@ export default function Home() {
     const [expectedInvoices, setExpectedInvoices] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
-    const [materialSubTab, setMaterialSubTab] = useState('order');
+    const [materialSubTab, setMaterialSubTab] = useState('catalog');
     const [historySearchTerm, setHistorySearchTerm] = useState('');
 
     
@@ -1030,15 +1031,14 @@ export default function Home() {
             // 2. Cập nhật trạng thái DNTT sang ACCOUNTED (và cập nhật tổng tiền hạch toán thực tế)
             const totalSum = distribution.reduce((sum, d) => sum + (d.debit || 0), 0);
             const { error: statusError } = await supabase.from('approval_requests').update({ 
-                status: STATUSES.ACCOUNTED,
-                actual_accounting_amount: distribution.length > 0 ? totalSum : undefined
+                status: STATUSES.ACCOUNTED
             }).eq('id', id);
             
             if (statusError) throw statusError;
             logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})${distribution && distribution[0]?.recipient ? ` (Người nhận: ${distribution[0].recipient})` : ''}`);
             fetchData();
         } catch (error) {
-            console.error(error);
+            console.error('HANDLE ACCOUNT DNTT ERROR', JSON.stringify(error));
             showToast('Lỗi khi hạch toán!', 'error');
         } finally {
             setIsLoading(false);
@@ -1667,6 +1667,7 @@ export default function Home() {
                 {activeTab === 'materials' && (
                     <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
                         <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm">
+                            <button onClick={() => setMaterialSubTab('catalog')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
                             {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT'].includes(currentUser?.role?.toUpperCase()) && (
@@ -1688,6 +1689,11 @@ export default function Home() {
                                     onCreateAccountingRequest={handleCreateAccountingRequest}
                                     dnttList={allowedDnttList}
                                     onUpdateAccountingRequest={handleUpdateAccountingRequest}
+                                />
+                        ) : materialSubTab === 'catalog' ? (
+                                <MaterialCatalog 
+                                    projects={allowedProjects} 
+                                    showToast={showToast} 
                                 />
                         ) : (
                             <MaterialOrderManager 
