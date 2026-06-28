@@ -1345,8 +1345,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                                     className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-all duration-200"
                                                                                                                     title="Xóa đợt này"
                                                                                                                 >
-                                                                                                                <Trash2 size={14} />
-                                                                                                            </button>
+                                                                                                                    <Trash2 size={14} />
+                                                                                                                </button>
+                                                                                                            </div>
                                                                                                         </td>
                                                                                                     </tr>
                                                                                                 ))}
