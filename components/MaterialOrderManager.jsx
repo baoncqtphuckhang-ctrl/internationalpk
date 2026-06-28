@@ -358,7 +358,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     };
 
     const handleDeleteReceiveHistory = async (order, catIdx, itemIdx, historyIdx, historyItem) => {
-        if (!window.confirm('Bạn có chắc muốn xóa đợt nhận hàng này? Dữ liệu nhập kho tương ứng cũng sẽ bị xóa.')) return;
+        if (!window.confirm('Bạn có chắc muốn xóa lần nhận hàng này? Dữ liệu nhập kho tương ứng cũng sẽ bị xóa.')) return;
         
         setIsSavingReceive(true);
         try {
@@ -1248,7 +1248,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                     <div className="text-slate-500 text-xs uppercase md:hidden">{item.unit}</div>
                                                                                     {receivedHistory.length > 0 && (
                                                                                         <div className="mt-1 inline-flex items-center gap-1 text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded w-max">
-                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? 'Ẩn đợt nhận' : `Xem ${receivedHistory.length} đợt`}
+                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? 'Ẩn chi tiết nhận' : `Xem ${receivedHistory.length} lần nhận`}
                                                                                             {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                                                                                         </div>
                                                                                     )}
@@ -1331,7 +1331,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                         <table className="w-max text-sm text-left">
                                                                                             <thead className="bg-indigo-50/50 text-indigo-800 border-b border-slate-200">
                                                                                                 <tr>
-                                                                                                    <th className="px-3 py-2 font-bold text-center">Đợt</th>
+                                                                                                    <th className="px-3 py-2 font-bold text-center">Lần nhận hàng</th>
                                                                                                     <th className="px-3 py-2 font-bold">Ngày nhận</th>
                                                                                                     <th className="px-3 py-2 font-bold text-right">Số lượng</th>
                                                                                                     <th className="px-3 py-2 font-bold">Ghi chú</th>
