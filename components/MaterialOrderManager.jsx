@@ -17,12 +17,12 @@ const STATUS_LABELS = {
     'Waiting Print': { label: 'Chờ in UNC', color: 'bg-purple-50 text-purple-700 border-purple-100', icon: Clock },
     'Waiting Pay': { label: 'Chờ chi tiền', color: 'bg-blue-50 text-blue-700 border-blue-100', icon: Clock },
     'Paid': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
-    'Accounted': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
+    'Accounted': { label: 'Hoàn tất hạch toán', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
     'Rejected': { label: 'Bị từ chối', color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100', icon: XCircle },
     'Deleted': { label: 'Đã xóa', color: 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-200', icon: XCircle },
     // Fallback for legacy statuses
     'Pending': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
-    'Approved': { label: 'Đã hoàn tất', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle }
+    'Approved': { label: 'Hoàn tất hạch toán', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle }
 };
 
 const getCommanderName = (recipient) => {
@@ -166,7 +166,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         let normalizedStatus = status;
         if (status === 'Draft') normalizedStatus = 'Draft';
         else if (status === 'Bị từ chối' || status === 'Rejected') normalizedStatus = 'Rejected';
-        else if (status === 'Đã hoàn tất' || status === 'Accounted') normalizedStatus = 'Accounted';
+        else if (status === 'Hoàn tất hạch toán' || status === 'Đã hoàn tất' || status === 'Accounted') normalizedStatus = 'Accounted';
         else if (status === 'Chờ hạch toán' || status === 'Paid') normalizedStatus = 'Paid';
         else normalizedStatus = 'Waiting QS'; // Treat other waiting states as Waiting
 
@@ -479,40 +479,40 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     };
 
     const handleUploadReceipt = async (e, order, catIdx, itemIdx, historyIdx, historyItem) => {
-        const file = e.target.files[0];
-        if (!file) return;
+        const files = Array.from(e.target.files);
+        if (!files || files.length === 0) return;
 
         const uploadKey = `${order.id}_${catIdx}_${itemIdx}_${historyIdx}`;
         setUploadingId(uploadKey);
         try {
-            const fileExt = file.name.split('.').pop();
             const currentItem = order.items[catIdx].items[itemIdx];
-            
             const sanitizedName = currentItem.name.substring(0, 20).replace(/[^a-zA-Z0-9.\-_]/g, '_');
             const sanitizedProject = order.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
             
-            const fileName = `receipt_${Date.now()}_${sanitizedName}.${fileExt}`;
-            const filePath = `${sanitizedProject}/receipts/${fileName}`;
-
-            const { error: uploadError } = await supabase.storage
-                .from('invoices')
-                .upload(filePath, file, { cacheControl: '3600', upsert: false });
-
-            if (uploadError) {
-                throw new Error(uploadError.message === 'Bucket not found' 
-                    ? 'Không tìm thấy bucket invoices' 
-                    : uploadError.message);
-            }
-
-            const { data: { publicUrl } } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
-
             const newHistory = [...currentItem.received_history];
-            
-            // Allow multiple receipt urls
             const urls = newHistory[historyIdx].receipt_urls || (newHistory[historyIdx].receipt_url ? [newHistory[historyIdx].receipt_url] : []);
-            urls.push(publicUrl);
+            
+            for (const file of files) {
+                const fileExt = file.name.split('.').pop();
+                const fileName = `receipt_${Date.now()}_${Math.random().toString(36).substring(2, 8)}_${sanitizedName}.${fileExt}`;
+                const filePath = `${sanitizedProject}/receipts/${fileName}`;
+
+                const { error: uploadError } = await supabase.storage
+                    .from('invoices')
+                    .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+                if (uploadError) {
+                    throw new Error(uploadError.message === 'Bucket not found' 
+                        ? 'Không tìm thấy bucket invoices' 
+                        : uploadError.message);
+                }
+
+                const { data: { publicUrl } } = supabase.storage
+                    .from('invoices')
+                    .getPublicUrl(filePath);
+                
+                urls.push(publicUrl);
+            }
 
             newHistory[historyIdx] = { 
                 ...newHistory[historyIdx], 
@@ -535,12 +535,15 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
 
             if (updateError) throw updateError;
             
-            showToast('Tải phiếu nhận hàng thành công!');
+            showToast(`Tải ${files.length} phiếu nhận hàng thành công!`);
             await fetchOrders();
         } catch (err) {
             console.error('Upload Receipt Error:', err);
             showToast(err.message || 'Có lỗi xảy ra khi tải file!', 'error');
+        } finally {
             setUploadingId(null);
+            // Reset input so the same files can be selected again if needed
+            if (e.target) e.target.value = '';
         }
     };
 
@@ -1096,8 +1099,14 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                     }
                                                 } else {
                                                     // For regular orders, combine receive status with accounting status
-                                                    if (isFullyReceived && (status === 'Paid' || status === 'Waiting QS' || status === 'Pending')) {
-                                                        statusConfig = { ...statusConfig, label: `Đã nhận đủ - ${statusConfig.label}` };
+                                                    let deliveryLabel = '';
+                                                    if (totalOrdered === 0) deliveryLabel = '';
+                                                    else if (isFullyReceived) deliveryLabel = 'Đã đủ hàng';
+                                                    else if (totalReceivedQty > 0) deliveryLabel = 'Đang giao';
+                                                    else deliveryLabel = 'Chưa giao';
+                                                    
+                                                    if (deliveryLabel) {
+                                                        statusConfig = { ...statusConfig, label: `${statusConfig.label} (${deliveryLabel})` };
                                                     }
                                                 }
                                                 
@@ -1377,6 +1386,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                                                     type="file" 
                                                                                                                                     accept="image/*"
                                                                                                                                     capture="environment"
+                                                                                                                                    multiple
                                                                                                                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                                                                                                                     onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
                                                                                                                                     disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
@@ -1391,6 +1401,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                                                 <input 
                                                                                                                                     type="file" 
                                                                                                                                     accept=".pdf,image/*"
+                                                                                                                                    multiple
                                                                                                                                     className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                                                                                                                     onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
                                                                                                                                     disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
@@ -1620,7 +1631,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         // Match with live accounting item
                                                         let matchedAllocated = null;
                                                         if (itemsList.length > 0) {
-                                                            matchedAllocated = itemsList.find(ai => ai.content.includes(it.name));
+                                                            matchedAllocated = itemsList.find(ai => ai?.content?.includes(it?.name || ''));
                                                         }
 
                                                         const allocatedAmount = matchedAllocated ? matchedAllocated.amount : 0;
@@ -1655,7 +1666,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                         <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng:</td>
                                         <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-blue-800">
                                             {formatCurrency(
-                                                safeItems.reduce((total, cat) => {
+                                                (Array.isArray(selectedOrder?.items) ? selectedOrder.items : []).reduce((total, cat) => {
                                                     let globalItemsList = [];
                                                     if (matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0)) {
                                                         try {
@@ -1666,7 +1677,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         const qty = parseFloat(item.quantity) || 0;
                                                         let matched = null;
                                                         if (globalItemsList.length > 0) {
-                                                            matched = globalItemsList.find(ai => ai.content.includes(item.name));
+                                                            matched = globalItemsList.find(ai => ai?.content?.includes(item?.name || ''));
                                                         }
                                                         if (matched) return sum + matched.amount;
                                                         return sum + (parseFloat(item.price) || 0) * qty;

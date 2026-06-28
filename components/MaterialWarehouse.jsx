@@ -3,11 +3,26 @@ import React, { useState, useEffect } from 'react';
 import { 
     Warehouse, Plus, ArrowDownToLine, ArrowUpFromLine, 
     Search, Filter, History, Package, Trash2, ChevronDown, ChevronRight, Edit2,
-    Calendar, MapPin
+    Calendar, MapPin, Tag
 } from 'lucide-react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
+
+export const extractInfoFromNote = (note) => {
+    let p = '', o = '';
+    if (!note) return { p, o };
+    const priceMatch = note.match(/\[Đợt giá: (.*?)\]/);
+    if (priceMatch) p = priceMatch[1];
+    if (note.includes('Tự động từ ĐVT')) {
+        const orderMatch = note.match(/ĐVT: (.*)/);
+        if (orderMatch) o = orderMatch[1].trim();
+    } else if (note.includes('Theo Đơn vật tư')) {
+        const orderMatch = note.match(/Theo Đơn vật tư ([^.]*)/);
+        if (orderMatch) o = orderMatch[1].trim();
+    }
+    return { p, o };
+};
 
 export default function MaterialWarehouse({ currentUser, projects, showToast }) {
     const [transactions, setTransactions] = useState([]);
@@ -19,6 +34,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     const [selectedProject, setSelectedProject] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [expandedProjects, setExpandedProjects] = useState({});
+    const [expandedPhases, setExpandedPhases] = useState({});
     const [expandedMaterials, setExpandedMaterials] = useState({});
     const [isCustomMaterial, setIsCustomMaterial] = useState(false);
     const [editingId, setEditingId] = useState(null);
@@ -56,48 +72,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 manualTransactions = data || [];
             }
 
-            // Fetch auto imports from material_orders
-            let autoTransactions = [];
-            const { data: ordersData, error: ordersError } = await supabase
-                .from('material_orders')
-                .select('*');
-
-            if (!ordersError && ordersData) {
-                ordersData.forEach(order => {
-                    if (order.is_deleted) return; // Skip deleted orders
-                    
-                    let itemsArray = [];
-                    try {
-                        itemsArray = typeof order.items === 'string' ? JSON.parse(order.items) : order.items;
-                    } catch(e){}
-                    
-                    if (Array.isArray(itemsArray)) {
-                        itemsArray.forEach((category, catIdx) => {
-                            if (Array.isArray(category.items)) {
-                                category.items.forEach((item, idx) => {
-                                    if (item.name && Number(item.quantity) > 0) {
-                                        autoTransactions.push({
-                                            id: `auto_${order.id}_${catIdx}_${idx}`,
-                                            project_name: order.project_name,
-                                            material_name: item.name,
-                                            color_code: item.colorCode || item.color_code || '',
-                                            unit: item.unit || '',
-                                            quantity: Number(item.quantity),
-                                            transaction_type: 'NHẬP',
-                                            date: order.order_date,
-                                            note: `Tự động từ ĐVT: ${order.order_phase}`,
-                                            created_by: order.created_by || 'Hệ thống',
-                                            is_auto: true
-                                        });
-                                    }
-                                });
-                            }
-                        });
-                    }
-                });
-            }
-
-            const combined = [...autoTransactions, ...manualTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
+            const combined = [...manualTransactions].sort((a, b) => new Date(b.date) - new Date(a.date));
             setTransactions(combined);
             
         } catch (err) {
@@ -151,24 +126,17 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             };
 
             if (modalType === 'XUẤT') {
-                const getPhase = (note) => {
-                    if (!note) return '';
-                    const match = note.match(/\[Đợt giá: (.*?)\]/);
-                    if (match) return match[1];
-                    if (note.includes('Tự động từ ĐVT')) {
-                        const phaseMatch = note.match(/ĐVT: (.*)/);
-                        if (phaseMatch) return phaseMatch[1];
-                    }
-                    return '';
-                };
-                
                 let currentImport = 0;
                 let currentExport = 0;
                 transactions.forEach(t => {
+                    const info = extractInfoFromNote(t.note);
+                    // Match price phase, fallback to matching order phase if user used order phase in the price phase dropdown
+                    const matchPhase = info.p === (formData.price_phase || '') || info.o === (formData.price_phase || '');
+                    
                     if (t.project_name === payload.project_name &&
                         t.material_name === payload.material_name &&
                         (t.color_code || '') === (payload.color_code || '') &&
-                        getPhase(t.note) === (formData.price_phase || '')) {
+                        matchPhase) {
                         // Bỏ qua phiếu đang sửa (nếu có) khỏi tổng xuất
                         if (editingId && t.id === editingId) return;
 
@@ -188,24 +156,15 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             if (editingId && typeof editingId === 'string' && editingId.startsWith('REPLACE_IMPORT::')) {
                 const target = JSON.parse(editingId.split('::')[1]);
                 
-                const getPhase = (note) => {
-                    if (!note) return '';
-                    const match = note.match(/\[Đợt giá: (.*?)\]/);
-                    if (match) return match[1];
-                    if (note.includes('Tự động từ ĐVT')) {
-                        const phaseMatch = note.match(/ĐVT: (.*)/);
-                        if (phaseMatch) return phaseMatch[1];
-                    }
-                    return '';
-                };
-
-                const txToDelete = transactions.filter(t => 
-                    t.project_name === target.pName && 
-                    t.material_name === target.mName && 
-                    (t.color_code || '') === (target.cCode || '') && 
-                    getPhase(t.note) === (target.pPhase || '') &&
-                    t.transaction_type === 'NHẬP'
-                );
+                const txToDelete = transactions.filter(t => {
+                    const info = extractInfoFromNote(t.note);
+                    return t.project_name === target.pName && 
+                           t.material_name === target.mName && 
+                           (t.color_code || '') === (target.cCode || '') && 
+                           info.p === (target.pPhase || '') &&
+                           info.o === (target.oPhase || '') &&
+                           t.transaction_type === 'NHẬP';
+                });
 
                 if (txToDelete.length > 0) {
                     const idsToDelete = txToDelete.map(t => t.id);
@@ -295,7 +254,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             pName: item.project_name, 
             mName: item.material_name, 
             cCode: item.color_code, 
-            pPhase: item.price_phase
+            pPhase: item.price_phase,
+            oPhase: item.order_phase
         })}`);
         setShowModal(true);
     };
@@ -308,26 +268,16 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
-                    const getPhase = (note) => {
-                        if (!note) return '';
-                        const match = note.match(/\[Đợt giá: (.*?)\]/);
-                        if (match) return match[1];
-                        if (note.includes('Tự động từ ĐVT')) {
-                            const phaseMatch = note.match(/ĐVT: (.*)/);
-                            if (phaseMatch) return phaseMatch[1];
-                        }
-                        return '';
-                    };
+                    const relatedTx = transactions.filter(t => {
+                        const info = extractInfoFromNote(t.note);
+                        return t.project_name === item.project_name && 
+                               t.material_name === item.material_name && 
+                               (t.color_code || '') === (item.color_code || '') && 
+                               info.p === (item.price_phase || '') &&
+                               info.o === (item.order_phase || '');
+                    });
 
-                    const relatedTx = transactions.filter(t => 
-                        t.project_name === item.project_name && 
-                        t.material_name === item.material_name && 
-                        (t.color_code || '') === (item.color_code || '') && 
-                        getPhase(t.note) === (item.price_phase || '')
-                    );
-
-                    const manualIds = relatedTx.filter(t => !t.is_auto).map(t => t.id);
-                    const autoCount = relatedTx.filter(t => t.is_auto).length;
+                    const manualIds = relatedTx.map(t => t.id);
                     
                     if (manualIds.length > 0) {
                         const { error } = await supabase
@@ -337,12 +287,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                         if (error) throw error;
                     }
 
-                    if (autoCount > 0) {
-                        showToast('Lưu ý: Không thể xóa dữ liệu Tự động!', 'warning');
-                        setInfoModal({ isOpen: true, message: `Trong nhóm vật tư này có chứa ${autoCount} dữ liệu được nhập tự động từ Đơn Đặt Hàng.\n\nKho Vật Tư chỉ cho phép quản lý tồn kho. Để xóa hoàn toàn các đợt giá tự động này (hoặc để reset lại Đợt 1), bạn vui lòng sang tab "Quản lý Đơn Vật tư" để xóa Đơn Hàng tương ứng.`});
-                    } else {
-                        showToast('Đã xóa toàn bộ dữ liệu vật tư này!');
-                    }
+                    showToast('Đã xóa toàn bộ dữ liệu vật tư này!');
 
                     await fetchTransactions();
                 } catch (err) {
@@ -427,27 +372,17 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
         return { price: 0, index: 9999 };
     };
 
-    const extractPhaseFromNote = (note) => {
-        if (!note) return '';
-        const match = note.match(/\[Đợt giá: (.*?)\]/);
-        if (match) return match[1];
-        if (note.includes('Tự động từ ĐVT')) {
-            const phaseMatch = note.match(/ĐVT: (.*)/);
-            if (phaseMatch) return phaseMatch[1];
-        }
-        return '';
-    };
-
     const inventory = {};
     transactions.forEach(t => {
-        const phase = extractPhaseFromNote(t.note);
+        const info = extractInfoFromNote(t.note);
         const pName = (t.project_name || '').trim().toUpperCase();
         const mName = (t.material_name || '').trim().toUpperCase();
         const cCode = (t.color_code || '').trim().toUpperCase();
         const unit = (t.unit || '').trim().toUpperCase();
-        const pPhase = phase.trim().toUpperCase();
+        const pPhase = info.p.trim().toUpperCase();
+        const oPhase = info.o.trim().toUpperCase();
         
-        const key = `${pName}_${mName}_${cCode}_${unit}_${pPhase}`;
+        const key = `${pName}_${mName}_${cCode}_${unit}_${pPhase}_${oPhase}`;
         
         if (!inventory[key]) {
             inventory[key] = {
@@ -455,7 +390,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 material_name: (t.material_name || '').trim(),
                 color_code: (t.color_code || '').trim(),
                 unit: (t.unit || '').trim(),
-                price_phase: phase.trim(),
+                price_phase: info.p.trim(),
+                order_phase: info.o.trim(),
                 totalImport: 0,
                 totalExport: 0,
                 export_transactions: [],
@@ -634,7 +570,6 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                 <tr>
                                     <th className="px-6 py-4">Công trình</th>
                                     <th className="px-6 py-4">Tên Vật Tư</th>
-                                    <th className="px-6 py-4 text-center">Đợt Giá</th>
                                     <th className="px-6 py-4 text-center">Mã Màu</th>
                                     <th className="px-6 py-4 text-center">ĐVT</th>
                                     <th className="px-6 py-4 text-right">Tổng Nhập</th>
@@ -650,80 +585,120 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                     const inventoryByProject = {};
                                     filteredInventory.forEach(item => {
                                         if (!inventoryByProject[item.project_name]) {
-                                            inventoryByProject[item.project_name] = [];
+                                            inventoryByProject[item.project_name] = { phases: {}, total: [] };
                                         }
-                                        inventoryByProject[item.project_name].push(item);
+                                        const p = inventoryByProject[item.project_name];
+                                        const oPhase = item.order_phase || 'KHÔNG RÕ ĐỢT';
+                                        if (!p.phases[oPhase]) p.phases[oPhase] = [];
+                                        p.phases[oPhase].push(item);
                                     });
 
-                                    const toggleProject = (projectName) => {
-                                        setExpandedProjects(prev => ({...prev, [projectName]: !prev[projectName]}));
+                                    Object.keys(inventoryByProject).forEach(pName => {
+                                        const p = inventoryByProject[pName];
+                                        const totalMap = {};
+                                        Object.values(p.phases).flat().forEach(item => {
+                                            const tKey = `${item.material_name}_${item.color_code}_${item.unit}_${item.price_phase}`;
+                                            if (!totalMap[tKey]) {
+                                                totalMap[tKey] = { ...item, totalImport: 0, totalExport: 0, remaining: 0, totalImportValue: 0, totalValue: 0, export_transactions: [], key: item.key + '_total' };
+                                            }
+                                            totalMap[tKey].totalImport += item.totalImport;
+                                            totalMap[tKey].totalExport += item.totalExport;
+                                            totalMap[tKey].remaining += item.remaining;
+                                            totalMap[tKey].totalImportValue += item.totalImportValue;
+                                            totalMap[tKey].totalValue += item.totalValue;
+                                            totalMap[tKey].export_transactions = [...totalMap[tKey].export_transactions, ...item.export_transactions];
+                                        });
+                                        p.total = Object.values(totalMap).sort((a,b) => (a.price_phase||'').localeCompare(b.price_phase||'') || a.orderIndex - b.orderIndex);
+                                    });
+
+                                    const toggleProject = (projectName) => setExpandedProjects(prev => ({...prev, [projectName]: !prev[projectName]}));
+                                    const togglePhase = (projectName, phaseName) => {
+                                        const key = `${projectName}__${phaseName}`;
+                                        setExpandedPhases(prev => ({...prev, [key]: !prev[key]}));
                                     };
 
                                     if (Object.keys(inventoryByProject).length === 0) {
                                         return (
                                             <tr>
-                                                <td colSpan="7" className="px-6 py-10 text-center text-slate-500 font-medium">
-                                                    Không có dữ liệu tồn kho phù hợp.
-                                                </td>
+                                                <td colSpan="10" className="px-6 py-10 text-center text-slate-500 font-medium">Không có dữ liệu tồn kho phù hợp.</td>
                                             </tr>
                                         );
                                     }
 
-                                    return Object.entries(inventoryByProject).map(([projectName, items]) => {
-                                        const uniqueMaterials = Array.from(new Set(items.map(i => i.material_name)));
-                                        const materialColors = [
-                                            'bg-red-100 text-red-700 border-red-200',
-                                            'bg-blue-100 text-blue-700 border-blue-200',
-                                            'bg-emerald-100 text-emerald-700 border-emerald-200',
-                                            'bg-amber-100 text-amber-700 border-amber-200',
-                                            'bg-purple-100 text-purple-700 border-purple-200',
-                                            'bg-pink-100 text-pink-700 border-pink-200',
-                                            'bg-cyan-100 text-cyan-700 border-cyan-200',
-                                            'bg-orange-100 text-orange-700 border-orange-200',
-                                            'bg-teal-100 text-teal-700 border-teal-200',
-                                            'bg-indigo-100 text-indigo-700 border-indigo-200'
-                                        ];
+                                    const materialColors = [
+                                        'bg-red-100 text-red-700 border-red-200', 'bg-blue-100 text-blue-700 border-blue-200',
+                                        'bg-emerald-100 text-emerald-700 border-emerald-200', 'bg-amber-100 text-amber-700 border-amber-200',
+                                        'bg-purple-100 text-purple-700 border-purple-200', 'bg-pink-100 text-pink-700 border-pink-200',
+                                        'bg-cyan-100 text-cyan-700 border-cyan-200', 'bg-orange-100 text-orange-700 border-orange-200',
+                                        'bg-teal-100 text-teal-700 border-teal-200', 'bg-indigo-100 text-indigo-700 border-indigo-200'
+                                    ];
 
-                                        return (
-                                        <React.Fragment key={projectName}>
-                                            <tr 
-                                                className="bg-slate-100/50 hover:bg-slate-200/50 cursor-pointer transition border-b border-slate-200"
-                                                onClick={() => toggleProject(projectName)}
-                                            >
-                                                <td colSpan="11" className="px-6 py-3">
-                                                    <div className="flex items-center justify-between font-black text-slate-800 w-full">
-                                                        <div className="flex items-center gap-2">
-                                                            {expandedProjects[projectName] ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}
-                                                            {projectName} 
-                                                            <span className="text-xs font-bold bg-indigo-100 text-indigo-700 px-2.5 py-0.5 rounded-full ml-2">
-                                                                {items.length} vật tư
-                                                            </span>
-                                                        </div>
-                                                        <div className="flex gap-6 text-sm">
-                                                            <span>Đã nhập: <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(items.reduce((s, i) => s + i.totalImportValue, 0))} ₫</span></span>
-                                                            <span>Tồn kho: <span className="text-emerald-600">{new Intl.NumberFormat('vi-VN').format(items.reduce((s, i) => s + i.totalValue, 0))} ₫</span></span>
-                                                        </div>
+                                    const renderExportHistory = (item) => (
+                                        <tr className="bg-slate-50/50 border-b border-slate-200 shadow-inner">
+                                            <td colSpan="10" className="p-0">
+                                                <div className="py-6 px-8 pl-[4.5rem] bg-gradient-to-r from-amber-50/40 to-transparent">
+                                                    <div className="flex items-center gap-2 mb-4">
+                                                        <div className="p-1.5 bg-amber-100 rounded-lg text-amber-600 shadow-sm"><ArrowUpFromLine size={16} strokeWidth={2.5} /></div>
+                                                        <h4 className="text-sm font-black text-slate-700 tracking-wide uppercase">Lịch sử Xuất kho</h4>
+                                                        <div className="h-px bg-slate-200 flex-1 ml-4"></div>
                                                     </div>
-                                                </td>
-                                            </tr>
-                                            {expandedProjects[projectName] && items.map((item, idx) => {
-                                                const mIdx = uniqueMaterials.indexOf(item.material_name);
-                                                const colorClass = materialColors[mIdx % materialColors.length];
-                                                return (
-                                                <React.Fragment key={idx}>
-                                                <tr 
-                                                    className="hover:bg-slate-50 transition border-b border-slate-100 cursor-pointer"
-                                                    onClick={() => setExpandedMaterials(prev => ({...prev, [item.key]: !prev[item.key]}))}
-                                                >
-                                                    <td className="px-6 py-3 pl-12 text-slate-300 font-mono">
-                                                        {expandedMaterials[item.key] ? <ChevronDown size={14} className="inline-block text-slate-400 mr-1"/> : <ChevronRight size={14} className="inline-block text-slate-400 mr-1"/>}
-                                                    </td>
+                                                    {item.export_transactions.length > 0 ? (
+                                                        <div className="bg-white/80 rounded-xl border border-amber-200/60 shadow-sm overflow-hidden mt-2">
+                                                            <table className="w-full text-sm text-slate-600">
+                                                                <thead className="bg-amber-100/30">
+                                                                    <tr className="text-left text-amber-800 uppercase text-xs tracking-wider">
+                                                                        <th className="py-3 px-6 font-bold w-[25%] border-b border-amber-200/60">Ngày xuất</th>
+                                                                        <th className="py-3 px-6 font-bold w-[20%] text-center border-b border-amber-200/60">Số lượng</th>
+                                                                        <th className="py-3 px-6 font-bold w-[45%] border-b border-amber-200/60">Nội dung / Vị trí</th>
+                                                                        <th className="py-3 px-6 font-bold w-[10%] text-center border-b border-amber-200/60">Thao tác</th>
+                                                                    </tr>
+                                                                </thead>
+                                                                <tbody className="divide-y divide-amber-100/50">
+                                                                    {item.export_transactions.map(ex => {
+                                                                        const cleanNote = ex.note ? ex.note.replace(/\[Đợt giá: .*?\]\s*/g, '').replace(/Tự động từ ĐVT: .*?\s*/g, '').trim() : '';
+                                                                        return (
+                                                                            <tr key={ex.id} className="hover:bg-white transition-colors">
+                                                                                <td className="py-3 px-6 font-medium text-slate-600 flex items-center gap-2"><Calendar size={14} className="text-slate-400" />{formatDateVN(ex.date)}</td>
+                                                                                <td className="py-3 px-6 text-center"><span className="font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">-{ex.quantity} <span className="text-[11px] font-semibold">{item.unit}</span></span></td>
+                                                                                <td className="py-3 px-6 text-slate-600">{cleanNote || <span className="italic text-slate-400">Không có vị trí/ghi chú</span>}</td>
+                                                                                <td className="py-3 px-6 text-center">
+                                                                                    <div className="flex items-center justify-center gap-1">
+                                                                                        <button onClick={(e) => { e.stopPropagation(); const phaseMatch = ex.note ? ex.note.match(/\[Đợt giá: (.*?)\]/) : null; const phase = phaseMatch ? phaseMatch[1] : ''; setFormData({ project_name: ex.project_name, material_name: ex.material_name, color_code: ex.color_code || '', unit: ex.unit, quantity: ex.quantity, date: ex.date, price_phase: phase, note: cleanNote }); setModalType('XUẤT'); setEditingId(ex.id); setShowModal(true); }} className="text-slate-400 hover:text-amber-500 hover:bg-amber-50 p-1.5 rounded-md transition" title="Sửa phiếu xuất"><Edit2 size={14} /></button>
+                                                                                        <button onClick={async (e) => { e.stopPropagation(); handleDelete(ex.id); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition" title="Xóa phiếu xuất"><Trash2 size={14} /></button>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        );
+                                                                    })}
+                                                                </tbody>
+                                                            </table>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50"><span className="text-sm text-slate-400 font-medium italic">Chưa có dữ liệu xuất kho cho vật tư này.</span></div>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+
+                                    const renderMaterialRow = (item, isTotalRow = false) => {
+                                        const getMaterialColorIndex = (name) => {
+                                            let hash = 0;
+                                            for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+                                            return Math.abs(hash);
+                                        };
+                                        const mIdx = getMaterialColorIndex(item.material_name);
+                                        const colorClass = materialColors[mIdx % materialColors.length];
+                                        return (
+                                            <React.Fragment key={item.key}>
+                                                <tr className="hover:bg-slate-50 transition border-b border-slate-100 cursor-pointer" onClick={() => setExpandedMaterials(prev => ({...prev, [item.key]: !prev[item.key]}))}>
+                                                    <td className="px-6 py-3 pl-20 text-slate-300 font-mono">{expandedMaterials[item.key] ? <ChevronDown size={14} className="inline-block text-slate-400 mr-1"/> : <ChevronRight size={14} className="inline-block text-slate-400 mr-1"/>}</td>
                                                     <td className="px-6 py-3 font-medium">
-                                                        <span className={`px-2.5 py-1 rounded-md text-[13px] font-bold border shadow-sm ${colorClass}`}>
-                                                            {item.material_name}
-                                                        </span>
+                                                        <div className="flex flex-col gap-1 items-start">
+                                                            <span className={`px-2.5 py-1 rounded-md text-[13px] font-bold border shadow-sm ${colorClass}`}>{item.material_name}</span>
+                                                            {isTotalRow && <span className="text-xs font-semibold text-slate-500">Đợt giá: <span className="text-indigo-600">{item.price_phase || 'Trống'}</span></span>}
+                                                        </div>
                                                     </td>
-                                                    <td className="px-6 py-3 text-center text-xs font-bold text-indigo-600">{item.price_phase || '-'}</td>
                                                     <td className="px-6 py-3 text-center text-slate-600">{item.color_code || '-'}</td>
                                                     <td className="px-6 py-3 text-center text-slate-500">{item.unit}</td>
                                                     <td className="px-6 py-3 text-right font-bold text-blue-600">{item.totalImport}</td>
@@ -732,118 +707,93 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                     <td className="px-6 py-3 text-right font-medium text-slate-600 whitespace-nowrap">{new Intl.NumberFormat('vi-VN').format(item.price)} ₫</td>
                                                     <td className="px-6 py-3 text-right font-black text-blue-600 whitespace-nowrap">{new Intl.NumberFormat('vi-VN').format(item.totalImportValue)} ₫</td>
                                                     <td className="px-6 py-3 text-center">
-                                                        <div className="flex items-center justify-center gap-2">
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleEditInventory(item);
-                                                                }} 
-                                                                className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition" 
-                                                                title="Thêm phiếu điều chỉnh tồn kho"
-                                                            >
-                                                                <Edit2 size={16} />
-                                                            </button>
-                                                            <button 
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    handleDeleteInventoryGroup(item);
-                                                                }} 
-                                                                className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition" 
-                                                                title="Xóa TOÀN BỘ phiếu của vật tư này"
-                                                            >
-                                                                <Trash2 size={16} />
-                                                            </button>
-                                                        </div>
+                                                        {!isTotalRow ? (
+                                                            <div className="flex items-center justify-center gap-2">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleEditInventory(item); }} className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition" title="Thêm phiếu điều chỉnh tồn kho"><Edit2 size={16} /></button>
+                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteInventoryGroup(item); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition" title="Xóa TOÀN BỘ phiếu của vật tư này"><Trash2 size={16} /></button>
+                                                            </div>
+                                                        ) : (
+                                                            <span className="text-xs text-slate-400 italic">Tổng hợp</span>
+                                                        )}
                                                     </td>
                                                 </tr>
-                                                {expandedMaterials[item.key] && (
-                                                    <tr className="bg-slate-50/50 border-b border-slate-200 shadow-inner">
-                                                        <td colSpan="11" className="p-0">
-                                                            <div className="py-6 px-8 pl-[4.5rem] bg-gradient-to-r from-amber-50/40 to-transparent">
-                                                                <div className="flex items-center gap-2 mb-4">
-                                                                    <div className="p-1.5 bg-amber-100 rounded-lg text-amber-600 shadow-sm">
-                                                                        <ArrowUpFromLine size={16} strokeWidth={2.5} />
-                                                                    </div>
-                                                                    <h4 className="text-sm font-black text-slate-700 tracking-wide uppercase">Lịch sử Xuất kho</h4>
-                                                                    <div className="h-px bg-slate-200 flex-1 ml-4"></div>
-                                                                </div>
-                                                                
-                                                                {item.export_transactions.length > 0 ? (
-                                                                    <div className="bg-white/80 rounded-xl border border-amber-200/60 shadow-sm overflow-hidden mt-2">
-                                                                        <table className="w-full text-sm text-slate-600">
-                                                                            <thead className="bg-amber-100/30">
-                                                                                <tr className="text-left text-amber-800 uppercase text-xs tracking-wider">
-                                                                                    <th className="py-3 px-6 font-bold w-[25%] border-b border-amber-200/60">Ngày xuất</th>
-                                                                                    <th className="py-3 px-6 font-bold w-[20%] text-center border-b border-amber-200/60">Số lượng</th>
-                                                                                    <th className="py-3 px-6 font-bold w-[45%] border-b border-amber-200/60">Nội dung / Vị trí</th>
-                                                                                    <th className="py-3 px-6 font-bold w-[10%] text-center border-b border-amber-200/60">Thao tác</th>
-                                                                                </tr>
-                                                                            </thead>
-                                                                            <tbody className="divide-y divide-amber-100/50">
-                                                                                {item.export_transactions.map(ex => {
-                                                                                    const cleanNote = ex.note ? ex.note.replace(/\[Đợt giá: .*?\]\s*/g, '').replace(/Tự động từ ĐVT: .*?\s*/g, '').trim() : '';
-                                                                                    return (
-                                                                                        <tr key={ex.id} className="hover:bg-white transition-colors">
-                                                                                            <td className="py-3 px-6 font-medium text-slate-600 flex items-center gap-2">
-                                                                                                <Calendar size={14} className="text-slate-400" />
-                                                                                                {formatDateVN(ex.date)}
-                                                                                            </td>
-                                                                                            <td className="py-3 px-6 text-center">
-                                                                                                <span className="font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">
-                                                                                                    -{ex.quantity} <span className="text-[11px] font-semibold">{item.unit}</span>
-                                                                                                </span>
-                                                                                            </td>
-                                                                                            <td className="py-3 px-6 text-slate-600">
-                                                                                                {cleanNote || <span className="italic text-slate-400">Không có vị trí/ghi chú</span>}
-                                                                                            </td>
-                                                                                            <td className="py-3 px-6 text-center">
-                                                                                                <div className="flex items-center justify-center gap-1">
-                                                                                                    <button onClick={(e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        const phaseMatch = ex.note ? ex.note.match(/\[Đợt giá: (.*?)\]/) : null;
-                                                                                                        const phase = phaseMatch ? phaseMatch[1] : '';
-                                                                                                        setFormData({
-                                                                                                            project_name: ex.project_name,
-                                                                                                            material_name: ex.material_name,
-                                                                                                            color_code: ex.color_code || '',
-                                                                                                            unit: ex.unit,
-                                                                                                            quantity: ex.quantity,
-                                                                                                            date: ex.date,
-                                                                                                            price_phase: phase,
-                                                                                                            note: cleanNote
-                                                                                                        });
-                                                                                                        setModalType('XUẤT');
-                                                                                                        setEditingId(ex.id);
-                                                                                                        setShowModal(true);
-                                                                                                    }} className="text-slate-400 hover:text-amber-500 hover:bg-amber-50 p-1.5 rounded-md transition" title="Sửa phiếu xuất">
-                                                                                                        <Edit2 size={14} />
-                                                                                                    </button>
-                                                                                                    <button onClick={async (e) => {
-                                                                                                        e.stopPropagation();
-                                                                                                        handleDelete(ex.id);
-                                                                                                    }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition" title="Xóa phiếu xuất">
-                                                                                                        <Trash2 size={14} />
-                                                                                                    </button>
-                                                                                                </div>
-                                                                                            </td>
-                                                                                        </tr>
-                                                                                    );
-                                                                                })}
-                                                                            </tbody>
-                                                                        </table>
-                                                                    </div>
-                                                                ) : (
-                                                                    <div className="flex items-center justify-center p-6 border-2 border-dashed border-slate-200 rounded-xl bg-slate-50/50">
-                                                                        <span className="text-sm text-slate-400 font-medium italic">Chưa có dữ liệu xuất kho cho vật tư này.</span>
-                                                                    </div>
-                                                                )}
+                                                {expandedMaterials[item.key] && renderExportHistory(item)}
+                                            </React.Fragment>
+                                        );
+                                    };
+
+                                    return Object.entries(inventoryByProject).map(([projectName, projectData]) => {
+                                        const allPhases = Object.keys(projectData.phases).sort((a, b) => {
+                                            if (a.includes('ĐỢT') && b.includes('ĐỢT')) {
+                                                const numA = parseInt(a.replace(/\D/g, '')) || 0;
+                                                const numB = parseInt(b.replace(/\D/g, '')) || 0;
+                                                return numA - numB;
+                                            }
+                                            return a.localeCompare(b);
+                                        });
+
+                                        return (
+                                        <React.Fragment key={projectName}>
+                                            <tr className="bg-slate-100/50 hover:bg-slate-200/50 cursor-pointer transition border-b border-slate-200" onClick={() => toggleProject(projectName)}>
+                                                <td colSpan="10" className="px-6 py-3">
+                                                    <div className="flex items-center justify-between font-black text-slate-800 w-full">
+                                                        <div className="flex items-center gap-2">{expandedProjects[projectName] ? <ChevronDown size={18} className="text-slate-500" /> : <ChevronRight size={18} className="text-slate-500" />}{projectName}</div>
+                                                        <div className="flex gap-6 text-sm">
+                                                            <span>Đã nhập: <span className="text-blue-600">{new Intl.NumberFormat('vi-VN').format(projectData.total.reduce((s, i) => s + i.totalImportValue, 0))} ₫</span></span>
+                                                            <span>Tồn kho: <span className="text-emerald-600">{new Intl.NumberFormat('vi-VN').format(projectData.total.reduce((s, i) => s + i.totalValue, 0))} ₫</span></span>
+                                                        </div>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                            {expandedProjects[projectName] && (
+                                                <React.Fragment>
+                                                    <tr className="bg-indigo-50/40 hover:bg-indigo-100/40 cursor-pointer transition border-b border-indigo-100" onClick={() => togglePhase(projectName, 'TỔNG')}>
+                                                        <td colSpan="10" className="px-6 py-3 pl-12">
+                                                            <div className="flex items-center gap-2 font-bold text-indigo-700">
+                                                                {expandedPhases[`${projectName}__TỔNG`] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                                                <Warehouse size={16} /> TỔNG HỢP TOÀN BỘ
                                                             </div>
                                                         </td>
                                                     </tr>
-                                                )}
+                                                    {expandedPhases[`${projectName}__TỔNG`] && (() => {
+                                                        const totalByPricePhase = {};
+                                                        projectData.total.forEach(item => {
+                                                            const pp = item.price_phase || 'KHÔNG RÕ ĐỢT GIÁ';
+                                                            if (!totalByPricePhase[pp]) totalByPricePhase[pp] = [];
+                                                            totalByPricePhase[pp].push(item);
+                                                        });
+                                                        const pricePhases = Object.keys(totalByPricePhase).sort((a, b) => a.localeCompare(b));
+                                                        
+                                                        return pricePhases.map(pp => (
+                                                            <React.Fragment key={`total_pp_${pp}`}>
+                                                                <tr className="bg-sky-50/30 hover:bg-sky-100/40 cursor-pointer transition border-b border-sky-100" onClick={() => togglePhase(projectName, `TỔNG__${pp}`)}>
+                                                                    <td colSpan="10" className="px-6 py-2.5 pl-16">
+                                                                        <div className="flex items-center gap-2 font-bold text-sky-700">
+                                                                            {expandedPhases[`${projectName}__TỔNG__${pp}`] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                                            <Tag size={14} /> ĐỢT GIÁ: {pp}
+                                                                        </div>
+                                                                    </td>
+                                                                </tr>
+                                                                {expandedPhases[`${projectName}__TỔNG__${pp}`] && totalByPricePhase[pp].map(item => renderMaterialRow(item, true))}
+                                                            </React.Fragment>
+                                                        ));
+                                                    })()}
+
+                                                    {allPhases.map(phase => (
+                                                        <React.Fragment key={phase}>
+                                                            <tr className="bg-amber-50/40 hover:bg-amber-100/40 cursor-pointer transition border-b border-amber-100" onClick={() => togglePhase(projectName, phase)}>
+                                                                <td colSpan="10" className="px-6 py-3 pl-12">
+                                                                    <div className="flex items-center gap-2 font-bold text-amber-700">
+                                                                        {expandedPhases[`${projectName}__${phase}`] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                                                        <Package size={16} /> ĐỢT ĐẶT HÀNG: {phase}
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                            {expandedPhases[`${projectName}__${phase}`] && projectData.phases[phase].map(item => renderMaterialRow(item, false))}
+                                                        </React.Fragment>
+                                                    ))}
                                                 </React.Fragment>
-                                                );
-                                            })}
+                                            )}
                                         </React.Fragment>
                                         );
                                     });
@@ -851,7 +801,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                 {filteredInventory.length > 0 && (
                                     <tr className="bg-slate-200 font-black text-slate-800 text-base border-t-4 border-slate-300">
                                         <td colSpan="8" className="px-6 py-4 text-right uppercase">Tổng cộng toàn bộ:</td>
-                                        <td colSpan="3" className="px-6 py-4 text-right whitespace-nowrap text-blue-700">
+                                        <td colSpan="2" className="px-6 py-4 text-right whitespace-nowrap text-blue-700">
                                             Đã nhập: {new Intl.NumberFormat('vi-VN').format(filteredInventory.reduce((s, i) => s + i.totalImportValue, 0))} ₫
                                             <br/>
                                             <span className="text-emerald-700 mt-1 block">Tồn kho: {new Intl.NumberFormat('vi-VN').format(filteredInventory.reduce((s, i) => s + i.totalValue, 0))} ₫</span>
