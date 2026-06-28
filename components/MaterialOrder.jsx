@@ -283,7 +283,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         e.preventDefault();
         
         if (!formData.project_name) {
-            alert('Vui lòng chọn công trình!');
+            showToast('Vui lòng chọn công trình!', 'error');
             return;
         }
 
@@ -292,15 +292,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
         if (!isMainContractorSave) {
             if (!formData.address || !formData.address.trim()) {
-                alert('Vui lòng nhập địa chỉ dự án!');
+                showToast('Vui lòng nhập địa chỉ dự án!', 'error');
                 return;
             }
             if (!formData.company || !formData.company.trim()) {
-                alert('Vui lòng chọn/nhập nhà cung cấp!');
+                showToast('Vui lòng chọn/nhập nhà cung cấp!', 'error');
                 return;
             }
             if (!formData.recipient || !formData.recipient.trim()) {
-                alert('Vui lòng nhập người nhận hàng!');
+                showToast('Vui lòng nhập người nhận hàng!', 'error');
                 return;
             }
         }
