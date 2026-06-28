@@ -1245,26 +1245,26 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                         {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] && receivedHistory.length > 0 && (
                                                                             <tr className="bg-slate-50/50">
                                                                                 <td colSpan="6" className="p-2 md:p-3 md:pl-8">
-                                                                                    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-x-auto">
-                                                                                        <table className="w-full text-xs text-left">
+                                                                                    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-x-auto inline-block max-w-full">
+                                                                                        <table className="w-max text-sm text-left">
                                                                                             <thead className="bg-indigo-50/50 text-indigo-800 border-b border-slate-200">
                                                                                                 <tr>
-                                                                                                    <th className="px-2 py-1.5 font-bold w-12 text-center text-[11px]">Đợt</th>
-                                                                                                    <th className="px-2 py-1.5 font-bold text-[11px]">Ngày nhận</th>
-                                                                                                    <th className="px-2 py-1.5 font-bold text-right text-[11px]">Số lượng</th>
-                                                                                                    <th className="px-2 py-1.5 font-bold text-[11px]">Ghi chú</th>
-                                                                                                    <th className="px-2 py-1.5 font-bold text-center w-28 text-[11px]">Phiếu nhận hàng</th>
-                                                                                                    <th className="px-2 py-1.5 font-bold text-center w-20 text-[11px]">Thao tác</th>
+                                                                                                    <th className="px-3 py-2 font-bold text-center">Đợt</th>
+                                                                                                    <th className="px-3 py-2 font-bold">Ngày nhận</th>
+                                                                                                    <th className="px-3 py-2 font-bold text-right">Số lượng</th>
+                                                                                                    <th className="px-3 py-2 font-bold">Ghi chú</th>
+                                                                                                    <th className="px-3 py-2 font-bold text-center">Phiếu nhận hàng</th>
+                                                                                                    <th className="px-3 py-2 font-bold text-center">Thao tác</th>
                                                                                                 </tr>
                                                                                             </thead>
                                                                                             <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
                                                                                                 {receivedHistory.map((h, i) => (
                                                                                                     <tr key={i} className="hover:bg-slate-50 transition">
-                                                                                                        <td className="px-2 py-1.5 text-center text-xs">{i + 1}</td>
-                                                                                                        <td className="px-2 py-1.5 text-xs font-mono">{formatDateVN(h.date)}</td>
-                                                                                                        <td className="px-2 py-1.5 text-right font-black text-indigo-600 text-xs">{h.qty}</td>
-                                                                                                        <td className="px-2 py-1.5 text-xs">{h.note || '-'}</td>
-                                                                                                        <td className="px-2 py-1.5 text-center">
+                                                                                                        <td className="px-3 py-2 text-center">{i + 1}</td>
+                                                                                                        <td className="px-3 py-2 font-mono">{formatDateVN(h.date)}</td>
+                                                                                                        <td className="px-3 py-2 text-right font-black text-indigo-600">{h.qty}</td>
+                                                                                                        <td className="px-3 py-2">{h.note || '-'}</td>
+                                                                                                        <td className="px-3 py-2 text-center">
                                                                                                             {(() => {
                                                                                                                 const urls = h.receipt_urls || (h.receipt_url ? [h.receipt_url] : []);
                                                                                                                 return (
@@ -1323,7 +1323,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                                                 );
                                                                                                             })()}
                                                                                                         </td>
-                                                                                                        <td className="px-2 py-1.5 text-center">
+                                                                                                        <td className="px-3 py-2 text-center">
                                                                                                             <div className="flex items-center justify-center gap-1.5">
                                                                                                                 <button 
                                                                                                                     onClick={() => {
