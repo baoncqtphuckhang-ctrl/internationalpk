@@ -16,6 +16,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         advance_value: 0,
         address: '',
         cht_list: [{ name: '', phone: '' }],
+        project_type: 'TRỰC TIẾP ORDER',
         debt_to_collect: 0,
         plhd_list: []
     });
@@ -44,6 +45,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                     phone: ((details.chtPhone || '').split(',').map(s => s.trim())[i]) || ''
                 }))
                 : [{ name: '', phone: '' }],
+            project_type: details.projectType || 'TRỰC TIẾP ORDER',
             debt_to_collect: details.debtToCollect || 0,
             plhd_list: p.plhds || []
         });
@@ -55,7 +57,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], plhd_list: [] });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [] });
     };
 
     const handleDelete = (projectName) => {
@@ -113,7 +115,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], plhd_list: [] });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [] });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -150,6 +152,17 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
                                     placeholder="Ví dụ: HĐ-01/2026..."
                                 />
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="block text-sm font-black text-slate-900">Loại công trình</label>
+                                <select 
+                                    value={formData.project_type}
+                                    onChange={(e) => setFormData({...formData, project_type: e.target.value})}
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
+                                >
+                                    <option value="TRỰC TIẾP ORDER">TRỰC TIẾP ORDER</option>
+                                    <option value="TỔNG THẦU MUA HỘ">TỔNG THẦU MUA HỘ</option>
+                                </select>
                             </div>
                             <div className="space-y-2 md:col-span-2">
                                 <label className="block text-sm font-black text-slate-900">Địa chỉ công trình</label>
@@ -357,7 +370,14 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                         )}
                                     </div>
                                 </div>
-                                <h3 className="text-lg font-black text-slate-900 mb-2">{p.name}</h3>
+                                <h3 className="text-lg font-black text-slate-900 mb-1 flex items-center gap-2">
+                                    {p.name}
+                                </h3>
+                                <div className="mb-3">
+                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${details.projectType === 'TỔNG THẦU MUA HỘ' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                        {details.projectType || 'TRỰC TIẾP ORDER'}
+                                    </span>
+                                </div>
                                 <div className="space-y-2 text-sm">
                                     {details.address && (
                                         <div className="flex justify-between border-b border-slate-50 pb-2">

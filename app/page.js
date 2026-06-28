@@ -247,6 +247,7 @@ export default function Home() {
                     address: p.address || '',
                     chtName: p.cht_name || '',
                     chtPhone: p.cht_phone || '',
+                    projectType: p.project_type || 'TRỰC TIẾP ORDER',
                     plhds: plhdArray
                 };
             });
@@ -540,7 +541,8 @@ export default function Home() {
                         plhds: data.plhd_list || [],
                         address: data.address,
                         cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
+                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
+                        project_type: data.project_type || 'TRỰC TIẾP ORDER'
                     }]);
                     if (insertError) {
                         console.error('Insert error during rename:', insertError);
@@ -570,7 +572,8 @@ export default function Home() {
                         plhds: data.plhd_list || [],
                         address: data.address,
                         cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
+                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
+                        project_type: data.project_type || 'TRỰC TIẾP ORDER'
                     }).eq('name', data.original_name || data.name);
                     if (error) throw error;
                 }
@@ -584,7 +587,8 @@ export default function Home() {
                     plhds: data.plhd_list || [],
                     address: data.address,
                     cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                    cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', ')
+                    cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
+                    project_type: data.project_type || 'TRỰC TIẾP ORDER'
                 }]);
                 if (error) throw error;
             }

@@ -286,13 +286,16 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         }
 
         setIsLoading(true);
+        const selectedProjForSave = projects.find(p => p.name === formData.project_name);
+        const isMainContractorSave = selectedProjForSave?.project_type === 'TỔNG THẦU MUA HỘ';
+
         const payload = {
             project_name: formData.project_name,
             order_phase: formData.order_phase,
             order_date: formData.order_date,
-            address: formData.address,
+            address: isMainContractorSave ? '' : formData.address,
             category: formData.category,
-            company: formData.company,
+            company: isMainContractorSave ? '' : formData.company,
             recipient: formData.recipient,
             items: formData.categories,
             show_signature: formData.show_signature,
@@ -357,7 +360,10 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
 
             // Tự động chuyển tiếp đơn hàng vật tư sang cho kế toán hạch toán
-            if ((onCreateAccountingRequest || onUpdateAccountingRequest)) {
+            const selectedProj = projects.find(p => p.name === formData.project_name);
+            const isMainContractor = selectedProj?.project_type === 'TỔNG THẦU MUA HỘ';
+
+            if ((onCreateAccountingRequest || onUpdateAccountingRequest) && !isMainContractor) {
                 const itemsList = [];
                 formData.categories.forEach(cat => {
                     cat.items.forEach(it => {
@@ -1311,6 +1317,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     {/* FORM CONTAINER */}
                     <form onSubmit={handleSave} className="space-y-6">
                         
+                        {/* ALERT FOR TỔNG THẦU MUA HỘ */}
+                        {projects.find(p => p.name === formData.project_name)?.project_type === 'TỔNG THẦU MUA HỘ' && (
+                            <div className="bg-amber-50 text-amber-800 p-4 rounded-2xl border border-amber-200 flex items-start gap-3 shadow-sm animate-in slide-in-from-top">
+                                <Info size={24} className="text-amber-600 shrink-0 mt-0.5" />
+                                <div>
+                                    <h4 className="font-black text-sm uppercase tracking-tight text-amber-900">CÔNG TRÌNH TỔNG THẦU MUA HỘ</h4>
+                                    <p className="text-sm mt-1 text-amber-800/80 font-medium">Đơn đặt vật tư này sẽ chỉ được lưu để theo dõi tiến độ nhập kho, <strong>KHÔNG tạo Đề nghị thanh toán (DNTT)</strong> sang bên hệ thống kế toán.</p>
+                                </div>
+                            </div>
+                        )}
+
                         {/* METADATA CONFIG CARD */}
                         <div className="bg-white p-6 md:p-8 rounded-3xl border border-slate-200 shadow-sm grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-2">
@@ -1354,16 +1371,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Địa chỉ dự án</label>
-                                <input 
-                                    type="text"
-                                    value={formData.address}
-                                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                                    placeholder="Địa chỉ công trình..."
-                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
-                                />
-                            </div>
+                            {projects.find(p => p.name === formData.project_name)?.project_type !== 'TỔNG THẦU MUA HỘ' && (
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-black text-slate-900 uppercase">Địa chỉ dự án</label>
+                                    <input 
+                                        type="text"
+                                        value={formData.address}
+                                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                                        placeholder="Địa chỉ công trình..."
+                                        className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
+                                    />
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Hạng mục thi công</label>
@@ -1376,69 +1395,71 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 />
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Nhà cung cấp</label>
-                                <select 
-                                    value={
-                                        isCustomCompany ? "custom" : (
-                                            [
-                                                "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
-                                                "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
-                                                "Công ty TNHH Sơn Jotun Việt Nam",
-                                                "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
-                                                "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
-                                                "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
-                                                "CÔNG TY CP NAM VIỆT ÚC",
-                                                "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
-                                                "CÔNG TY TNHH SƠN NGHĨA PHÁT",
-                                                ""
-                                            ].includes(formData.company) ? formData.company : "custom"
-                                        )
-                                    }
-                                    onChange={(e) => {
-                                        if (e.target.value === 'custom') {
-                                            setIsCustomCompany(true);
-                                            setFormData({ ...formData, company: '' });
-                                        } else {
-                                            setIsCustomCompany(false);
-                                            setFormData({ ...formData, company: e.target.value });
+                            {projects.find(p => p.name === formData.project_name)?.project_type !== 'TỔNG THẦU MUA HỘ' && (
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-black text-slate-900 uppercase">Nhà cung cấp</label>
+                                    <select 
+                                        value={
+                                            isCustomCompany ? "custom" : (
+                                                [
+                                                    "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
+                                                    "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
+                                                    "Công ty TNHH Sơn Jotun Việt Nam",
+                                                    "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
+                                                    "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
+                                                    "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
+                                                    "CÔNG TY CP NAM VIỆT ÚC",
+                                                    "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
+                                                    "CÔNG TY TNHH SƠN NGHĨA PHÁT",
+                                                    ""
+                                                ].includes(formData.company) ? formData.company : "custom"
+                                            )
                                         }
-                                    }}
-                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-medium text-slate-800 transition"
-                                >
-                                    <option value="">-- Chọn nhà cung cấp --</option>
-                                    <option value="CÔNG TY TNHH AKZO NOBEL VIỆT NAM">CÔNG TY TNHH AKZO NOBEL VIỆT NAM</option>
-                                    <option value="CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI">CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI</option>
-                                    <option value="Công ty TNHH Sơn Jotun Việt Nam">Công ty TNHH Sơn Jotun Việt Nam</option>
-                                    <option value="CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN">CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN</option>
-                                    <option value="CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM">CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM</option>
-                                    <option value="CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1">CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1</option>
-                                    <option value="CÔNG TY CP NAM VIỆT ÚC">CÔNG TY CP NAM VIỆT ÚC</option>
-                                    <option value="CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT">CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT</option>
-                                    <option value="CÔNG TY TNHH SƠN NGHĨA PHÁT">CÔNG TY TNHH SƠN NGHĨA PHÁT</option>
-                                    <option value="custom">Khác (Nhập tay)...</option>
-                                </select>
-                                {isCustomCompany || ![
-                                    "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
-                                    "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
-                                    "Công ty TNHH Sơn Jotun Việt Nam",
-                                    "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
-                                    "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
-                                    "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
-                                    "CÔNG TY CP NAM VIỆT ÚC",
-                                    "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
-                                    "CÔNG TY TNHH SƠN NGHĨA PHÁT",
-                                    ""
-                                ].includes(formData.company) ? (
-                                    <input 
-                                        type="text"
-                                        value={formData.company}
-                                        onChange={(e) => setFormData({ ...formData, company: e.target.value })}
-                                        placeholder="Nhập tên nhà cung cấp khác..."
-                                        className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
-                                    />
-                                ) : null}
-                            </div>
+                                        onChange={(e) => {
+                                            if (e.target.value === 'custom') {
+                                                setIsCustomCompany(true);
+                                                setFormData({ ...formData, company: '' });
+                                            } else {
+                                                setIsCustomCompany(false);
+                                                setFormData({ ...formData, company: e.target.value });
+                                            }
+                                        }}
+                                        className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-medium text-slate-800 transition"
+                                    >
+                                        <option value="">-- Chọn nhà cung cấp --</option>
+                                        <option value="CÔNG TY TNHH AKZO NOBEL VIỆT NAM">CÔNG TY TNHH AKZO NOBEL VIỆT NAM</option>
+                                        <option value="CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI">CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI</option>
+                                        <option value="Công ty TNHH Sơn Jotun Việt Nam">Công ty TNHH Sơn Jotun Việt Nam</option>
+                                        <option value="CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN">CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN</option>
+                                        <option value="CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM">CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM</option>
+                                        <option value="CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1">CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1</option>
+                                        <option value="CÔNG TY CP NAM VIỆT ÚC">CÔNG TY CP NAM VIỆT ÚC</option>
+                                        <option value="CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT">CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT</option>
+                                        <option value="CÔNG TY TNHH SƠN NGHĨA PHÁT">CÔNG TY TNHH SƠN NGHĨA PHÁT</option>
+                                        <option value="custom">Khác (Nhập tay)...</option>
+                                    </select>
+                                    {isCustomCompany || ![
+                                        "CÔNG TY TNHH AKZO NOBEL VIỆT NAM",
+                                        "CÔNG TY TNHH THƯƠNG MẠI VÀ XÂY DỰNG THẾ HỆ MỚI",
+                                        "Công ty TNHH Sơn Jotun Việt Nam",
+                                        "CÔNG TY CỔ PHẦN ĐẦU TƯ SẢN XUẤT LÊ TRẦN",
+                                        "CÔNG TY TNHH DT TM DV XÂY DỰNG HOÀNG KIM",
+                                        "CÔNG TY CỔ PHẦN XÂY DỰNG VÀ THIẾT KẾ SỐ 1",
+                                        "CÔNG TY CP NAM VIỆT ÚC",
+                                        "CÔNG TY TNHH MỘT THÀNH VIÊN THƯƠNG MẠI SƠN MINH PHÁT",
+                                        "CÔNG TY TNHH SƠN NGHĨA PHÁT",
+                                        ""
+                                    ].includes(formData.company) ? (
+                                        <input 
+                                            type="text"
+                                            value={formData.company}
+                                            onChange={(e) => setFormData({ ...formData, company: e.target.value })}
+                                            placeholder="Nhập tên nhà cung cấp khác..."
+                                            className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
+                                        />
+                                    ) : null}
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Gợi ý người nhận hàng từ danh sách</label>
@@ -1615,9 +1636,11 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                         <td className="border border-black p-2">
                                                             <CurrencyInput 
                                                                 value={item.price || 0}
-                                                                onChange={(val) => handleItemChange(catIdx, itemIdx, 'price', val)}
+                                                                onChange={() => {}}
+                                                                disabled={true}
                                                                 placeholder="Đơn giá"
-                                                                className="w-full outline-none text-right font-medium bg-transparent text-slate-900"
+                                                                className="w-full outline-none text-right font-medium bg-transparent text-slate-900 cursor-not-allowed opacity-60"
+                                                                title="Đơn giá chỉ được thiết lập ở Danh Mục Vật Tư"
                                                             />
                                                         </td>
                                                         <td className="border border-black p-2 text-right font-bold text-blue-800">

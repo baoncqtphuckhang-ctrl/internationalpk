@@ -6,7 +6,7 @@ import {
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
     Clock, AlertTriangle, XCircle, ArrowLeft, RefreshCw,
-    DollarSign, Tag, Info, PieChart, Trash2
+    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -53,6 +53,18 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     
     // Modal state
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+    
+    // Receiving items state
+    const [expandedOrderId, setExpandedOrderId] = useState(null);
+    const [receiveData, setReceiveData] = useState({});
+    const [isSavingReceive, setIsSavingReceive] = useState(false);
+    
+    const [expandedItems, setExpandedItems] = useState({});
+    const [uploadingId, setUploadingId] = useState(null);
+
+    const toggleItemExpansion = (key) => {
+        setExpandedItems(prev => ({...prev, [key]: !prev[key]}));
+    };
     
     // Load orders
     const fetchOrders = async () => {
@@ -257,6 +269,226 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }
         result.sort((a, b) => a.name.localeCompare(b.name, 'vi'));
         return result;
+    };
+
+    const handleSaveReceive = async (order, catIdx, itemIdx) => {
+        const itemData = receiveData[`${order.id}_${catIdx}_${itemIdx}`];
+        if (!itemData || !itemData.qty || itemData.qty <= 0 || !itemData.date) {
+            showToast('Vui lòng nhập đủ ngày về và số lượng hợp lệ!', 'error');
+            return;
+        }
+
+        setIsSavingReceive(true);
+        try {
+            const currentItem = order.items[catIdx].items[itemIdx];
+            const newHistory = currentItem.received_history ? [...currentItem.received_history] : [];
+            newHistory.push({
+                date: itemData.date,
+                qty: parseFloat(itemData.qty),
+                note: itemData.note || '',
+                recorded_at: new Date().toISOString()
+            });
+
+            // Update in material_orders
+            const newOrderItems = [...order.items];
+            newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
+            newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
+            newOrderItems[catIdx].items[itemIdx] = {
+                ...currentItem,
+                received_history: newHistory
+            };
+
+            // Cannot update if it's an orphan
+            if (order._is_orphan) {
+                showToast('Đơn này là dữ liệu tạm, không thể lưu hàng về!', 'error');
+                setIsSavingReceive(false);
+                return;
+            }
+
+            const { error: updateError } = await supabase
+                .from('material_orders')
+                .update({ items: newOrderItems })
+                .eq('id', order.id);
+
+            if (updateError) throw updateError;
+
+            // Insert into material_warehouse
+            const warehousePayload = {
+                project_name: order.project_name,
+                transaction_type: 'NHẬP',
+                material_name: currentItem.name,
+                color_code: currentItem.colorCode || currentItem.color_code || '',
+                unit: currentItem.unit,
+                quantity: parseFloat(itemData.qty),
+                date: itemData.date,
+                note: `[Đợt giá: ${order.order_phase}] Theo Đơn vật tư ngày ${formatDateVN(order.order_date)}. ${itemData.note || ''}`
+            };
+
+            const { error: whError } = await supabase
+                .from('material_warehouse')
+                .insert([warehousePayload]);
+
+            if (whError) throw whError;
+
+            showToast('Lưu hàng về & Nhập kho thành công!');
+            
+            // Clear input
+            setReceiveData(prev => ({
+                ...prev,
+                [`${order.id}_${catIdx}_${itemIdx}`]: { date: '', qty: '', note: '' }
+            }));
+            
+            await fetchOrders();
+        } catch (err) {
+            console.error('Save Receive Error:', err);
+            showToast(`Có lỗi xảy ra: ${err.message || 'Không thể lưu dữ liệu'}`, 'error');
+        } finally {
+            setIsSavingReceive(false);
+        }
+    };
+
+    const handleDeleteReceiveHistory = async (order, catIdx, itemIdx, historyIdx, historyItem) => {
+        if (!window.confirm('Bạn có chắc muốn xóa đợt nhận hàng này? Dữ liệu nhập kho tương ứng cũng sẽ bị xóa.')) return;
+        
+        setIsSavingReceive(true);
+        try {
+            const currentItem = order.items[catIdx].items[itemIdx];
+            const newHistory = [...currentItem.received_history];
+            newHistory.splice(historyIdx, 1);
+
+            // Update in material_orders
+            const newOrderItems = [...order.items];
+            newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
+            newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
+            newOrderItems[catIdx].items[itemIdx] = {
+                ...currentItem,
+                received_history: newHistory
+            };
+
+            const { error: updateError } = await supabase
+                .from('material_orders')
+                .update({ items: newOrderItems })
+                .eq('id', order.id);
+
+            if (updateError) throw updateError;
+
+            // Attempt to delete from material_warehouse
+            await supabase
+                .from('material_warehouse')
+                .delete()
+                .eq('project_name', order.project_name)
+                .eq('material_name', currentItem.name)
+                .eq('quantity', historyItem.qty)
+                .eq('date', historyItem.date)
+                .eq('transaction_type', 'NHẬP');
+                
+            showToast('Đã xóa lịch sử nhận hàng thành công!');
+            await fetchOrders();
+        } catch (err) {
+            console.error('Delete Receive Error:', err);
+            showToast('Có lỗi xảy ra khi xóa!', 'error');
+        } finally {
+            setIsSavingReceive(false);
+        }
+    };
+
+    const handleUploadReceipt = async (e, order, catIdx, itemIdx, historyIdx, historyItem) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const uploadKey = `${order.id}_${catIdx}_${itemIdx}_${historyIdx}`;
+        setUploadingId(uploadKey);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const currentItem = order.items[catIdx].items[itemIdx];
+            
+            const sanitizedName = currentItem.name.substring(0, 20).replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = order.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            
+            const fileName = `receipt_${Date.now()}_${sanitizedName}.${fileExt}`;
+            const filePath = `${sanitizedProject}/receipts/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+                throw new Error(uploadError.message === 'Bucket not found' 
+                    ? 'Không tìm thấy bucket invoices' 
+                    : uploadError.message);
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+
+            const newHistory = [...currentItem.received_history];
+            newHistory[historyIdx] = { ...newHistory[historyIdx], receipt_url: publicUrl };
+
+            const newOrderItems = [...order.items];
+            newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
+            newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
+            newOrderItems[catIdx].items[itemIdx] = {
+                ...currentItem,
+                received_history: newHistory
+            };
+
+            const { error: updateError } = await supabase
+                .from('material_orders')
+                .update({ items: newOrderItems })
+                .eq('id', order.id);
+
+            if (updateError) throw updateError;
+            
+            showToast('Tải phiếu nhận hàng thành công!');
+            await fetchOrders();
+        } catch (err) {
+            console.error('Upload Receipt Error:', err);
+            showToast(err.message || 'Có lỗi xảy ra khi tải file!', 'error');
+            setUploadingId(null);
+        }
+    };
+
+    const handleDeleteReceiptOnly = async (order, catIdx, itemIdx, historyIdx) => {
+        try {
+            setIsLoading(true);
+            const currentItem = order.items[catIdx].items[itemIdx];
+            const fileUrl = currentItem.received_history[historyIdx].receipt_url;
+            
+            if (fileUrl && fileUrl.includes('/public/invoices/')) {
+                const parts = fileUrl.split('/public/invoices/');
+                if (parts.length > 1) {
+                    const filePath = decodeURIComponent(parts[1]);
+                    await supabase.storage.from('invoices').remove([filePath]);
+                }
+            }
+
+            const newHistory = [...currentItem.received_history];
+            delete newHistory[historyIdx].receipt_url;
+
+            const newOrderItems = [...order.items];
+            newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
+            newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
+            newOrderItems[catIdx].items[itemIdx] = {
+                ...currentItem,
+                received_history: newHistory
+            };
+
+            const { error: updateError } = await supabase
+                .from('material_orders')
+                .update({ items: newOrderItems })
+                .eq('id', order.id);
+
+            if (updateError) throw updateError;
+            
+            showToast('Đã xóa phiếu nhận hàng!');
+            await fetchOrders();
+        } catch(err) {
+            console.error('Delete Receipt Error:', err);
+            showToast('Lỗi xóa phiếu nhận hàng!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     const handleExportStatsExcel = () => {
@@ -730,89 +962,349 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                             {filteredOrders.map(order => {
                                                 const req = getMatchedRequest(order);
                                                 const status = req ? req.status : 'Draft';
-                                                const statusConfig = STATUS_LABELS[status] || { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info };
-                                                const StatusIcon = statusConfig.icon;
+                                                
+                                                const proj = projects.find(p => p.name === order.project_name);
+                                                const isMuaHo = proj && proj.project_type === 'TỔNG THẦU MUA HỘ';
+                                                
+                                                let totalOrdered = 0;
+                                                let totalReceivedQty = 0;
+                                                (order.items || []).forEach(cat => {
+                                                    (cat.items || []).forEach(it => {
+                                                        totalOrdered += parseFloat(it.quantity) || 0;
+                                                        const receivedHistory = it.received_history || [];
+                                                        totalReceivedQty += receivedHistory.reduce((sum, h) => sum + parseFloat(h.qty), 0);
+                                                    });
+                                                });
+                                                const isFullyReceived = totalOrdered > 0 && totalReceivedQty >= totalOrdered;
+                                                
+                                                let statusConfig = STATUS_LABELS[status] || { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info };
+                                                let StatusIcon = statusConfig.icon;
+                                                
+                                                if (isMuaHo) {
+                                                    if (isFullyReceived) {
+                                                        statusConfig = { label: 'Đã nhận đủ hàng', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', icon: CheckCircle };
+                                                        StatusIcon = CheckCircle;
+                                                    } else if (totalReceivedQty > 0) {
+                                                        statusConfig = { label: 'Đang nhận hàng', color: 'bg-sky-50 text-sky-700 border-sky-100', icon: Truck };
+                                                        StatusIcon = Truck;
+                                                    } else {
+                                                        statusConfig = { label: 'Chờ nhận hàng', color: 'bg-amber-50 text-amber-700 border-amber-100', icon: Clock };
+                                                        StatusIcon = Clock;
+                                                    }
+                                                }
+                                                
                                                 const itemCount = Array.isArray(order.items) 
                                                     ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
                                                     : 0;
      
                                                 return (
-                                                    <tr 
-                                                        key={order.id} 
-                                                        className={`hover:bg-slate-50/50 transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
-                                                        onDoubleClick={() => {
-                                                            if (onNavigateToProject) {
-                                                                onNavigateToProject(order.project_name);
-                                                            }
-                                                        }}
-                                                    >
-                                                        <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400">
-                                                            {formatDateVN(order.order_date)}
-                                                        </td>
-                                                        <td className="px-6 py-4 font-bold text-slate-800">
-                                                            {order.project_name}
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap">
-                                                            <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold font-mono whitespace-nowrap inline-block">
-                                                                {order.order_phase}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-6 py-4 truncate max-w-[150px]">
-                                                            {order.recipient.split('(')[0]}
-                                                        </td>
-                                                        <td className="px-6 py-4 truncate max-w-[120px] text-slate-500 italic">
-                                                            {order.created_by || '-'}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center font-bold">
-                                                            {itemCount}
-                                                        </td>
-                                                        <td className="px-6 py-4 whitespace-nowrap">
-                                                            <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition ${statusConfig.color}`}>
-                                                                <StatusIcon size={12} />
-                                                                {statusConfig.label}
-                                                            </span>
-                                                        </td>
-                                                        <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold">
-                                                            {status === 'Approved' || (req && req.total_amount > 0) ? (
-                                                                 <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
-                                                            ) : (
-                                                                status === 'Draft' || status === 'Rejected' || status === 'Deleted' ? (
-                                                                    <span className="text-slate-400 italic font-normal text-xs">-</span>
+                                                    <React.Fragment key={order.id}>
+                                                        <tr 
+                                                            className={`hover:bg-slate-50/50 transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
+                                                            onDoubleClick={() => {
+                                                                if (onNavigateToProject) {
+                                                                    onNavigateToProject(order.project_name);
+                                                                }
+                                                            }}
+                                                        >
+                                                            <td className="px-6 py-4 whitespace-nowrap text-xs font-mono font-bold text-slate-400">
+                                                                {formatDateVN(order.order_date)}
+                                                            </td>
+                                                            <td className="px-6 py-4 font-bold text-slate-800">
+                                                                {order.project_name}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className="bg-slate-100 text-slate-700 px-2.5 py-1 rounded-lg text-xs font-bold font-mono whitespace-nowrap inline-block">
+                                                                    {order.order_phase}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 truncate max-w-[150px]">
+                                                                {order.recipient.split('(')[0]}
+                                                            </td>
+                                                            <td className="px-6 py-4 truncate max-w-[120px] text-slate-500 italic">
+                                                                {order.created_by || '-'}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center font-bold">
+                                                                {itemCount}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                                <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition ${statusConfig.color}`}>
+                                                                    <StatusIcon size={12} />
+                                                                    {statusConfig.label}
+                                                                </span>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold">
+                                                                {status === 'Approved' || (req && req.total_amount > 0) ? (
+                                                                     <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
                                                                 ) : (
-                                                                    <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>
-                                                                )
-                                                            )}
-                                                        </td>
-                                                        <td className="px-6 py-4 text-center whitespace-nowrap">
-                                                            <div className="flex items-center justify-center gap-2">
-                                                                <button 
-                                                                    onClick={() => handleSelectOrder(order)}
-                                                                    className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5"
-                                                                >
-                                                                    <Eye size={14} /> Chi tiết
-                                                                </button>
-                                                                <button 
-                                                                    onClick={(e) => {
-                                                                        e.stopPropagation();
-                                                                        handleExportExcel(order);
-                                                                    }}
-                                                                    className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded-xl transition"
-                                                                    title="Xuất Excel"
-                                                                >
-                                                                    <Download size={15} />
-                                                                </button>
-                                                                {(status === 'Draft' || status === 'Rejected') && (
-                                                                    <button 
-                                                                        onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
-                                                                        className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"
-                                                                        title="Xóa Đơn Đặt Hàng"
-                                                                    >
-                                                                        <Trash2 size={15} />
-                                                                    </button>
+                                                                    status === 'Draft' || status === 'Rejected' || status === 'Deleted' ? (
+                                                                        <span className="text-slate-400 italic font-normal text-xs">-</span>
+                                                                    ) : (
+                                                                        <span className="text-slate-400 italic font-normal text-xs">Chờ hạch toán</span>
+                                                                    )
                                                                 )}
-                                                            </div>
-                                                        </td>
-                                                    </tr>
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center whitespace-nowrap">
+                                                                <div className="flex items-center justify-center gap-2">
+                                                                    <button 
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            setExpandedOrderId(expandedOrderId === order.id ? null : order.id);
+                                                                        }}
+                                                                        className="bg-sky-50 text-sky-600 hover:bg-sky-100 p-1.5 rounded-xl transition"
+                                                                        title="Quản lý hàng về"
+                                                                    >
+                                                                        {expandedOrderId === order.id ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={() => handleSelectOrder(order)}
+                                                                        className="bg-indigo-50 text-indigo-600 hover:bg-indigo-100 px-3 py-1.5 rounded-xl font-bold text-xs transition flex items-center gap-1.5"
+                                                                    >
+                                                                        <Eye size={14} /> Chi tiết
+                                                                    </button>
+                                                                    <button 
+                                                                        onClick={(e) => {
+                                                                            e.stopPropagation();
+                                                                            handleExportExcel(order);
+                                                                        }}
+                                                                        className="bg-green-50 text-green-600 hover:bg-green-100 p-1.5 rounded-xl transition"
+                                                                        title="Xuất Excel"
+                                                                    >
+                                                                        <Download size={15} />
+                                                                    </button>
+                                                                    {(status === 'Draft' || status === 'Rejected') && (
+                                                                        <button 
+                                                                            onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
+                                                                            className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"
+                                                                            title="Xóa Đơn Đặt Hàng"
+                                                                        >
+                                                                            <Trash2 size={15} />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+                                                        {expandedOrderId === order.id && (
+                                                            <tr className="bg-slate-50/50">
+                                                                <td colSpan="9" className="p-0 border-y border-slate-200">
+                                                                    <div className="p-6">
+                                                                        <div className="mb-4 flex items-center gap-2">
+                                                                            <div className="bg-sky-100 text-sky-600 p-1.5 rounded-lg">
+                                                                                <Truck size={16} />
+                                                                            </div>
+                                                                            <h4 className="font-bold text-slate-800 text-sm">Theo dõi lượng hàng về (Đơn: {order.order_phase})</h4>
+                                                                        </div>
+                                                                        <div className="bg-white border border-slate-200 rounded-xl overflow-x-auto shadow-sm">
+                                                                            <table className="w-full text-xs text-left min-w-[700px]">
+                                                                                <thead className="bg-slate-50 text-slate-500 uppercase font-black border-b border-slate-200">
+                                                                                    <tr>
+                                                                                        <th className="px-4 py-3">Vật tư</th>
+                                                                                        <th className="px-4 py-3 text-center w-16">ĐVT</th>
+                                                                                        <th className="px-4 py-3 text-center w-20">Tổng Đặt</th>
+                                                                                        <th className="px-4 py-3 text-center w-20">Đã Về</th>
+                                                                                        <th className="px-4 py-3 text-center w-20">Còn Thiếu</th>
+                                                                                        <th className="px-4 py-3 bg-blue-50/50 w-32">Ngày Về đợt này</th>
+                                                                                        <th className="px-4 py-3 bg-blue-50/50 text-center w-20">Số lượng</th>
+                                                                                        <th className="px-4 py-3 bg-blue-50/50">Ghi chú</th>
+                                                                                        <th className="px-4 py-3 bg-blue-50/50 w-12"></th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="divide-y divide-slate-100">
+                                                                                    {(Array.isArray(order.items) ? order.items : []).map((cat, catIdx) => (
+                                                                                        <React.Fragment key={catIdx}>
+                                                                                            {cat.items && cat.items.map((item, itemIdx) => {
+                                                                                                const orderQty = parseFloat(item.quantity) || 0;
+                                                                if (orderQty <= 0) return null;
+                                                                const receivedHistory = item.received_history || [];
+                                                                const totalReceived = receivedHistory.reduce((sum, h) => sum + parseFloat(h.qty), 0);
+                                                                const remaining = orderQty - totalReceived;
+                                                                const statusColor = remaining <= 0 ? 'text-green-600' : 'text-amber-600';
+                                                                const inputKey = `${order.id}_${catIdx}_${itemIdx}`;
+                                                                const itemInputData = receiveData[inputKey] || { date: '', qty: '', note: '' };
+                                                                
+                                                                return (
+                                                                    <React.Fragment key={itemIdx}>
+                                                                        <tr className="hover:bg-slate-50/50 transition">
+                                                                            <td className="px-4 py-3 font-bold text-slate-700">
+                                                                                <div className="flex items-center justify-between">
+                                                                                    <div>
+                                                                                        {item.name} <span className="text-slate-400 font-normal">{item.colorCode || item.color_code ? `(${item.colorCode || item.color_code})` : ''}</span>
+                                                                                    </div>
+                                                                                    {receivedHistory.length > 0 && (
+                                                                                        <button 
+                                                                                            onClick={() => toggleItemExpansion(`${order.id}_${catIdx}_${itemIdx}`)}
+                                                                                            className="text-xs bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded-md transition flex items-center gap-1 border border-slate-200"
+                                                                                        >
+                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? 'Ẩn đợt nhận' : `Xem ${receivedHistory.length} đợt`}
+                                                                                            {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                                                                                        </button>
+                                                                                    )}
+                                                                                </div>
+                                                                            </td>
+                                                                            <td className="px-4 py-3 text-center text-slate-500 font-bold">{item.unit}</td>
+                                                                            <td className="px-4 py-3 text-center font-bold text-slate-900">{orderQty}</td>
+                                                                            <td className="px-4 py-3 text-center font-black text-sky-600">{totalReceived}</td>
+                                                                            <td className={`px-4 py-3 text-center font-black ${statusColor}`}>{remaining > 0 ? remaining : 0}</td>
+                                                                            
+                                                                            <td className="px-4 py-2 bg-blue-50/20">
+                                                                                {remaining > 0 ? (
+                                                                                    <input 
+                                                                                        type={itemInputData.date ? 'date' : 'text'}
+                                                                                        placeholder="dd/mm/yyyy"
+                                                                                        onFocus={(e) => e.target.type = 'date'}
+                                                                                        onBlur={(e) => { if (!e.target.value) e.target.type = 'text'; }}
+                                                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500 font-mono text-xs"
+                                                                                        value={itemInputData.date || ''}
+                                                                                        onChange={(e) => setReceiveData(prev => ({...prev, [inputKey]: { ...prev[inputKey], date: e.target.value }}))}
+                                                                                    />
+                                                                                ) : (
+                                                                                    <span className="text-[10px] text-green-600 font-bold bg-green-50 px-2 py-1 rounded">Đã giao đủ</span>
+                                                                                )}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 bg-blue-50/20 text-center">
+                                                                                {remaining > 0 && (
+                                                                                    <input 
+                                                                                        type="number"
+                                                                                        min="0"
+                                                                                        max={remaining}
+                                                                                        step="any"
+                                                                                        placeholder="Số lượng về"
+                                                                                        className="w-24 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-center outline-none focus:border-blue-500 font-bold text-slate-700 text-xs"
+                                                                                        value={itemInputData.qty || ''}
+                                                                                        onChange={(e) => setReceiveData(prev => ({...prev, [inputKey]: { ...prev[inputKey], qty: e.target.value }}))}
+                                                                                    />
+                                                                                )}
+                                                                            </td>
+                                                                            <td className="px-4 py-2 bg-blue-50/20">
+                                                                                {remaining > 0 && (
+                                                                                    <input 
+                                                                                        type="text"
+                                                                                        placeholder="Ghi chú..."
+                                                                                        className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 outline-none focus:border-blue-500"
+                                                                                        value={itemInputData.note || ''}
+                                                                                        onChange={(e) => setReceiveData(prev => ({...prev, [inputKey]: { ...prev[inputKey], note: e.target.value }}))}
+                                                                                    />
+                                                                                )}
+                                                                            </td>
+                                                                            <td className="px-4 py-3 text-center">
+                                                                                {remaining > 0 ? (
+                                                                                    <button
+                                                                                        onClick={() => handleSaveReceive(order, catIdx, itemIdx)}
+                                                                                        disabled={isSavingReceive || !itemInputData.date || !itemInputData.qty}
+                                                                                        className={`p-2 rounded-xl transition-all shadow-sm ${
+                                                                                            !itemInputData.date || !itemInputData.qty 
+                                                                                                ? 'bg-slate-100 text-slate-400 cursor-not-allowed border border-slate-200' 
+                                                                                                : 'bg-blue-600 hover:bg-blue-700 text-white hover:scale-105 hover:shadow-md border border-blue-700'
+                                                                                        }`}
+                                                                                        title="Lưu số lượng hàng về"
+                                                                                    >
+                                                                                        <Save size={16} />
+                                                                                    </button>
+                                                                                ) : (
+                                                                                    <span className="text-slate-300">-</span>
+                                                                                )}
+                                                                            </td>
+                                                                        </tr>
+                                                                        {expandedItems[`${order.id}_${catIdx}_${itemIdx}`] && receivedHistory.length > 0 && (
+                                                                            <tr className="bg-slate-50/50">
+                                                                                <td colSpan="9" className="p-3 pl-8">
+                                                                                    <div className="border border-slate-200 rounded-xl bg-white shadow-sm overflow-hidden">
+                                                                                        <table className="w-full text-xs text-left">
+                                                                                            <thead className="bg-indigo-50/50 text-indigo-800 border-b border-slate-200">
+                                                                                                <tr>
+                                                                                                    <th className="px-4 py-2.5 font-bold w-12 text-center">Đợt</th>
+                                                                                                    <th className="px-4 py-2.5 font-bold">Ngày nhận</th>
+                                                                                                    <th className="px-4 py-2.5 font-bold text-right">Số lượng</th>
+                                                                                                    <th className="px-4 py-2.5 font-bold">Ghi chú</th>
+                                                                                                    <th className="px-4 py-2.5 font-bold text-center w-32">Phiếu nhận hàng</th>
+                                                                                                    <th className="px-4 py-2.5 font-bold text-center w-20">Xóa</th>
+                                                                                                </tr>
+                                                                                            </thead>
+                                                                                            <tbody className="divide-y divide-slate-100 text-slate-600 font-medium">
+                                                                                                {receivedHistory.map((h, i) => (
+                                                                                                    <tr key={i} className="hover:bg-slate-50 transition">
+                                                                                                        <td className="px-4 py-2.5 text-center">{i + 1}</td>
+                                                                                                        <td className="px-4 py-2.5">{formatDateVN(h.date)}</td>
+                                                                                                        <td className="px-4 py-2.5 text-right font-black text-indigo-600">{h.qty}</td>
+                                                                                                        <td className="px-4 py-2.5">{h.note || '-'}</td>
+                                                                                                        <td className="px-4 py-2.5 text-center">
+                                                                                                            {h.receipt_url ? (
+                                                                                                                <div className="flex items-center justify-center gap-1.5">
+                                                                                                                    <a href={h.receipt_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem Phiếu PDF/Ảnh">
+                                                                                                                        <Eye size={15} />
+                                                                                                                    </a>
+                                                                                                                    <button 
+                                                                                                                        onClick={() => handleDeleteReceiptOnly(order, catIdx, itemIdx, i)}
+                                                                                                                        className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200"
+                                                                                                                        title="Xóa phiếu đã tải"
+                                                                                                                    >
+                                                                                                                        <Trash2 size={15} />
+                                                                                                                    </button>
+                                                                                                                </div>
+                                                                                                            ) : (
+                                                                                                                <div className="flex items-center justify-center gap-1.5">
+                                                                                                                    {/* Camera Upload */}
+                                                                                                                    <div className="relative group/camera">
+                                                                                                                        <input 
+                                                                                                                            type="file" 
+                                                                                                                            accept="image/*"
+                                                                                                                            capture="environment"
+                                                                                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                                                                            onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
+                                                                                                                            disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
+                                                                                                                            title="Chụp ảnh phiếu"
+                                                                                                                        />
+                                                                                                                        <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/camera:bg-indigo-600 group-hover/camera:text-white group-hover/camera:border-indigo-600 group-hover/camera:scale-105'} rounded-lg transition-all duration-200`} title="Chụp ảnh phiếu">
+                                                                                                                            <Camera size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
+                                                                                                                        </button>
+                                                                                                                    </div>
+                                                                                                                    {/* Normal Upload */}
+                                                                                                                    <div className="relative group/upload">
+                                                                                                                        <input 
+                                                                                                                            type="file" 
+                                                                                                                            accept=".pdf,image/*"
+                                                                                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                                                                            onChange={(e) => handleUploadReceipt(e, order, catIdx, itemIdx, i, h)}
+                                                                                                                            disabled={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}`}
+                                                                                                                            title="Tải phiếu nhận hàng (PDF/Ảnh)"
+                                                                                                                        />
+                                                                                                                        <button className={`p-1.5 ${uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-emerald-600 group-hover/upload:text-white group-hover/upload:border-emerald-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải phiếu nhận hàng">
+                                                                                                                            <Upload size={15} className={uploadingId === `${order.id}_${catIdx}_${itemIdx}_${i}` ? 'animate-bounce' : ''} />
+                                                                                                                        </button>
+                                                                                                                    </div>
+                                                                                                                </div>
+                                                                                                            )}
+                                                                                                        </td>
+                                                                                                        <td className="px-4 py-2.5 text-center">
+                                                                                                            <button 
+                                                                                                                onClick={() => handleDeleteReceiveHistory(order, catIdx, itemIdx, i, h)}
+                                                                                                                className="p-1.5 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white rounded-lg transition-all duration-200"
+                                                                                                                title="Xóa đợt này"
+                                                                                                            >
+                                                                                                                <Trash2 size={14} />
+                                                                                                            </button>
+                                                                                                        </td>
+                                                                                                    </tr>
+                                                                                                ))}
+                                                                                            </tbody>
+                                                                                        </table>
+                                                                                    </div>
+                                                                                </td>
+                                                                            </tr>
+                                                                        )}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })}
+                                                        </React.Fragment>
+                                                    ))}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
                                                 );
                                             })}
                                         </tbody>
