@@ -1171,7 +1171,7 @@ export default function ApprovalWorkflow({
                             {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
                                 <style>{`@media print { @page { size: landscape; margin: 15mm; } }`}</style>
                             )}
-                            <div className={`print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1100px]' : 'max-w-[800px]'} font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
+                            <div className={`print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1100px]' : 'max-w-[950px]'} font-['Times_New_Roman',_serif] text-[16px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
                                 <div>
                                     {/* Company Header */}
                                     <div className="flex justify-between items-start mb-8 print:mb-2">
@@ -1402,7 +1402,7 @@ export default function ApprovalWorkflow({
                                                     <div>{roleLabel}</div>
                                                     <div className="h-24 flex items-center justify-center">
                                                         {creator?.signature_url ? (
-                                                            <img src={creator.signature_url} className="h-16 object-contain" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                                            <img src={creator.signature_url} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />
                                                         ) : sigName ? (
                                                             <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
                                                                 {sigName}

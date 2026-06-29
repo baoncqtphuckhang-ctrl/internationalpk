@@ -1806,7 +1806,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                             const creatorUsername = selectedOrder.created_by || currentUser?.username;
                                             const signatureUrl = usersList?.find(u => u.username === creatorUsername)?.signature_url;
                                             if (signatureUrl) {
-                                                return <img src={signatureUrl} className="h-16 object-contain" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />;
+                                                return <img src={signatureUrl} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />;
                                             }
                                             return <p className="print-signature text-2xl font-bold font-serif italic text-black">{getSignatureName(getCommanderName(selectedOrder.recipient))}</p>;
                                         })()}
