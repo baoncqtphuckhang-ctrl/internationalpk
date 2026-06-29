@@ -91,6 +91,7 @@ const MaChiSelect = ({ value, onChange }) => {
 export default function ApprovalWorkflow({ 
     activeTab,
     currentUser, 
+    usersList,
     projects, 
     dnttList, 
     onAddDNTT, 
