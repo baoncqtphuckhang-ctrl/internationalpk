@@ -38,7 +38,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToProject, refreshData }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -1205,7 +1205,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                             onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
                                                             onDoubleClick={(e) => {
                                                                 e.stopPropagation();
-                                                                if (onNavigateToProject) {
+                                                                if ((status === 'Accounted' || status === 'Paid' || (req && (req.status === 'ĐÃ XONG' || req.status?.toUpperCase() === 'ACCOUNTED'))) && onNavigateToHistoryWithId && req) {
+                                                                    onNavigateToHistoryWithId(req.id);
+                                                                } else if (onNavigateToProject) {
                                                                     onNavigateToProject(order.project_name);
                                                                 }
                                                             }}

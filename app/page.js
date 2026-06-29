@@ -160,6 +160,12 @@ export default function Home() {
     const [transactions, setTransactions] = useState([]);
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
+    const [highlightedReqId, setHighlightedReqId] = useState(null);
+
+    const handleNavigateToHistoryWithId = (reqId) => {
+        setHighlightedReqId(reqId);
+        setActiveTab('history');
+    };
     const [partnerDebts, setPartnerDebts] = useState([]);
     const [expectedInvoices, setExpectedInvoices] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
@@ -1006,6 +1012,24 @@ export default function Home() {
         }
     };
 
+    const handleUpdateDNTT = async (id, data) => {
+        setIsLoading(true);
+        try {
+            const { error } = await supabase.from('approval_requests').update({
+                ...data,
+                status: STATUSES.WAITING_QS
+            }).eq('id', id);
+            if (error) throw error;
+            showToast('Đã cập nhật và gửi lại!');
+            logActivity('Cập nhật', 'Đề nghị thanh toán', `Cập nhật yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
+            fetchData();
+        } catch (error) {
+            showToast('Lỗi khi cập nhật yêu cầu!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleDeleteApproval = async (id) => {
         setConfirmModal({
             isOpen: true,
@@ -1681,7 +1705,7 @@ export default function Home() {
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} />}
                 
                 {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} />}
                 
@@ -1700,6 +1724,7 @@ export default function Home() {
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
                         onAddDNTT={handleAddDNTT}
+                        onUpdateDNTT={handleUpdateDNTT}
                         onUpdateStatus={handleUpdateApprovalStatus}
                         onAccountDNTT={handleAccountDNTT}
                         onDeleteApproval={handleDeleteApproval}
@@ -1712,6 +1737,7 @@ export default function Home() {
                             setSelectedProject(projectName);
                             setActiveTab('project-detail');
                         }}
+                        onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                     />
                 )}
 
@@ -1775,6 +1801,7 @@ export default function Home() {
                                     setSelectedProject(projectName);
                                     setActiveTab('project-detail');
                                 }}
+                                onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                                 refreshData={fetchData}
                             />
                         )}
@@ -2245,7 +2272,7 @@ export default function Home() {
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} />
+                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (

@@ -101,9 +101,13 @@ export default function ApprovalWorkflow({
     isLoading,
     STATUSES,
     ROLES,
-    onNavigateToProject
+    systemConfig,
+    onNavigateToProject,
+    onNavigateToHistoryWithId,
+    onUpdateDNTT
 }) {
     const [view, setView] = useState('list'); // 'list' hoặc 'create'
+    const [editingId, setEditingId] = useState(null);
 
     useEffect(() => {
         setView('list');
@@ -178,14 +182,45 @@ export default function ApprovalWorkflow({
         if (dnttTotalAmount <= 0) return setFormError("Chưa nhập số tiền thanh toán! Vui lòng điền 'Thành tiền' ở phần A.");
         if (!dnttData.project) return setFormError("Vui lòng chọn Công trình!");
 
-        onAddDNTT({
+        const payload = {
             doc_type: dnttData.docType,
             project_name: dnttData.project,
             recipient: dnttData.recipient,
             total_amount: dnttTotalAmount,
             reason: JSON.stringify(dnttData)
-        });
+        };
+
+        if (editingId && onUpdateDNTT) {
+            onUpdateDNTT(editingId, payload);
+        } else {
+            onAddDNTT(payload);
+        }
+
         setView('list');
+        resetDnttForm();
+    };
+
+    const handleEditItem = (item) => {
+        try {
+            const parsed = JSON.parse(item.reason);
+            setDnttData({
+                docType: parsed.docType || (item.doc_type === 'Đơn Vật Tư' ? 'DNTT' : 'DNTT'),
+                project: parsed.project || item.project_name || '',
+                recipient: parsed.recipient || item.recipient || '',
+                department: parsed.department || '',
+                date: parsed.date || new Date().toISOString().split('T')[0],
+                items: parsed.items && parsed.items.length > 0 ? parsed.items : [{ id: Date.now(), content: '', amount: 0, note: '', maChi: '', bankAccountName: '', bankAccountNumber: '', bankName: '' }],
+                paymentMethod: parsed.paymentMethod || 'tien_mat',
+                bankAccountName: parsed.bankAccountName || '',
+                bankAccountNumber: parsed.bankAccountNumber || '',
+                bankName: parsed.bankName || '',
+                bankBranch: parsed.bankBranch || ''
+            });
+            setEditingId(item.id);
+            setView('create');
+        } catch (e) {
+            console.error("Error parsing item for edit", e);
+        }
     };
 
     const getPrintDateComponents = (dateStr) => {
@@ -376,6 +411,8 @@ export default function ApprovalWorkflow({
             if (d.status !== STATUSES.PAID) return false;
         } else if (filter === 'accounted') {
             if (d.status !== STATUSES.ACCOUNTED) return false;
+        } else if (filter === 'rejected') {
+            if (d.status !== STATUSES.REJECTED) return false;
         }
 
         // filter by search term
@@ -421,7 +458,7 @@ export default function ApprovalWorkflow({
             </header>
 
             {view === 'create' ? (
-                <div className="bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[15px] text-black border border-slate-200 w-full max-w-3xl mx-auto overflow-x-auto custom-scrollbar print:hidden">
+                <div className={`bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[15px] text-black border border-slate-200 w-full max-w-6xl mx-auto overflow-x-auto custom-scrollbar print:hidden`}>
                     <div className="text-center mb-8 px-2"><h1 className="font-bold text-sm sm:text-[17px] uppercase tracking-wide leading-relaxed">CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG</h1><p className="text-xs sm:text-sm mt-1">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p></div>
                     
                     <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-6 bg-white p-3 rounded-xl border border-slate-200 w-full shadow-sm mx-auto items-start sm:items-center justify-center">
@@ -462,7 +499,15 @@ export default function ApprovalWorkflow({
                         <table className="w-full border-collapse border border-black mb-2 min-w-[650px]">
                             <thead>
                                 {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? (
-                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Tên đối tượng</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center">Tên TK</th><th className="border border-black p-1 text-center w-32">Số TK</th><th className="border border-black p-1 text-center w-24">Ngân hàng</th></tr>
+                                    <tr className="bg-slate-50">
+                                        <th className="border border-black p-1 text-center w-12">STT</th>
+                                        <th className="border border-black p-1 text-center">Tên đối tượng</th>
+                                        <th className="border border-black p-1 text-center w-32">Thành tiền</th>
+                                        <th className="border border-black p-1 text-center">Tên TK</th>
+                                        <th className="border border-black p-1 text-center w-32">Số TK</th>
+                                        <th className="border border-black p-1 text-center w-24">Ngân hàng</th>
+                                        <th className="border border-black p-1 text-center w-32">Ghi chú</th>
+                                    </tr>
                                 ) : (
                                     <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center w-32">Mã CK</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
                                 )}
@@ -484,12 +529,15 @@ export default function ApprovalWorkflow({
                                             <>
                                                 <td className="border border-black p-1"><input type="text" value={item.bankAccountName || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountName', e.target.value)} className="w-full outline-none bg-transparent uppercase" placeholder="TÊN TK" /></td>
                                                 <td className="border border-black p-1"><input type="text" value={item.bankAccountNumber || ''} onChange={(e) => handleDnttItemChange(index, 'bankAccountNumber', e.target.value)} className="w-full outline-none bg-transparent font-bold" placeholder="SỐ TK" /></td>
+                                                <td className="border border-black p-1">
+                                                    <input type="text" list={`bank-list-ttl-${index}`} value={item.bankName || ''} onChange={(e) => handleDnttItemChange(index, 'bankName', e.target.value)} className="w-full outline-none bg-transparent text-[13px] text-slate-700" placeholder="-- NH --" />
+                                                    <datalist id={`bank-list-ttl-${index}`}>
+                                                        {BANK_OPTIONS.map(b => <option key={b.value} value={b.label} />)}
+                                                    </datalist>
+                                                </td>
                                                 <td className="border border-black p-1 relative">
                                                     <div className="flex items-center gap-1">
-                                                        <input type="text" list={`bank-list-ttl-${index}`} value={item.bankName || ''} onChange={(e) => handleDnttItemChange(index, 'bankName', e.target.value)} className="w-full outline-none bg-transparent text-[13px] text-slate-700" placeholder="-- NH --" />
-                                                        <datalist id={`bank-list-ttl-${index}`}>
-                                                            {BANK_OPTIONS.map(b => <option key={b.value} value={b.label} />)}
-                                                        </datalist>
+                                                        <input type="text" value={item.note || ''} onChange={(e) => handleDnttItemChange(index, 'note', e.target.value)} className="w-full outline-none bg-transparent" placeholder="Ghi chú" />
                                                         <button onClick={() => removeDnttItem(index)} className="text-red-400 hover:text-red-600 opacity-0 group-hover/row:opacity-100 flex-shrink-0"><X size={16} /></button>
                                                     </div>
                                                 </td>
@@ -504,8 +552,8 @@ export default function ApprovalWorkflow({
                                         )}
                                     </tr>
                                 ))}
-                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 6 : 5} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'đối tượng' : 'dòng chi phí'}</td></tr>
-                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 3 : 1} className="border border-black p-1"></td></tr>
+                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 7 : 5} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'đối tượng' : 'dòng chi phí'}</td></tr>
+                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 4 : 1} className="border border-black p-1"></td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -553,7 +601,10 @@ export default function ApprovalWorkflow({
                     )}
 
                     <div className="flex flex-col sm:flex-row gap-2 font-sans border-t pt-6">
-                        <button onClick={() => setView('list')} className="px-6 py-2.5 rounded-xl font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200 w-full sm:flex-1">
+                        <button onClick={() => {
+                            setView('list');
+                            setEditingId(null);
+                        }} className="px-6 py-2.5 rounded-xl font-bold transition bg-slate-100 text-slate-600 hover:bg-slate-200 w-full sm:flex-1">
                             Hủy bỏ
                         </button>
                         <button onClick={handleSubmit} disabled={isLoading} className="bg-blue-600 text-white font-bold py-2.5 px-6 rounded-xl shadow-lg hover:bg-blue-700 transition w-full sm:flex-1 flex items-center justify-center gap-2">
@@ -596,6 +647,12 @@ export default function ApprovalWorkflow({
                         >
                             Đã hoàn tất ({dnttList.filter(d => d.status === STATUSES.ACCOUNTED).length})
                         </button>
+                        <button 
+                            onClick={() => setFilter('rejected')}
+                            className={`px-6 py-2.5 rounded-xl text-sm font-bold transition ${filter === 'rejected' ? 'bg-white text-rose-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Bị từ chối ({dnttList.filter(d => d.status === STATUSES.REJECTED).length})
+                        </button>
                     </div>
 
                     {/* Search Bar */}
@@ -627,8 +684,12 @@ export default function ApprovalWorkflow({
                                         key={item.id} 
                                         className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group ${(item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') ? 'cursor-pointer hover:border-indigo-300' : ''} select-none`}
                                         onDoubleClick={() => {
-                                            if ((item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') && onNavigateToProject && item.project_name) {
-                                                onNavigateToProject(item.project_name);
+                                            if (item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') {
+                                                if (onNavigateToHistoryWithId) {
+                                                    onNavigateToHistoryWithId(item.id);
+                                                } else if (onNavigateToProject && item.project_name) {
+                                                    onNavigateToProject(item.project_name);
+                                                }
                                             }
                                         }}
                                     >
@@ -667,6 +728,11 @@ export default function ApprovalWorkflow({
                                                     onUpdateStatus(item.id, item.doc_type === 'Đơn Vật Tư' ? STATUSES.PAID : STATUSES.APPROVED);
                                                     openPrintPreview(item);
                                                 }} className="flex-1 lg:flex-none whitespace-nowrap bg-purple-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-purple-600/20"><Printer size={18}/> Chưa in</button>
+                                            )}
+                                            {item.status === STATUSES.REJECTED && (currentUser?.username === item.created_by || currentUser?.role?.toUpperCase() === 'ADMIN') && (
+                                                <button onClick={() => handleEditItem(item)} className="flex-1 lg:flex-none whitespace-nowrap bg-teal-50 text-teal-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-teal-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-teal-100">
+                                                    <Send size={18}/> Sửa & Gửi lại
+                                                </button>
                                             )}
                                             {showApproveButtons && item.status === STATUSES.APPROVED && canPay && (
                                                 <button 
@@ -1061,7 +1127,7 @@ export default function ApprovalWorkflow({
             {/* Modal In Phiếu (DNTT / DNTƯ) */}
             {printItem && (
                 <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto print:static print:block print:p-0 print:m-0">
-                    <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl overflow-hidden my-8 animate-in zoom-in-95 duration-300 print:shadow-none print:m-0 print:max-w-none print:w-full print:rounded-none">
+                    <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden my-8 animate-in zoom-in-95 duration-300 print:shadow-none print:m-0 print:max-w-none print:w-full print:rounded-none`}>
                         {/* Control Bar (No Print) */}
                         <header className="bg-slate-900 text-white p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print print:hidden">
                             <div className="flex items-center gap-3">
@@ -1084,9 +1150,11 @@ export default function ApprovalWorkflow({
                             </div>
                         </header>
 
-                        {/* Print Preview Container */}
                         <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center print:block print:p-0 print:bg-white print:max-h-none print:overflow-visible">
-                            <div className="print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full max-w-[800px] font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0">
+                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
+                                <style>{`@media print { @page { size: landscape; margin: 15mm; } }`}</style>
+                            )}
+                            <div className={`print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1100px]' : 'max-w-[800px]'} font-['Times_New_Roman',_serif] text-[15px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
                                 <div>
                                     {/* Company Header */}
                                     <div className="flex justify-between items-start mb-8 print:mb-2">
@@ -1109,145 +1177,184 @@ export default function ApprovalWorkflow({
                                     </div>
 
                                     {/* Title & Date */}
-                                    <div className="text-center mb-6 print:mb-2">
-                                        <h2 className="text-2xl font-bold mb-2 uppercase">
-                                            {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : (printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'ĐỀ NGHỊ THANH TOÁN'}
-                                        </h2>
-                                        <div className="text-[14px]">
-                                            {(() => {
-                                                const dateParts = getPrintDateComponents(printItem.parsed.date);
-                                                return `Ngày ${dateParts.day} Tháng ${dateParts.month} Năm ${dateParts.year}`;
-                                            })()}
+                                    {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
+                                        <div className="text-center mb-6 print:mb-2 mt-4 print:mt-2">
+                                            <h2 className="text-2xl font-bold mb-2 uppercase">
+                                                {printItem.parsed.docType === 'TTL' ? 'THANH TOÁN LƯƠNG' : 'THANH TOÁN CƠ HỮU'}
+                                            </h2>
                                         </div>
-                                    </div>
+                                    ) : (
+                                        <div className="text-center mb-6 print:mb-2">
+                                            <h2 className="text-2xl font-bold mb-2 uppercase">
+                                                {printItem.parsed.docType === 'DNTU' ? 'ĐỀ NGHỊ TẠM ỨNG' : 'ĐỀ NGHỊ THANH TOÁN'}
+                                            </h2>
+                                            <div className="text-[14px]">
+                                                {(() => {
+                                                    const dateParts = getPrintDateComponents(printItem.parsed.date);
+                                                    return `Ngày ${dateParts.day} Tháng ${dateParts.month} Năm ${dateParts.year}`;
+                                                })()}
+                                            </div>
+                                        </div>
+                                    )}
 
                                     {/* Metadata */}
                                     <div className="space-y-2 mb-6 print:mb-2">
-                                        <div className="flex border-b border-dotted border-gray-400 pb-1">
-                                            <span className="font-bold min-w-[120px]">Đối tượng:</span>
-                                            <span>{printItem.parsed.recipient || printItem.recipient}</span>
-                                        </div>
-                                        <div className="flex border-b border-dotted border-gray-400 pb-1">
-                                            <span className="font-bold min-w-[120px]">Công trình:</span>
-                                            <span className="font-bold">{printItem.parsed.project || printItem.project_name}</span>
-                                        </div>
+                                        {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
+                                            <>
+                                                <div className="flex border-b border-dotted border-gray-400 pb-1 w-full max-w-[400px]">
+                                                    <span className="min-w-[120px]">Công trình:</span>
+                                                    <span>{printItem.parsed.project || printItem.project_name}</span>
+                                                </div>
+                                                <div className="flex border-b border-dotted border-gray-400 pb-1 w-full max-w-[400px]">
+                                                    <span className="min-w-[120px]">Đối tượng:</span>
+                                                    <span>{printItem.parsed.department || printItem.parsed.recipient || '.............................'}</span>
+                                                </div>
+                                                <div className="flex border-b border-dotted border-gray-400 pb-1 w-full max-w-[400px]">
+                                                    <span className="min-w-[120px]">Ngày:</span>
+                                                    <span>{(() => {
+                                                        const dateParts = getPrintDateComponents(printItem.parsed.date);
+                                                        return `${dateParts.day}/${dateParts.month}/${dateParts.year}`;
+                                                    })()}</span>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="flex border-b border-dotted border-gray-400 pb-1">
+                                                    <span className="font-bold min-w-[120px]">Đối tượng:</span>
+                                                    <span>{printItem.parsed.recipient || printItem.recipient}</span>
+                                                </div>
+                                                <div className="flex border-b border-dotted border-gray-400 pb-1">
+                                                    <span className="font-bold min-w-[120px]">Công trình:</span>
+                                                    <span className="font-bold">{printItem.parsed.project || printItem.project_name}</span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
 
                                     {/* Content Table */}
-                                    <div className="mb-2 print:mb-1 font-bold uppercase">
-                                        A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : (printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 'TẠM ỨNG CƠ HỮU' : 'THANH TOÁN'}
-                                    </div>
-                                    <div className="overflow-x-auto print:overflow-visible">
-                                        <table className="w-full border-collapse border border-black mb-4 min-w-[650px] print:min-w-0">
-                                            <thead>
-                                                {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
+                                    {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
+                                        <div className="overflow-x-auto print:overflow-visible">
+                                            <table className="w-full border-collapse border border-black mb-4 min-w-[900px] print:min-w-0">
+                                                <thead>
                                                     <tr>
                                                         <th className="border border-black p-2 text-center w-12 font-bold">STT</th>
-                                                        <th className="border border-black p-2 text-center font-bold">Tên đối tượng</th>
-                                                        <th className="border border-black p-2 text-center w-36 font-bold">Thành tiền</th>
-                                                        <th className="border border-black p-2 text-center font-bold">Tên TK</th>
-                                                        <th className="border border-black p-2 text-center w-36 font-bold">Số TK</th>
-                                                        <th className="border border-black p-2 text-center w-24 font-bold">Ngân hàng</th>
+                                                        <th className="border border-black p-2 text-center font-bold">Họ và Tên</th>
+                                                        <th className="border border-black p-2 text-center font-bold">Tên thụ hưởng</th>
+                                                        <th className="border border-black p-2 text-center w-36 font-bold">Số tài khoản</th>
+                                                        <th className="border border-black p-2 text-center w-32 font-bold">Ngân hàng</th>
+                                                        <th className="border border-black p-2 text-center w-32 font-bold">Số tiền</th>
+                                                        <th className="border border-black p-2 text-center w-32 font-bold">Ghi chú</th>
                                                     </tr>
-                                                ) : (
-                                                    <tr>
-                                                        <th className="border border-black p-2 text-center w-12 font-bold">STT</th>
-                                                        <th className="border border-black p-2 text-center font-bold">Nội dung</th>
-                                                        <th className="border border-black p-2 text-center w-36 font-bold">Thành tiền</th>
-                                                        <th className="border border-black p-2 text-center w-36 font-bold">Ghi chú</th>
-                                                    </tr>
-                                                )}
-                                            </thead>
-                                            <tbody>
-                                                {printItem.parsed.items && printItem.parsed.items.map((item, index) => (
-                                                    <tr key={index}>
-                                                        <td className="border border-black p-2 text-center">{index + 1}</td>
-
-                                                        <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
-                                                        <td className="border border-black p-2 text-right font-medium">
-                                                            {item.amount ? formatCurrency(item.amount) : '-'}
-                                                        </td>
-                                                        {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
-                                                            <>
-                                                                <td className="border border-black p-2 uppercase">{item.bankAccountName || ''}</td>
-                                                                <td className="border border-black p-2 font-bold">{item.bankAccountNumber || ''}</td>
-                                                                <td className="border border-black p-2">{getDisplayBankName(item.bankName)}</td>
-                                                            </>
-                                                        ) : (
+                                                </thead>
+                                                <tbody>
+                                                    {printItem.parsed.items && printItem.parsed.items.map((item, index) => (
+                                                        <tr key={index}>
+                                                            <td className="border border-black p-2 text-center">{index + 1}</td>
+                                                            <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
+                                                            <td className="border border-black p-2 uppercase">{item.bankAccountName || ''}</td>
+                                                            <td className="border border-black p-2 font-bold">{item.bankAccountNumber || ''}</td>
+                                                            <td className="border border-black p-2">{getDisplayBankName(item.bankName)}</td>
+                                                            <td className="border border-black p-2 text-right font-medium">
+                                                                {item.amount ? formatCurrency(item.amount) : '-'}
+                                                            </td>
                                                             <td className="border border-black p-2">{item.note || ''}</td>
-                                                        )}
+                                                        </tr>
+                                                    ))}
+                                                    <tr>
+                                                        <td colSpan={5} className="border border-black p-2 font-bold text-center uppercase">Tổng cộng</td>
+                                                        <td className="border border-black p-2 font-bold text-right text-[16px]">
+                                                            {formatCurrency(printItem.total_amount)}
+                                                        </td>
+                                                        <td className="border border-black p-2"></td>
                                                     </tr>
-                                                ))}
-                                                <tr>
-                                                    <td colSpan={(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-2 font-bold text-center">Tổng cộng</td>
-                                                    <td className="border border-black p-2 font-bold text-right text-[16px]">
-                                                        {formatCurrency(printItem.total_amount)}
-                                                    </td>
-                                                    <td colSpan={(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? 3 : 1} className="border border-black p-2"></td>
-                                                </tr>
-                                            </tbody>
-                                        </table>
-                                    </div>
-
-                                    {/* Written Amount */}
-                                    <div className="mb-6 print:mb-2 mt-4 print:mt-1">
-                                        <span className="font-bold italic">Bằng chữ: </span>
-                                        <span className="italic font-medium">{docSoTiengViet(printItem.total_amount)}</span>
-                                    </div>
-
-                                    {/* Payment Method */}
-                                    <div className="mb-2 print:mb-1 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
-                                    <div className="flex gap-8 mb-4 print:mb-2 ml-4">
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 border border-black flex justify-center items-center">
-                                                {printItem.parsed.paymentMethod === 'tien_mat' ? '✓' : ''}
-                                            </div>
-                                            <span>Tiền mặt</span>
+                                                </tbody>
+                                            </table>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                            <div className="w-4 h-4 border border-black flex justify-center items-center">
-                                                {printItem.parsed.paymentMethod === 'chuyen_khoan' ? '✓' : ''}
-                                            </div>
-                                            <span>Chuyển khoản</span>
-                                        </div>
-                                    </div>
-
-                                    {/* Bank Details Table */}
-                                    {printItem.parsed.paymentMethod === 'chuyen_khoan' && (
+                                    ) : (
                                         <>
+                                            <div className="mb-2 print:mb-1 font-bold uppercase">
+                                                A. NỘI DUNG {printItem.parsed.docType === 'DNTU' ? 'TẠM ỨNG' : 'THANH TOÁN'}
+                                            </div>
                                             <div className="overflow-x-auto print:overflow-visible">
-                                                <table className="w-full border-collapse border border-black mb-4 print:mb-2 min-w-[650px] print:min-w-0">
+                                                <table className="w-full border-collapse border border-black mb-4 min-w-[650px] print:min-w-0">
                                                     <thead>
-                                                        <tr className="font-bold text-center">
-                                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && <th className="border border-black p-2 w-1/4">Tên đối tượng</th>}
-                                                            <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
-                                                            <th className="border border-black p-2 w-1/4">Số tài khoản</th>
-                                                            <th className="border border-black p-2 w-1/4">Ngân hàng</th>
-                                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? <th className="border border-black p-2 w-1/4">Số tiền</th> : <th className="border border-black p-2 w-1/4">Chi nhánh</th>}
+                                                        <tr>
+                                                            <th className="border border-black p-2 text-center w-12 font-bold">STT</th>
+                                                            <th className="border border-black p-2 text-center font-bold">Nội dung</th>
+                                                            <th className="border border-black p-2 text-center w-36 font-bold">Thành tiền</th>
+                                                            <th className="border border-black p-2 text-center w-36 font-bold">Ghi chú</th>
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') ? (
-                                                            printItem.parsed.items && printItem.parsed.items.map((emp, idx) => (
-                                                                <tr key={idx} className="text-center">
-                                                                    <td className="border border-black p-2">{emp.content || '-'}</td>
-                                                                    <td className="border border-black p-2 uppercase">{emp.bankAccountName || '-'}</td>
-                                                                    <td className="border border-black p-2 font-bold">{emp.bankAccountNumber || '-'}</td>
-                                                                    <td className="border border-black p-2">{getDisplayBankName(emp.bankName)}</td>
-                                                                    <td className="border border-black p-2 text-right font-bold">{emp.amount ? formatCurrency(emp.amount) : '-'}</td>
-                                                                </tr>
-                                                            ))
-                                                        ) : (
+                                                        {printItem.parsed.items && printItem.parsed.items.map((item, index) => (
+                                                            <tr key={index}>
+                                                                <td className="border border-black p-2 text-center">{index + 1}</td>
+                                                                <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
+                                                                <td className="border border-black p-2 text-right font-medium">
+                                                                    {item.amount ? formatCurrency(item.amount) : '-'}
+                                                                </td>
+                                                                <td className="border border-black p-2">{item.note || ''}</td>
+                                                            </tr>
+                                                        ))}
+                                                        <tr>
+                                                            <td colSpan={2} className="border border-black p-2 font-bold text-center">Tổng cộng</td>
+                                                            <td className="border border-black p-2 font-bold text-right text-[16px]">
+                                                                {formatCurrency(printItem.total_amount)}
+                                                            </td>
+                                                            <td className="border border-black p-2"></td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+                                            </div>
+                                        </>
+                                    )}
+
+                                    {/* Written Amount & Payment Method - Hide for TTL/DNTUCH */}
+                                    {(printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH') && (
+                                        <>
+                                            <div className="mb-6 print:mb-2 mt-4 print:mt-1">
+                                                <span className="font-bold italic">Bằng chữ: </span>
+                                                <span className="italic font-medium">{docSoTiengViet(printItem.total_amount)}</span>
+                                            </div>
+
+                                            <div className="mb-2 print:mb-1 font-bold">B. HÌNH THỨC NHẬN TIỀN</div>
+                                            <div className="flex gap-8 mb-4 print:mb-2 ml-4">
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 border border-black flex justify-center items-center">
+                                                        {printItem.parsed.paymentMethod === 'tien_mat' ? '✓' : ''}
+                                                    </div>
+                                                    <span>Tiền mặt</span>
+                                                </div>
+                                                <div className="flex items-center gap-2">
+                                                    <div className="w-4 h-4 border border-black flex justify-center items-center">
+                                                        {printItem.parsed.paymentMethod === 'chuyen_khoan' ? '✓' : ''}
+                                                    </div>
+                                                    <span>Chuyển khoản</span>
+                                                </div>
+                                            </div>
+
+                                            {printItem.parsed.paymentMethod === 'chuyen_khoan' && (
+                                                <div className="overflow-x-auto print:overflow-visible">
+                                                    <table className="w-full border-collapse border border-black mb-4 print:mb-2 min-w-[650px] print:min-w-0">
+                                                        <thead>
+                                                            <tr className="font-bold text-center">
+                                                                <th className="border border-black p-2 w-1/4">Tên chủ tài khoản</th>
+                                                                <th className="border border-black p-2 w-1/4">Số tài khoản</th>
+                                                                <th className="border border-black p-2 w-1/4">Ngân hàng</th>
+                                                                <th className="border border-black p-2 w-1/4">Chi nhánh</th>
+                                                            </tr>
+                                                        </thead>
+                                                        <tbody>
                                                             <tr className="text-center">
                                                                 <td className="border border-black p-2">{printItem.parsed.bankAccountName || '-'}</td>
                                                                 <td className="border border-black p-2 font-bold">{printItem.parsed.bankAccountNumber || '-'}</td>
                                                                 <td className="border border-black p-2">{getDisplayBankName(printItem.parsed.bankName)}</td>
                                                                 <td className="border border-black p-2">{printItem.parsed.bankBranch || '-'}</td>
                                                             </tr>
-                                                        )}
-                                                    </tbody>
-                                                </table>
-                                            </div>
+                                                        </tbody>
+                                                    </table>
+                                                </div>
+                                            )}
                                         </>
                                     )}
                                 </div>
@@ -1255,12 +1362,24 @@ export default function ApprovalWorkflow({
                                 {/* Signatures Block */}
                                 <div>
                                     <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
-                                        <div>NGƯỜI ĐỀ NGHỊ</div>
+                                        <div className="flex flex-col items-center">
+                                            <div>{printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ'}</div>
+                                            <div className="h-24 flex items-center justify-center">
+                                                {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
+                                                    <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                        Xuân
+                                                    </div>
+                                                )}
+                                            </div>
+                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
+                                                <div className="font-medium">Nguyễn Văn Xuân</div>
+                                            )}
+                                        </div>
                                         <div>QS</div>
-                                        <div>KẾ TOÁN</div>
+                                        <div>{printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'Thủ Quỹ' : 'KẾ TOÁN'}</div>
                                         <div>GIÁM ĐỐC</div>
                                     </div>
-                                    <div className="h-24"></div>
+                                    {printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && <div className="h-24"></div>}
                                 </div>
                             </div>
                         </div>

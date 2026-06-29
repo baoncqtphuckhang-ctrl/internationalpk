@@ -176,6 +176,27 @@ export default function HistoryTable({
         }
     }, [initialSearchNote]);
 
+    useEffect(() => {
+        if (highlightedReqId && transactions.length > 0) {
+            const tx = transactions.find(t => t.note?.includes(`[ID:${highlightedReqId}]`));
+            if (tx) {
+                setTimeout(() => {
+                    const el = document.getElementById('row-' + tx.id);
+                    if (el) {
+                        el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        el.classList.add('bg-yellow-200', 'transition-all', 'duration-1000');
+                        setTimeout(() => {
+                            el.classList.remove('bg-yellow-200');
+                            if (setHighlightedReqId) setHighlightedReqId(null);
+                        }, 3000);
+                    }
+                }, 300);
+            } else {
+                if (setHighlightedReqId) setHighlightedReqId(null);
+            }
+        }
+    }, [highlightedReqId, transactions, setHighlightedReqId]);
+
     const handleSort = (key, direction) => {
         setSortConfig({ key, direction });
     };
