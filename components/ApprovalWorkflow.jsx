@@ -138,6 +138,22 @@ export default function ApprovalWorkflow({
         bankBranch: ''
     });
 
+    const resetDnttForm = () => {
+        setDnttData({
+            docType: 'DNTT',
+            date: new Date().toISOString().split('T')[0],
+            recipient: '',
+            project: projects[0]?.name || '',
+            items: [{ id: Date.now(), maChi: '', content: '', amount: '', note: '', bankAccountName: '', bankAccountNumber: '', bankName: '' }],
+            paymentMethod: 'chuyen_khoan',
+            bankAccountName: '',
+            bankAccountNumber: '',
+            bankName: '',
+            bankBranch: ''
+        });
+        setEditingId(null);
+    };
+
     const handleDnttChange = (e) => {
         if (!e || !e.target) return;
         const { name, value } = e.target;
@@ -1362,19 +1378,40 @@ export default function ApprovalWorkflow({
                                 {/* Signatures Block */}
                                 <div>
                                     <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
-                                        <div className="flex flex-col items-center">
-                                            <div>{printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ'}</div>
-                                            <div className="h-24 flex items-center justify-center">
-                                                {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
-                                                    <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
-                                                        Xuân
+                                        {(() => {
+                                            const creatorUsername = printItem.created_by || currentUser?.username;
+                                            const creator = usersList?.find(u => u.username === creatorUsername) || (currentUser?.username === creatorUsername ? currentUser : null);
+                                            const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
+                                            const roleLabel = printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
+
+                                            if (isAdmin) {
+                                                return (
+                                                    <div className="flex flex-col items-center">
+                                                        <div>{roleLabel}</div>
+                                                        <div className="h-24 flex items-center justify-center"></div>
                                                     </div>
-                                                )}
-                                            </div>
-                                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
-                                                <div className="font-medium">Nguyễn Văn Xuân</div>
-                                            )}
-                                        </div>
+                                                );
+                                            }
+
+                                            const fullName = creator?.name || printItem.recipient || '';
+                                            const sigName = fullName ? fullName.trim().split(' ').pop() : '';
+
+                                            return (
+                                                <div className="flex flex-col items-center">
+                                                    <div>{roleLabel}</div>
+                                                    <div className="h-24 flex items-center justify-center">
+                                                        {creator?.signature_url ? (
+                                                            <img src={creator.signature_url} className="h-16 object-contain" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                                        ) : sigName ? (
+                                                            <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                                {sigName}
+                                                            </div>
+                                                        ) : null}
+                                                    </div>
+                                                    {fullName && <div className="font-medium">{fullName}</div>}
+                                                </div>
+                                            );
+                                        })()}
                                         <div>QS</div>
                                         <div>{printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'Thủ Quỹ' : 'KẾ TOÁN'}</div>
                                         <div>GIÁM ĐỐC</div>
