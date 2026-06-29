@@ -112,7 +112,9 @@ export default function HistoryTable({
     exportTableToExcel,
     expenseCategories,
     systemConfig,
-    initialSearchNote = ''
+    initialSearchNote = '',
+    highlightedReqId,
+    setHighlightedReqId
 }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
 
