@@ -175,11 +175,75 @@ export default function Home() {
     const [passwordModal, setPasswordModal] = useState({ isOpen: false, user: null });
     const [historyModal, setHistoryModal] = useState({ isOpen: false, user: null });
     const [activityLogs, setActivityLogs] = useState([]);
+    const [highlightId, setHighlightId] = useState(null);
     
     const showToast = (msg, type = 'success') => {
         setToast({ show: true, msg, type });
         setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 3000);
     };
+
+    const handleRestoreNavigation = (info) => {
+        if (!info) return;
+        
+        let targetTab = null;
+        let targetProject = info.project_name;
+        
+        switch (info.table) {
+            case 'approval_requests':
+                targetTab = 'dntt-approvals';
+                break;
+            case 'material_orders':
+                targetTab = 'materials';
+                break;
+            case 'incomes':
+            case 'transactions':
+                targetTab = 'history'; 
+                break;
+            case 'partner_debts':
+                targetTab = 'partner-debts';
+                break;
+            case 'customer_debts':
+                targetTab = 'customer-debts';
+                break;
+            case 'expected_invoices':
+                targetTab = 'expected-invoices';
+                break;
+            case 'users':
+                targetTab = 'users';
+                break;
+            case 'projects':
+                targetTab = 'project-detail';
+                targetProject = info.project_name;
+                break;
+            default:
+                targetTab = null;
+        }
+
+        if (targetProject && projects.some(p => p.name === targetProject)) {
+            setSelectedProject(targetProject);
+        }
+        
+        if (targetTab) {
+            setActiveTab(targetTab);
+            setHighlightId(info.id);
+        }
+    };
+
+    useEffect(() => {
+        if (highlightId && !isLoading) {
+            const timer = setTimeout(() => {
+                const el = document.getElementById(`row-${highlightId}`);
+                if (el) {
+                    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    el.classList.add('!bg-amber-200', 'animate-pulse', 'transition-colors', 'duration-1000');
+                    setTimeout(() => {
+                        el.classList.remove('!bg-amber-200', 'animate-pulse');
+                    }, 5000);
+                }
+            }, 300);
+            return () => clearTimeout(timer);
+        }
+    }, [highlightId, isLoading, activeTab]);
 
     const handleLogin = async (user) => {
         let configChanged = false;
@@ -973,6 +1037,7 @@ export default function Home() {
                                 const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === dntt.recipient || m.recipient === dntt.recipient;
                                 const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
                                 if (matchRecipient && matchPhase) {
+                                    await moveToTrash('material_orders', 'id', m.id);
                                     await supabase.from('material_orders').delete().eq('id', m.id);
                                 }
                             }

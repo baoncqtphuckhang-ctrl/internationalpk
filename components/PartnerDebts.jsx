@@ -295,7 +295,7 @@ export default function PartnerDebts({
                                 </tr>
                             ) : (
                                 filteredDebts.map(debt => (
-                                    <tr key={debt.id} className="hover:bg-slate-50/80 transition group">
+                                    <tr id={"row-" + debt.id} key={debt.id} className="hover:bg-slate-50/80 transition group">
                                         <td className="p-4 text-sm text-slate-500">{formatDateVN(debt.created_at)}</td>
                                         <td className="p-4">
                                             <span className={`text-xs font-black px-2 py-1 rounded-md border ${debt.debt_type === 'CẦN THU' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>

@@ -59,12 +59,14 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, typ
 
                 <div className="px-6 pb-6 flex gap-3">
                     <button
+                        type="button"
                         onClick={onCancel}
                         className="flex-1 py-3 rounded-xl font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 transition text-sm"
                     >
                         Hủy bỏ
                     </button>
                     <button
+                        type="button"
                         onClick={() => onConfirm(requirePassword ? password : null)}
                         disabled={requirePassword && !password}
                         className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm ${requirePassword && !password ? 'opacity-50 cursor-not-allowed' : ''}`}

@@ -43,32 +43,23 @@ const getNextOrderPhaseForProject = (projectName, ordersList) => {
     return `ĐỢT ${maxPhase + 1}`;
 };
 
-export const getProjectMaterialTemplateData = (projectName) => {
+const getProjectMaterialTemplateData = (projectName, allTemplates = {}) => {
     if (!projectName) return { versions: [] };
-    try {
-        const savedTemplates = localStorage.getItem('misa_project_material_templates');
-        if (savedTemplates) {
-            const templates = JSON.parse(savedTemplates);
-            const projData = templates[projectName];
-            
-            if (Array.isArray(projData) && projData.length > 0) {
-                const today = new Date().toISOString().split('T')[0];
-                return {
-                    versions: [{ id: Date.now().toString(), date: today, categories: projData }]
-                };
-            }
-            if (projData && projData.versions) {
-                return projData;
-            }
-        }
-    } catch (e) {
-        console.error("Error reading material templates:", e);
+    const projData = allTemplates[projectName];
+    if (Array.isArray(projData) && projData.length > 0) {
+        const today = new Date().toISOString().split('T')[0];
+        return {
+            versions: [{ id: Date.now().toString(), date: today, categories: projData }]
+        };
+    }
+    if (projData && projData.versions) {
+        return projData;
     }
     return { versions: [] };
 };
 
-const getProjectMaterialTemplate = (projectName, versionId = null) => {
-    const data = getProjectMaterialTemplateData(projectName);
+const getProjectMaterialTemplate = (projectName, allTemplates = {}, versionId = null) => {
+    const data = getProjectMaterialTemplateData(projectName, allTemplates);
     if (!data || !data.versions || data.versions.length === 0) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
     if (versionId) {
         const ver = data.versions.find(v => v.id === versionId);
@@ -107,6 +98,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [isCustomCompany, setIsCustomCompany] = useState(false);
 
+    const [allTemplates, setAllTemplates] = useState({});
+
     // Form state
     const [formData, setFormData] = useState({
         id: null,
@@ -122,13 +115,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         configVersionId: ''
     });
 
-    const updateFormDataForProject = (projectName) => {
+    const updateFormDataForProject = (projectName, templatesMap = allTemplates) => {
         const proj = projects.find(p => p.name === projectName);
         if (!proj) return;
         const nextPhase = getNextOrderPhaseForProject(proj.name, orders);
-        const templateData = getProjectMaterialTemplateData(proj.name);
+        const templateData = getProjectMaterialTemplateData(proj.name, templatesMap);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-        const template = getProjectMaterialTemplate(proj.name, activeVerId);
+        const template = getProjectMaterialTemplate(proj.name, templatesMap, activeVerId);
         
         setFormData(prev => ({
             ...prev,
@@ -144,9 +137,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     // Auto-update initial project selections on asynchronous projects load
     useEffect(() => {
         if (projects?.length > 0 && !formData.id && !formData.project_name) {
-            updateFormDataForProject(projects[0].name);
+            updateFormDataForProject(projects[0].name, allTemplates);
         }
-    }, [projects, orders]);
+    }, [projects, orders, allTemplates]);
 
     const sqlScript = `CREATE TABLE IF NOT EXISTS material_orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -184,6 +177,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const fetchOrders = async () => {
         setIsLoading(true);
         try {
+            // Lấy templates từ Supabase
+            let templatesMap = {};
+            try {
+                const res = await supabase.from('material_templates').select('*');
+                if (res.data) {
+                    res.data.forEach(row => {
+                        templatesMap[row.project_name] = row.data;
+                    });
+                }
+            } catch(e) {}
+            setAllTemplates(templatesMap);
+
             // Thử lấy từ Supabase
             const { data, error } = await supabase
                 .from('material_orders')
@@ -201,9 +206,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, data);
-                        const templateData = getProjectMaterialTemplateData(firstProj.name);
+                        const templateData = getProjectMaterialTemplateData(firstProj.name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
+                        const template = getProjectMaterialTemplate(firstProj.name, templatesMap, activeVerId);
                         return {
                             ...prev,
                             project_name: firstProj.name,
@@ -218,9 +223,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     } else if (!prev.id) {
                         // Project name already set by state default, let's update phase and template
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, data);
-                        const templateData = getProjectMaterialTemplateData(prev.project_name);
+                        const templateData = getProjectMaterialTemplateData(prev.project_name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(prev.project_name, activeVerId);
+                        const template = getProjectMaterialTemplate(prev.project_name, templatesMap, activeVerId);
                         return {
                             ...prev,
                             order_phase: nextPhase,
@@ -249,9 +254,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders);
-                        const templateData = getProjectMaterialTemplateData(firstProj.name);
+                        const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
+                        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
                         return {
                             ...prev,
                             project_name: firstProj.name,
@@ -265,9 +270,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         };
                     } else if (!prev.id) {
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders);
-                        const templateData = getProjectMaterialTemplateData(prev.project_name);
+                        const templateData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(prev.project_name, activeVerId);
+                        const template = getProjectMaterialTemplate(prev.project_name, allTemplates, activeVerId);
                         return {
                             ...prev,
                             order_phase: nextPhase,
@@ -330,9 +335,16 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
         if (payload.items && payload.items.length > 0) {
             let pbName = '';
-            if (formData.configVersionId) {
-                const parts = formData.configVersionId.split('__');
-                pbName = parts[1] || parts[0];
+            if (formData.price_batch) {
+                // formData.price_batch is "Đợt giá: {date || id}"
+                // We need to store the actual version ID. 
+                const projData = getProjectMaterialTemplateData(formData.project_name);
+                const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === formData.price_batch);
+                if (selectedVer) {
+                    pbName = selectedVer.id;
+                } else {
+                    pbName = formData.price_batch.replace('Đợt giá: ', '').trim();
+                }
             }
             payload.items[0]._price_batch = pbName;
         }
@@ -497,9 +509,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         const firstProj = projects[0];
         const projName = firstProj?.name || '';
         const nextPhase = getNextOrderPhaseForProject(projName, orders);
-        const templateData = getProjectMaterialTemplateData(firstProj.name);
+        const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-        const template = getProjectMaterialTemplate(firstProj.name, activeVerId);
+        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
         const recipient = firstProj?.cht_name 
             ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
             : '';
@@ -1051,7 +1063,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                             const newData = { ...prev, price_batch: selectedVerId };
                                             if (selectedVerId) {
                                                 const projData = getProjectMaterialTemplateData(prev.project_name);
-                                                const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.date || v.id}` === selectedVerId);
+                                                const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === selectedVerId);
                                                 if (selectedVer && selectedVer.categories) {
                                                     const newCats = JSON.parse(JSON.stringify(prev.categories));
                                                     newCats.forEach(cat => {
@@ -1074,8 +1086,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                 >
                                     <option value="">-- Giữ nguyên đơn giá hiện tại --</option>
-                                    {(getProjectMaterialTemplateData(formData.project_name)?.versions || []).map(v => (
-                                        <option key={v.id} value={`Đợt giá: ${v.date || v.id}`}>{`Đợt giá: ${v.date || v.id}`}</option>
+                                    {(getProjectMaterialTemplateData(formData.project_name)?.versions || []).map((v, vIdx) => (
+                                        <option key={v.id} value={`Đợt giá: ${v.id}`}>{v.name || `Đơn giá lần ${vIdx + 1}`} (Áp dụng từ {formatDateVN(v.date)})</option>
                                     ))}
                                 </select>
                             </div>

@@ -623,6 +623,7 @@ export default function ApprovalWorkflow({
                                 
                                 return (
                                     <div 
+                                        id={"row-" + item.id}
                                         key={item.id} 
                                         className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group ${(item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') ? 'cursor-pointer hover:border-indigo-300' : ''} select-none`}
                                         onDoubleClick={() => {

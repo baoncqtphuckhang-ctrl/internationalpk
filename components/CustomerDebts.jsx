@@ -450,7 +450,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 </tr>
                             ) : (
                                 filteredDebtData.map(debt => (
-                                    <tr key={debt.id} className="hover:bg-slate-50/50 transition duration-150 group">
+                                    <tr id={"row-" + debt.id} key={debt.id} className="hover:bg-slate-50/50 transition duration-150 group">
                                         <td className="py-3.5 px-4 align-middle">
                                             <span className={`inline-block text-[11px] font-bold px-2 py-1 rounded-md border shadow-sm leading-tight break-words max-w-[160px] ${projectColors[debt.project_name] || 'bg-slate-50 text-slate-700 border-slate-200'}`}>
                                                 {debt.project_name}

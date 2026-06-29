@@ -406,7 +406,7 @@ export default function HistoryTable({
                         </thead>
                         <tbody>
                             {filteredTransactions.map((t, idx) => (
-                                <tr key={t.id} className="border-b hover:bg-slate-50 transition text-slate-700">
+                                <tr id={"row-" + t.id} key={t.id} className="border-b hover:bg-slate-50 transition text-slate-700">
                                     <td className="p-3 border-r border-slate-100 text-center text-slate-400 font-bold">{idx + 1}</td>
                                     <td className="p-3 border-r border-slate-100 font-bold text-slate-900">{t.project_name}</td>
                                     <td className="p-3 border-r border-slate-100 whitespace-nowrap">{formatDateVN(t.accounting_date)}</td>

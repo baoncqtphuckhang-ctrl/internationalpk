@@ -900,10 +900,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             let attVal = emp.attendance?.[selectedMonth]?.[i] ?? defaultAtt;
             if (isHoliday && attVal === 1) attVal = 0;
             
-            actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 0.5 : (Number(attVal) || 0));
+            // P = 1 ngày phép có lương (nghỉ cả ngày, được trả lương 1 ngày)
+            // P/2 = Nửa ngày phép có lương (thường là làm nửa ngày, nghỉ nửa ngày có phép => vẫn hưởng đủ 1 ngày công)
+            actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 1 : (Number(attVal) || 0));
         }
         const overtimeHours = Number(emp.overtime_hours) || 0;
-        const overtimeDays = overtimeHours / 8;
+        const overtimeDays = (overtimeHours * 2) / 8; // Tăng ca x2
         actual += overtimeDays;
 
         const std = globalStandardDays || 1;

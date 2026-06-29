@@ -57,7 +57,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                         noteText = lines.length > 0 ? lines.join(' - ') : JSON.stringify(parsed);
                     }
                 } catch(e) {}
-                content.push(<div key="5"><b>Nội dung:</b> {noteText}</div>);
+                content.push(<div key="5"><b>Nội dung:</b> {typeof noteText === 'object' ? JSON.stringify(noteText) : String(noteText)}</div>);
             }
 
             if (content.length > 0) {
@@ -128,7 +128,13 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
             localStorage.setItem('system_trash_bin', JSON.stringify(newTrash));
 
             showToast(`Khôi phục thành công dữ liệu bảng ${item.original_table}!`);
-            if (onRestore) onRestore();
+            if (onRestore) {
+                onRestore({
+                    table: item.original_table,
+                    id: parsedData.id,
+                    project_name: parsedData.project_name || parsedData.project || parsedData.name
+                });
+            }
         } catch (error) {
             console.error(error);
             showToast('Lỗi khi khôi phục dữ liệu!', 'error');

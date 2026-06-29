@@ -208,12 +208,57 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         setConfirmModal({
             isOpen: true,
             requirePassword: true,
-            message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Hành động này sẽ xóa dữ liệu vĩnh viễn và không thể khôi phục.',
+            message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Dữ liệu này, cùng với Lịch sử chi tiền (nếu có) sẽ được chuyển vào thùng rác.',
             onConfirm: async () => {
                 setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
+                    const moveToTrashLocal = async (tableName, matchColumn, matchValue, isIlike = false) => {
+                        try {
+                            const query = supabase.from(tableName).select('*');
+                            const { data } = isIlike ? await query.ilike(matchColumn, matchValue) : await query.eq(matchColumn, matchValue);
+                            if (data && data.length > 0) {
+                                const trashRecords = data.map(record => ({
+                                    original_table: tableName,
+                                    record_data: JSON.stringify(record),
+                                    deleted_by: currentUser?.username || 'unknown',
+                                    deleted_at: new Date().toISOString()
+                                }));
+                                await supabase.from('trash_bin').insert(trashRecords);
+                            }
+                        } catch(err) { console.error('Trash error', err); }
+                    };
+
+                    if (reqId) {
+                        // Delete transactions linked to this reqId
+                        const { data: txs } = await supabase
+                            .from('transactions')
+                            .select('id')
+                            .ilike('note', `%[ID:${reqId}]%`);
+                            
+                        if (txs && txs.length > 0) {
+                            for (const tx of txs) {
+                                await moveToTrashLocal('transactions', 'id', tx.id);
+                                await supabase.from('transactions').delete().eq('id', tx.id);
+                            }
+                        }
+                        
+                        // Delete partner_debts linked to this reqId
+                        const { data: debts } = await supabase
+                            .from('partner_debts')
+                            .select('id')
+                            .ilike('note', `%[ID:${reqId}]%`);
+                            
+                        if (debts && debts.length > 0) {
+                            for (const d of debts) {
+                                await moveToTrashLocal('partner_debts', 'id', d.id);
+                                await supabase.from('partner_debts').delete().eq('id', d.id);
+                            }
+                        }
+                    }
+
                     if (!orderId.toString().startsWith('orphan-')) {
+                        await moveToTrashLocal('material_orders', 'id', orderId);
                         const { error } = await supabase
                             .from('material_orders')
                             .delete()
@@ -221,13 +266,14 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         if (error) throw error;
                     }
                     if (reqId) {
+                        await moveToTrashLocal('approval_requests', 'id', reqId);
                         const { error: reqErr } = await supabase
                             .from('approval_requests')
                             .delete()
                             .eq('id', reqId);
                         if (reqErr) throw reqErr;
                     }
-                    showToast('Đã xóa đơn đặt hàng thành công!');
+                    showToast('Đã xóa đơn đặt hàng và dữ liệu liên đới thành công!');
                     await fetchOrders();
                     if (refreshData) {
                         refreshData();
@@ -1154,6 +1200,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 return (
                                                     <React.Fragment key={order.id}>
                                                         <tr 
+                                                            id={"row-" + order.id}
                                                             className={`transition ${(status === 'Approved' || (req && req.total_amount > 0)) ? 'cursor-pointer hover:bg-green-50' : 'cursor-pointer hover:bg-slate-100'}`}
                                                             onClick={() => setExpandedOrderId(expandedOrderId === order.id ? null : order.id)}
                                                             onDoubleClick={(e) => {

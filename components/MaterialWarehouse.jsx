@@ -52,9 +52,23 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
 
     const [projectVersions, setProjectVersions] = useState([]);
 
+    const [allTemplates, setAllTemplates] = useState({});
+
     const fetchTransactions = async () => {
         setIsLoading(true);
         try {
+            // Lấy templates từ Supabase
+            let templatesMap = {};
+            try {
+                const res = await supabase.from('material_templates').select('*');
+                if (res.data) {
+                    res.data.forEach(row => {
+                        templatesMap[row.project_name] = row.data;
+                    });
+                }
+            } catch(e) {}
+            setAllTemplates(templatesMap);
+
             let manualTransactions = [];
             const { data, error } = await supabase
                 .from('material_warehouse')
@@ -312,9 +326,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     // Calculate Inventory
     const getMaterialConfigInfo = (projectName, materialName, colorCode, pricePhase) => {
         try {
-            const savedTemplates = localStorage.getItem('misa_project_material_templates');
-            if (!savedTemplates) return { price: 0, index: 9999 };
-            const templates = JSON.parse(savedTemplates);
+            const templates = allTemplates;
             
             const pName = (projectName || '').trim();
             const mName = (materialName || '').trim().toLowerCase();
@@ -329,14 +341,18 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             let activeVer;
             if (pricePhase) {
                 const pPhase = pricePhase.trim().toLowerCase();
-                activeVer = tmpl.versions.find(v => {
+                activeVer = tmpl.versions.find((v, vIdx) => {
                     const vName = (v.name || '').trim().toLowerCase();
                     if (vName === pPhase) return true;
-                    const genName = `đợt ${tmpl.versions.indexOf(v) + 1} - ${v.date}`.toLowerCase();
+                    if (v.id === pPhase) return true;
+                    const defaultName = `đơn giá lần ${vIdx + 1}`.toLowerCase();
+                    if (defaultName === pPhase) return true;
+                    const genName = `đợt ${vIdx + 1} - ${v.date}`.toLowerCase();
                     if (genName === pPhase) return true;
-                    const shortName = `đợt ${tmpl.versions.indexOf(v) + 1}`.toLowerCase();
+                    const shortName = `đợt ${vIdx + 1}`.toLowerCase();
                     if (shortName === pPhase) return true;
                     if (pPhase.includes(shortName) || shortName.includes(pPhase)) return true;
+                    if (pPhase.includes(defaultName) || defaultName.includes(pPhase)) return true;
                     return false;
                 });
             }

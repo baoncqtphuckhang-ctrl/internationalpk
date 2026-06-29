@@ -4,9 +4,10 @@ import React, { useState, useEffect } from 'react';
 import { 
     Edit3, X, Download, Copy, Trash2, Plus, Save, Edit2
 } from 'lucide-react';
-import { formatDateVN } from '@/lib/utils';
+import { formatDateVN, formatCurrency } from '@/lib/utils';
 import CurrencyInput from './CurrencyInput';
-import { DEFAULT_CATEGORIES, getProjectMaterialTemplateData } from './MaterialOrder';
+import { DEFAULT_CATEGORIES } from './MaterialOrder';
+import { supabase } from '@/lib/supabase';
 
 export default function MaterialCatalog({ projects, showToast }) {
     const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
@@ -17,24 +18,80 @@ export default function MaterialCatalog({ projects, showToast }) {
     const [editingVersionId, setEditingVersionId] = useState(null);
     const [editingCategories, setEditingCategories] = useState([]);
     const [editingDate, setEditingDate] = useState('');
+    const [editingName, setEditingName] = useState('');
 
     const [copyModal, setCopyModal] = useState({ isOpen: false, targetVersionId: null });
     const [copyFromProject, setCopyFromProject] = useState('');
     const [copyFromVersion, setCopyFromVersion] = useState('');
     const [copyAvailableVersions, setCopyAvailableVersions] = useState([]);
 
+    const [allTemplates, setAllTemplates] = useState({});
+    const [isLoading, setIsLoading] = useState(true);
+
+    const loadTemplatesFromDb = async () => {
+        setIsLoading(true);
+        try {
+            let data = [];
+            try {
+                const res = await supabase.from('material_templates').select('*');
+                if (res.error) throw res.error;
+                data = res.data || [];
+            } catch (err) {
+                console.warn("Could not load material_templates, maybe table does not exist yet.");
+            }
+            
+            const templatesMap = {};
+            data.forEach(row => {
+                templatesMap[row.project_name] = row.data;
+            });
+
+            // LocalStorage migration logic
+            try {
+                const localStr = localStorage.getItem('misa_project_material_templates');
+                if (localStr) {
+                    const localData = JSON.parse(localStr);
+                    let needsMigration = false;
+                    for (const proj of Object.keys(localData)) {
+                        if (!templatesMap[proj]) {
+                            templatesMap[proj] = localData[proj];
+                            needsMigration = true;
+                            try {
+                                await supabase.from('material_templates').insert({
+                                    project_name: proj,
+                                    data: localData[proj]
+                                });
+                            } catch(e) {
+                                console.error("Migration insert failed for", proj, e);
+                            }
+                        }
+                    }
+                    if (needsMigration) {
+                        showToast('Đã đồng bộ dữ liệu vật tư cũ lên Cloud thành công!');
+                    }
+                }
+            } catch(e) {}
+
+            setAllTemplates(templatesMap);
+            
+            if (projects && projects.length > 0) {
+                const projName = configProjectName || projects[0].name;
+                handleProjectChange(projName, templatesMap);
+            }
+        } catch (err) {
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     // Initialize with first project
     useEffect(() => {
-        if (projects && projects.length > 0 && !configProjectName) {
-            handleProjectChange(projects[0].name);
-        } else if (configProjectName) {
-            handleProjectChange(configProjectName);
-        }
+        loadTemplatesFromDb();
     }, [projects]);
 
-    const handleProjectChange = (proj) => {
+    const handleProjectChange = (proj, tMap = allTemplates) => {
         setConfigProjectName(proj);
-        const data = getProjectMaterialTemplateData(proj);
+        const data = tMap[proj] || {};
         if (data.versions && data.versions.length > 0) {
             setConfigVersions(data.versions);
             const activeId = data.activeVersionId || data.versions[data.versions.length - 1].id;
@@ -50,20 +107,187 @@ export default function MaterialCatalog({ projects, showToast }) {
         setEditingVersionId(null);
     };
 
-    const handleGlobalSave = (updatedVersions, newActiveId) => {
-        if (!configProjectName) return;
+    const updateOrdersAndDNTTOnPriceChange = async (projectName, newTemplateData) => {
         try {
-            const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-            projectTemplates[configProjectName] = {
-                versions: updatedVersions,
-                activeVersionId: newActiveId
-            };
-            localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
+            const { data: ordersData, error: ordersError } = await supabase
+                .from('material_orders')
+                .select('*')
+                .eq('project_name', projectName);
+                
+            if (ordersError || !ordersData || ordersData.length === 0) return;
+
+            const versionMap = {};
+            if (newTemplateData.versions) {
+                newTemplateData.versions.forEach(v => {
+                    versionMap[v.id] = v;
+                });
+            }
+
+            for (const order of ordersData) {
+                let items = order.items;
+                if (!items || !Array.isArray(items) || items.length === 0) continue;
+                
+                const pbName = String(items[0]._price_batch || '').trim().toLowerCase();
+                if (!pbName) continue;
+                
+                let targetVersion = versionMap[pbName]; // Fast lookup by ID
+                if (!targetVersion) {
+                    targetVersion = newTemplateData.versions.find((v, vIdx) => {
+                        if (v.id === pbName) return true;
+                        const vName = (v.name || '').trim().toLowerCase();
+                        if (vName === pbName) return true;
+                        const defaultName = `đơn giá lần ${vIdx + 1}`.toLowerCase();
+                        if (defaultName === pbName) return true;
+                        const genName = `đợt ${vIdx + 1} - ${v.date}`.toLowerCase();
+                        if (genName === pbName) return true;
+                        const shortName = `đợt ${vIdx + 1}`.toLowerCase();
+                        if (shortName === pbName) return true;
+                        if (pbName.includes(shortName) || shortName.includes(pbName)) return true;
+                        if (pbName.includes(defaultName) || defaultName.includes(pbName)) return true;
+                        return false;
+                    });
+                }
+                
+                if (!targetVersion) continue;
+
+                let hasChanges = false;
+                let grandTotal = 0;
+                
+                const catalogItems = {};
+                targetVersion.categories.forEach(cat => {
+                    if (Array.isArray(cat.items)) {
+                        cat.items.forEach(it => {
+                            const key = `${(it.name||'').trim().toLowerCase()}_${(it.colorCode||'').trim().toLowerCase()}`;
+                            catalogItems[key] = parseFloat(String(it.price).replace(/,/g, '')) || 0;
+                        });
+                    }
+                });
+
+                const updatedItems = items.map(cat => {
+                    if (!cat.items || !Array.isArray(cat.items)) return cat;
+                    const newCatItems = cat.items.map(it => {
+                        const key = `${(it.name||'').trim().toLowerCase()}_${(it.colorCode||'').trim().toLowerCase()}`;
+                        if (catalogItems[key] !== undefined && catalogItems[key] !== parseFloat(String(it.price).replace(/,/g, ''))) {
+                            hasChanges = true;
+                            it.price = catalogItems[key];
+                        }
+                        grandTotal += (parseFloat(it.quantity) || 0) * (parseFloat(it.price) || 0);
+                        return it;
+                    });
+                    return { ...cat, items: newCatItems };
+                });
+
+                if (hasChanges) {
+                    await supabase.from('material_orders')
+                        .update({ items: updatedItems })
+                        .eq('id', order.id);
+
+                    const { data: dnttData } = await supabase
+                        .from('approval_requests')
+                        .select('*')
+                        .eq('project_name', projectName)
+                        .eq('doc_type', 'Đơn Vật Tư');
+                    
+                    if (dnttData && dnttData.length > 0) {
+                        for (const dntt of dnttData) {
+                            try {
+                                const reason = JSON.parse(dntt.reason);
+                                if (reason.material_order_id === order.id) {
+                                    const dnttItemsList = [];
+                                    updatedItems.forEach(cat => {
+                                        cat.items.forEach(it => {
+                                            if (it.quantity && parseFloat(it.quantity) > 0) {
+                                                dnttItemsList.push({
+                                                    id: it.stt + '_' + Math.random(),
+                                                    content: `- Tên vật tư: ${it.name}${it.colorCode ? `\n- Mã màu: ${it.colorCode}` : ''}\n- Đơn vị: ${it.unit}\n- SL: ${it.quantity}\n- Đơn giá: ${formatCurrency(it.price || 0)}`,
+                                                    amount: ((parseFloat(it.quantity) || 0) * (parseFloat(it.price) || 0)),
+                                                    note: `${cat.name} | ${order.order_phase}`
+                                                });
+                                            }
+                                        });
+                                    });
+
+                                    reason.items = dnttItemsList;
+                                    
+                                    await supabase.from('approval_requests')
+                                        .update({ 
+                                            reason: JSON.stringify(reason),
+                                            total_amount: grandTotal
+                                        })
+                                        .eq('id', dntt.id);
+                                        
+                                    const noteMatch = `[Đơn Vật Tư] ${dntt.id.slice(0, 8)}`;
+                                    const { data: debts } = await supabase
+                                        .from('partner_debts')
+                                        .select('*')
+                                        .eq('project_name', projectName);
+                                        
+                                    if (debts && debts.length > 0) {
+                                        for (const debt of debts) {
+                                            if (debt.note && debt.note.includes(noteMatch)) {
+                                                await supabase.from('partner_debts')
+                                                    .update({ amount: grandTotal })
+                                                    .eq('id', debt.id);
+                                            }
+                                        }
+                                    }
+                                }
+                            } catch(e) {}
+                        }
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Error cascading price update:", e);
+        }
+    };
+
+    const handleGlobalSave = async (updatedVersions, newActiveId) => {
+        if (!configProjectName) return;
+        const newData = {
+            versions: updatedVersions,
+            activeVersionId: newActiveId
+        };
+        
+        try {
+            if (allTemplates[configProjectName]) {
+                const { error } = await supabase.from('material_templates')
+                    .update({ data: newData })
+                    .eq('project_name', configProjectName);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('material_templates')
+                    .insert({ project_name: configProjectName, data: newData });
+                if (error) throw error;
+            }
+            
+            setAllTemplates(prev => ({ ...prev, [configProjectName]: newData }));
             setConfigVersions(updatedVersions);
             setConfigActiveVersionId(newActiveId);
+            
+            // Chạy cascade update (cập nhật đồng bộ các Đơn hàng và DNTT)
+            updateOrdersAndDNTTOnPriceChange(configProjectName, newData);
+
+            // Backup to localstorage just in case
+            try {
+                const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
+                projectTemplates[configProjectName] = newData;
+                localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
+            } catch(e) {}
+            
         } catch (err) {
-            console.error("Error saving project material template:", err);
-            showToast('Lỗi khi lưu cấu hình!', 'error');
+            console.error("Error saving template:", err);
+            showToast('Lỗi khi lưu cấu hình lên Server. Có thể bảng material_templates chưa được tạo!', 'error');
+            
+            // Fallback to localstorage
+            setAllTemplates(prev => ({ ...prev, [configProjectName]: newData }));
+            setConfigVersions(updatedVersions);
+            setConfigActiveVersionId(newActiveId);
+            try {
+                const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
+                projectTemplates[configProjectName] = newData;
+                localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
+            } catch(e) {}
         }
     };
 
@@ -113,11 +337,12 @@ export default function MaterialCatalog({ projects, showToast }) {
         setEditingVersionId(version.id);
         setEditingCategories(JSON.parse(JSON.stringify(version.categories)));
         setEditingDate(version.date);
+        setEditingName(version.name || '');
     };
 
     const saveEditing = () => {
         const updated = configVersions.map(v => 
-            v.id === editingVersionId ? { ...v, date: editingDate, categories: editingCategories } : v
+            v.id === editingVersionId ? { ...v, date: editingDate, categories: editingCategories, name: editingName } : v
         );
         handleGlobalSave(updated, configActiveVersionId);
         setEditingVersionId(null);
@@ -170,8 +395,8 @@ export default function MaterialCatalog({ projects, showToast }) {
                                 onChange={handleActiveVersionChange}
                                 className="w-full p-3 bg-indigo-50 border-2 border-indigo-200 rounded-xl font-bold text-indigo-700 outline-none focus:border-indigo-500 transition"
                             >
-                                {configVersions.map(v => (
-                                    <option key={v.id} value={v.id}>{v.name} (Áp dụng từ {formatDateVN(v.date)})</option>
+                                {configVersions.map((v, vIdx) => (
+                                    <option key={v.id} value={v.id}>{v.name || `Đơn giá lần ${vIdx + 1}`} (Áp dụng từ {formatDateVN(v.date)})</option>
                                 ))}
                             </select>
                             <p className="text-xs text-slate-500 mt-2">Đơn giá này sẽ được tự động chọn khi bạn tạo một Đơn đặt vật tư mới.</p>
@@ -184,12 +409,23 @@ export default function MaterialCatalog({ projects, showToast }) {
                         const isEditing = editingVersionId === version.id;
                         const categories = isEditing ? editingCategories : version.categories;
                         const date = isEditing ? editingDate : version.date;
+                        const name = isEditing ? editingName : (version.name || `Đơn giá lần ${vIdx + 1}`);
 
                         return (
                             <div key={version.id} className={`bg-white rounded-2xl shadow-sm border ${isEditing ? 'border-blue-400 shadow-blue-500/10' : 'border-slate-200'} overflow-hidden transition-all duration-300`}>
                                 <div className={`p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${isEditing ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
                                     <div className="flex items-center gap-4 flex-wrap">
-                                        <h3 className="text-lg font-black text-slate-800">{version.name || `Đơn giá lần ${vIdx + 1}`}</h3>
+                                        {isEditing ? (
+                                            <input 
+                                                type="text"
+                                                value={name}
+                                                onChange={(e) => setEditingName(e.target.value)}
+                                                className="text-lg font-black text-slate-800 bg-white border-2 border-blue-200 focus:border-blue-500 rounded-lg p-2 outline-none"
+                                                placeholder={`Đơn giá lần ${vIdx + 1}`}
+                                            />
+                                        ) : (
+                                            <h3 className="text-lg font-black text-slate-800">{name}</h3>
+                                        )}
                                         <div className="flex items-center gap-2">
                                             <span className="text-sm font-bold text-slate-500">Ngày áp dụng:</span>
                                             <input 
@@ -400,7 +636,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                     const proj = e.target.value;
                                     setCopyFromProject(proj);
                                     if (proj) {
-                                        const data = getProjectMaterialTemplateData(proj);
+                                        const data = allTemplates[proj] || {};
                                         setCopyAvailableVersions(data.versions || []);
                                         if (data.versions && data.versions.length > 0) {
                                             setCopyFromVersion(data.versions[data.versions.length - 1].id);
@@ -426,8 +662,8 @@ export default function MaterialCatalog({ projects, showToast }) {
                                         onChange={(e) => setCopyFromVersion(e.target.value)}
                                         className="w-full p-3 bg-slate-50 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 font-medium mb-6"
                                     >
-                                        {copyAvailableVersions.map(v => (
-                                            <option key={v.id} value={v.id}>{v.name || 'Đợt giá'} (Áp dụng từ {formatDateVN(v.date)})</option>
+                                        {copyAvailableVersions.map((v, vIdx) => (
+                                            <option key={v.id} value={v.id}>{v.name || `Đơn giá lần ${vIdx + 1}`} (Áp dụng từ {formatDateVN(v.date)})</option>
                                         ))}
                                     </select>
                                 </>
