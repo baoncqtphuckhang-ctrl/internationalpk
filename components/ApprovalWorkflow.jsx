@@ -609,7 +609,52 @@ export default function ApprovalWorkflow({
                             )}
                         </>
                     )}
-                    <div className="grid grid-cols-4 gap-2 text-center font-bold font-sans"><div>NGƯỜI ĐỀ NGHỊ</div><div>QS</div><div>KẾ TOÁN</div><div>GIÁM ĐỐC</div></div><div className="h-24"></div>
+                    <div className="grid grid-cols-4 gap-2 text-center font-bold font-sans mt-8">
+                        {(() => {
+                            const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username === 'admin' || currentUser?.username?.toUpperCase() === 'ADMIN';
+                            const roleLabel = dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
+
+                            if (isAdmin) {
+                                return (
+                                    <div className="flex flex-col items-center">
+                                        <div>{roleLabel}</div>
+                                        <div className="h-24 flex items-center justify-center"></div>
+                                    </div>
+                                );
+                            }
+
+                            const fullName = currentUser?.name || '';
+                            const sigName = fullName ? fullName.trim().split(' ').pop() : '';
+
+                            return (
+                                <div className="flex flex-col items-center">
+                                    <div>{roleLabel}</div>
+                                    <div className="h-24 flex items-center justify-center">
+                                        {currentUser?.signature_url ? (
+                                            <img src={currentUser.signature_url} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />
+                                        ) : sigName ? (
+                                            <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                {sigName}
+                                            </div>
+                                        ) : null}
+                                    </div>
+                                    {fullName && <div className="font-medium text-sm">{fullName}</div>}
+                                </div>
+                            );
+                        })()}
+                        <div className="flex flex-col items-center">
+                            <div>QS</div>
+                            <div className="h-24"></div>
+                        </div>
+                        <div className="flex flex-col items-center">
+                            <div>{dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH' ? 'Thủ Quỹ' : 'KẾ TOÁN'}</div>
+                            <div className="h-24"></div>
+                        </div>
+                        <div className="flex flex-col items-center">
+                            <div>GIÁM ĐỐC</div>
+                            <div className="h-24"></div>
+                        </div>
+                    </div>
 
                     {formError && (
                         <div className="mb-4 p-4 bg-red-50 border border-red-200 rounded-xl text-red-600 font-bold flex items-center gap-2 animate-in slide-in-from-bottom-2">
@@ -1394,7 +1439,7 @@ export default function ApprovalWorkflow({
                                                 );
                                             }
 
-                                            const fullName = creator?.name || printItem.recipient || '';
+                                            const fullName = creator?.name || '';
                                             const sigName = fullName ? fullName.trim().split(' ').pop() : '';
 
                                             return (

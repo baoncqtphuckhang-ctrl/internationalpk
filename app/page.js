@@ -26,6 +26,7 @@ import ChangePasswordModal from '@/components/ChangePasswordModal';
 import SystemConfigModal from '@/components/SystemConfigModal';
 import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import Trash from '@/components/Trash';
+import SignatureScannerModal from '@/components/SignatureScannerModal';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPENSE_CATEGORIES } from '@/lib/utils';
 import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
@@ -180,12 +181,27 @@ export default function Home() {
     const [userModal, setUserModal] = useState({ isOpen: false, user: null });
     const [passwordModal, setPasswordModal] = useState({ isOpen: false, user: null });
     const [historyModal, setHistoryModal] = useState({ isOpen: false, user: null });
+    const [isSignatureScannerOpen, setIsSignatureScannerOpen] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
     const [highlightId, setHighlightId] = useState(null);
     
     const showToast = (msg, type = 'success') => {
         setToast({ show: true, msg, type });
         setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 3000);
+    };
+
+    const handleSaveSignature = async (base64Signature) => {
+        if (!currentUser) return;
+        try {
+            const { error } = await supabase.from('users').update({ signature_url: base64Signature }).eq('id', currentUser.id);
+            if (error) throw error;
+            setCurrentUser(prev => ({ ...prev, signature_url: base64Signature }));
+            showToast(base64Signature ? 'Đã lưu chữ ký thành công!' : 'Đã xóa chữ ký!');
+            logActivity(base64Signature ? 'Cập nhật' : 'Xóa', 'Hệ thống', base64Signature ? 'Cập nhật chữ ký cá nhân' : 'Xóa chữ ký cá nhân');
+        } catch (error) {
+            console.error('Error saving signature:', error);
+            showToast('Lỗi khi lưu chữ ký!', 'error');
+        }
     };
 
     const handleRestoreNavigation = (info) => {
@@ -1674,6 +1690,7 @@ export default function Home() {
                 onDeleteProject={handleDeleteProject}
                 systemConfig={systemConfig}
                 onOpenSystemConfig={() => setIsSystemConfigModalOpen(true)}
+                onOpenSignatureScanner={() => setIsSignatureScannerOpen(true)}
                 usersList={usersList}
             />
 
@@ -1713,7 +1730,7 @@ export default function Home() {
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
-                {activeTab === 'expected-invoices' && <ExpectedInvoices invoices={expectedInvoices} incomes={allowedIncomes} setInvoices={setExpectedInvoices} projects={allowedProjects} projectDetails={projectDetails} showToast={showToast} currentUser={currentUser} transactions={allowedTransactions} onNavigateToProject={(projectName) => { setSelectedProject(projectName); setActiveTab('project-detail'); }} usersList={usersList} />}
+
                 
                 {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} projects={allowedProjects} refreshData={fetchData} />}
                 
@@ -1819,6 +1836,7 @@ export default function Home() {
                         exportTableToExcel={exportTableToExcel}
                         onAddTransaction={handleAddData}
                         showToast={showToast}
+                        usersList={usersList}
                         onNavigateToProject={(projectName) => {
                             setSelectedProject(projectName);
                             setActiveTab('project-detail');
@@ -2577,6 +2595,12 @@ export default function Home() {
                 onClose={() => setHistoryModal({ isOpen: false, user: null })}
                 user={historyModal.user}
                 activityLogs={activityLogs}
+            />
+            <SignatureScannerModal
+                isOpen={isSignatureScannerOpen}
+                onClose={() => setIsSignatureScannerOpen(false)}
+                onSave={handleSaveSignature}
+                currentSignature={currentUser?.signature_url}
             />
         </div>
     );

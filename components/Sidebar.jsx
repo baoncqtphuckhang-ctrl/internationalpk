@@ -31,6 +31,7 @@ export default function Sidebar({
     handleExportBackup,
     systemConfig,
     onOpenSystemConfig,
+    onOpenSignatureScanner,
     usersList = []
 }) {
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -142,7 +143,7 @@ export default function Sidebar({
                 </div>
 
                 <div className="px-4 mb-6">
-                    <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 flex items-center justify-between">
+                    <div className="bg-slate-800/50 rounded-2xl p-4 border border-slate-700/50 flex items-center justify-between mb-2">
                         <div className="flex items-center gap-3 overflow-hidden">
                             <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 flex items-center justify-center text-white font-black shrink-0 shadow-lg uppercase">
                                 {currentUser?.name?.charAt(0)}
@@ -152,10 +153,13 @@ export default function Sidebar({
                                 <p className="text-[10px] text-blue-400 font-black uppercase tracking-tighter">{currentUser?.role}</p>
                             </div>
                         </div>
-                        <button onClick={handleLogout} className="text-slate-500 hover:text-red-400 transition shrink-0">
+                        <button onClick={handleLogout} className="text-slate-500 hover:text-red-400 transition shrink-0" title="Đăng xuất">
                             <LogOut size={18} />
                         </button>
                     </div>
+                    <button onClick={onOpenSignatureScanner} className="w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
+                        <FileSignature size={14} className="text-blue-400" /> Cập nhật chữ ký
+                    </button>
                 </div>
 
                 <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar pb-6">
