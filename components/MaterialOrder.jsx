@@ -187,6 +187,20 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     });
                 }
             } catch(e) {}
+
+            // Thử lấy thêm từ localStorage để phòng hờ Supabase bị lỗi không lưu được
+            try {
+                const localStr = localStorage.getItem('misa_project_material_templates');
+                if (localStr) {
+                    const localData = JSON.parse(localStr);
+                    for (const proj of Object.keys(localData)) {
+                        if (!templatesMap[proj]) {
+                            templatesMap[proj] = localData[proj];
+                        }
+                    }
+                }
+            } catch(e) {}
+
             setAllTemplates(templatesMap);
 
             // Thử lấy từ Supabase
@@ -316,6 +330,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 showToast('Vui lòng nhập người nhận hàng!', 'error');
                 return;
             }
+        }
+
+        const existingPhaseOrder = orders.find(o => 
+            o.project_name === formData.project_name && 
+            o.order_phase.trim().toLowerCase() === formData.order_phase.trim().toLowerCase() && 
+            o.id !== formData.id
+        );
+
+        if (existingPhaseOrder) {
+            showToast(`Dự án này đã có Đơn đặt hàng cho ${formData.order_phase}! Vui lòng chọn đợt khác.`, 'error');
+            return;
         }
 
         setIsLoading(true);
@@ -1315,7 +1340,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                             <input 
                                                                 type="number"
                                                                 min="0"
-                                                                value={item.quantity}
+                                                                value={item.quantity === undefined || item.quantity === null ? '' : item.quantity}
                                                                 onChange={(e) => {
                                                                     let val = e.target.value === '' ? '' : parseInt(e.target.value);
                                                                     if (val !== '' && val < 0) val = 0;

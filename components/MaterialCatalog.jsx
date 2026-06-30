@@ -418,7 +418,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                         {isEditing ? (
                                             <input 
                                                 type="text"
-                                                value={name}
+                                                value={name || ''}
                                                 onChange={(e) => setEditingName(e.target.value)}
                                                 className="text-lg font-black text-slate-800 bg-white border-2 border-blue-200 focus:border-blue-500 rounded-lg p-2 outline-none"
                                                 placeholder={`Đơn giá lần ${vIdx + 1}`}
@@ -482,7 +482,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                 <input
                                                     type="text"
                                                     disabled={!isEditing}
-                                                    value={cat.name}
+                                                    value={cat.name || ''}
                                                     onChange={(e) => {
                                                         const updated = [...categories];
                                                         updated[catIdx].name = e.target.value;
@@ -514,7 +514,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                             <input 
                                                                 type="text" 
                                                                 disabled={!isEditing}
-                                                                value={item.name}
+                                                                value={item.name || ''}
                                                                 onChange={(e) => {
                                                                     const updated = [...categories];
                                                                     updated[catIdx].items[itemIdx].name = e.target.value;
@@ -538,7 +538,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                             <input 
                                                                 type="text" 
                                                                 disabled={!isEditing}
-                                                                value={item.unit}
+                                                                value={item.unit || ''}
                                                                 onChange={(e) => {
                                                                     const updated = [...categories];
                                                                     updated[catIdx].items[itemIdx].unit = e.target.value;
