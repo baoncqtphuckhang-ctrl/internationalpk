@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 1001",
+    "dev": "next dev -p 9999",
     "build": "next build",
-    "start": "next start -p 1001",
+    "start": "next start -p 9999",
     "lint": "eslint"
   },
   "dependencies": {
@@ -14,7 +14,8 @@
     "lucide-react": "^1.16.0",
     "next": "16.2.6",
     "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "react-dom": "19.2.4",
+    "react-image-crop": "^11.1.2"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

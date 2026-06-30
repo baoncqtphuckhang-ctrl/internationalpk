@@ -102,6 +102,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     }, []);
 
     const [infoModal, setInfoModal] = useState({ isOpen: false, message: '' });
+    const [editPhaseModal, setEditPhaseModal] = useState({ isOpen: false, projectName: '', oldPhaseName: '', newPhaseName: '' });
 
     const handleOpenModal = (type) => {
         setModalType(type);
@@ -154,8 +155,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 let currentExport = 0;
                 transactions.forEach(t => {
                     const info = extractInfoFromNote(t.note);
-                    // Match price phase, fallback to matching order phase if user used order phase in the price phase dropdown
-                    const matchPhase = info.p === (formData.price_phase || '') || info.o === (formData.price_phase || '');
+                    // If no price phase selected, match all. Otherwise match price phase or order phase.
+                    const matchPhase = !formData.price_phase ? true : (info.p === formData.price_phase || info.o === formData.price_phase);
                     
                     if (t.project_name === payload.project_name &&
                         t.material_name === payload.material_name &&
@@ -272,6 +273,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             quantity: item.totalImport,
             date: new Date().toISOString().split('T')[0],
             price_phase: item.price_phase || '',
+            order_phase: item.order_phase || '',
             note: 'Chỉnh sửa thay thế số lượng nhập kho'
         });
         setEditingId(`REPLACE_IMPORT::${JSON.stringify({
@@ -321,6 +323,45 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 }
             }
         });
+    };
+
+    const handleEditOrderPhaseName = (projectName, oldPhaseName) => {
+        setEditPhaseModal({ isOpen: true, projectName, oldPhaseName, newPhaseName: oldPhaseName });
+    };
+
+    const submitEditOrderPhaseName = async (e) => {
+        e.preventDefault();
+        const { projectName, oldPhaseName, newPhaseName } = editPhaseModal;
+        
+        if (!newPhaseName || newPhaseName === oldPhaseName) {
+            setEditPhaseModal({ isOpen: false, projectName: '', oldPhaseName: '', newPhaseName: '' });
+            return;
+        }
+        
+        setEditPhaseModal({ isOpen: false, projectName: '', oldPhaseName: '', newPhaseName: '' });
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase
+                .from('material_warehouse')
+                .select('*')
+                .eq('project_name', projectName)
+                .ilike('note', `%Theo Đơn vật tư ${oldPhaseName}.%`);
+                
+            if (error) throw error;
+            
+            for (let t of data) {
+                const newNote = t.note.replace(`Theo Đơn vật tư ${oldPhaseName}.`, `Theo Đơn vật tư ${newPhaseName.trim()}.`);
+                await supabase.from('material_warehouse').update({ note: newNote }).eq('id', t.id);
+            }
+            
+            showToast('Đã đổi tên đợt đặt hàng thành công!');
+            await fetchTransactions();
+        } catch (err) {
+            showToast('Lỗi khi đổi tên đợt đặt hàng', 'error');
+            console.error(err);
+        } finally {
+            setIsLoading(false);
+        }
     };
 
     // Calculate Inventory
@@ -396,6 +437,35 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             console.error("Error getting material price:", e);
         }
         return { price: 0, index: 9999 };
+    };
+
+    const getPhaseName = (pName, phaseId) => {
+        if (!phaseId || phaseId.toLowerCase().includes('không rõ')) return phaseId;
+        try {
+            const rawId = phaseId.replace('Đợt giá: ', '').trim();
+            
+            if (allTemplates && allTemplates[pName] && allTemplates[pName].versions) {
+                const idx = allTemplates[pName].versions.findIndex(v => String(v.id) === rawId);
+                if (idx !== -1) {
+                    const v = allTemplates[pName].versions[idx];
+                    return v.name || `Đợt ${idx + 1}`;
+                }
+            }
+            
+            const saved = localStorage.getItem('misa_project_material_templates');
+            if (saved) {
+                const templates = JSON.parse(saved);
+                const pTmpl = templates[pName];
+                if (pTmpl && pTmpl.versions) {
+                    const idx = pTmpl.versions.findIndex(v => String(v.id) === rawId);
+                    if (idx !== -1) {
+                        const v = pTmpl.versions[idx];
+                        return v.name || `Đợt ${idx + 1}`;
+                    }
+                }
+            }
+        } catch(e) {}
+        return phaseId;
     };
 
     const inventory = {};
@@ -480,18 +550,24 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
     const availableMaterialsForImport = [];
     if (formData.project_name) {
         try {
-            const savedTemplates = localStorage.getItem('misa_project_material_templates');
-            if (savedTemplates) {
-                const templates = JSON.parse(savedTemplates);
-                const tmpl = templates[formData.project_name];
-                if (tmpl && tmpl.versions) {
-                    if (projectVersions.length === 0 || projectVersions[0].id !== tmpl.versions[0]?.id) {
-                        setProjectVersions(tmpl.versions);
-                    }
-                } else if (projectVersions.length > 0) {
-                    setProjectVersions([]);
+            let tmpl = allTemplates[formData.project_name];
+            if (!tmpl) {
+                const savedTemplates = localStorage.getItem('misa_project_material_templates');
+                if (savedTemplates) {
+                    const templates = JSON.parse(savedTemplates);
+                    tmpl = templates[formData.project_name];
                 }
-                if (tmpl && tmpl.versions && tmpl.versions.length > 0) {
+            }
+
+            if (tmpl && tmpl.versions) {
+                // Kiểm tra xem projectVersions đã có đúng dữ liệu chưa
+                const isDifferent = projectVersions.length !== tmpl.versions.length || 
+                                    (projectVersions.length > 0 && projectVersions[0].id !== tmpl.versions[0]?.id);
+                if (isDifferent) {
+                    setProjectVersions(tmpl.versions);
+                }
+                
+                if (tmpl.versions.length > 0) {
                     const latest = tmpl.versions[tmpl.versions.length - 1];
                     latest.categories.forEach(cat => {
                         cat.items.forEach(item => {
@@ -505,6 +581,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                         });
                     });
                 }
+            } else if (projectVersions.length > 0) {
+                setProjectVersions([]);
             }
         } catch(e) {}
 
@@ -736,7 +814,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                     <td className="px-6 py-3 font-medium">
                                                         <div className="flex flex-col gap-1 items-start">
                                                             <span className={`px-2.5 py-1 rounded-md text-[13px] font-bold border shadow-sm ${colorClass}`}>{item.material_name}</span>
-                                                            {isTotalRow && <span className="text-xs font-semibold text-slate-500">Đợt giá: <span className="text-indigo-600">{item.price_phase || 'Trống'}</span></span>}
+                                                            {isTotalRow && <span className="text-xs font-semibold text-slate-500">Đợt giá: <span className="text-indigo-600">{getPhaseName(item.project_name, item.price_phase) || 'Không rõ đợt'}</span></span>}
                                                         </div>
                                                     </td>
                                                     <td className="px-6 py-3 text-center text-slate-600">{item.color_code || '-'}</td>
@@ -798,7 +876,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                     {expandedPhases[`${projectName}__TỔNG`] && (() => {
                                                         const totalByPricePhase = {};
                                                         projectData.total.forEach(item => {
-                                                            const pp = item.price_phase || 'KHÔNG RÕ ĐỢT GIÁ';
+                                                            const pp = item.price_phase || 'Không rõ đợt';
                                                             if (!totalByPricePhase[pp]) totalByPricePhase[pp] = [];
                                                             totalByPricePhase[pp].push(item);
                                                         });
@@ -808,9 +886,10 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                             <React.Fragment key={`total_pp_${pp}`}>
                                                                 <tr className="bg-sky-50/30 hover:bg-sky-100/40 cursor-pointer transition border-b border-sky-100" onClick={() => togglePhase(projectName, `TỔNG__${pp}`)}>
                                                                     <td colSpan="10" className="px-6 py-2.5 pl-16">
-                                                                        <div className="flex items-center gap-2 font-bold text-sky-700">
+                                                                        <div className="flex items-center gap-2 font-bold text-sky-700 w-full">
                                                                             {expandedPhases[`${projectName}__TỔNG__${pp}`] ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                                                                            <Tag size={14} /> ĐỢT GIÁ: {pp}
+                                                                            <Tag size={14} /> <span className="flex-1">ĐỢT GIÁ: {getPhaseName(projectName, pp)}</span>
+                                                                            <span className="text-emerald-700 ml-auto mr-4 text-[13px] whitespace-nowrap bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Tổng tiền: {new Intl.NumberFormat('vi-VN').format(totalByPricePhase[pp].reduce((sum, item) => sum + item.totalImportValue, 0))} ₫</span>
                                                                         </div>
                                                                     </td>
                                                                 </tr>
@@ -823,9 +902,19 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                         <React.Fragment key={phase}>
                                                             <tr className="bg-amber-50/40 hover:bg-amber-100/40 cursor-pointer transition border-b border-amber-100" onClick={() => togglePhase(projectName, phase)}>
                                                                 <td colSpan="10" className="px-6 py-3 pl-12">
-                                                                    <div className="flex items-center gap-2 font-bold text-amber-700">
+                                                                    <div className="flex items-center gap-2 font-bold text-amber-700 w-full">
                                                                         {expandedPhases[`${projectName}__${phase}`] ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
-                                                                        <Package size={16} /> ĐỢT ĐẶT HÀNG: {phase}
+                                                                        <Package size={16} /> <span className="flex-1">ĐỢT ĐẶT HÀNG: {phase}</span>
+                                                                        {currentUser?.role?.toUpperCase() === 'ADMIN' && projects.find(p => p.name === projectName)?.project_type === 'TỔNG THẦU MUA HỘ' && (
+                                                                            <button 
+                                                                                onClick={(e) => { e.stopPropagation(); handleEditOrderPhaseName(projectName, phase); }} 
+                                                                                className="text-amber-500 hover:text-amber-700 hover:bg-amber-200/50 p-1 rounded-md transition mr-2 bg-amber-50" 
+                                                                                title="Đổi tên đợt đặt hàng"
+                                                                            >
+                                                                                <Edit2 size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                        <span className="text-emerald-700 ml-auto mr-4 text-[13px] whitespace-nowrap bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Tổng tiền: {new Intl.NumberFormat('vi-VN').format(projectData.phases[phase].reduce((sum, item) => sum + item.totalImportValue, 0))} ₫</span>
                                                                     </div>
                                                                 </td>
                                                             </tr>
@@ -903,7 +992,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                 </span>
                                             </td>
                                             <td className="px-6 py-4 font-bold text-slate-700">{t.project_name}</td>
-                                            <td className="px-6 py-4 font-bold text-indigo-600 text-xs">{parsedPhase || '-'}</td>
+                                            <td className="px-6 py-4 font-bold text-indigo-600 text-xs">{getPhaseName(t.project_name, parsedPhase) || '-'}</td>
                                             <td className="px-6 py-4">
                                                 <div className="font-bold">{t.material_name}</div>
                                                 <div className="text-xs text-slate-500">Mã màu: {t.color_code || '-'} | ĐVT: {t.unit}</div>
@@ -932,12 +1021,18 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
 
             {/* Modal Nhập / Xuất */}
             {showModal && (() => {
-                const selectedInventoryItem = modalType === 'XUẤT' && formData.material_name ? inventoryList.find(i => 
-                    i.project_name === formData.project_name && 
-                    i.material_name === formData.material_name && 
-                    (i.color_code || '') === (formData.color_code || '') && 
-                    (i.price_phase || '') === (formData.price_phase || '')
-                ) : null;
+                const selectedInventoryItem = modalType === 'XUẤT' && formData.material_name ? (() => {
+                    const matches = inventoryList.filter(i => 
+                        i.project_name === formData.project_name && 
+                        i.material_name === formData.material_name && 
+                        (i.color_code || '') === (formData.color_code || '') &&
+                        (formData.price_phase ? (i.price_phase || '') === formData.price_phase : true)
+                    );
+                    if (matches.length === 0) return null;
+                    return {
+                        remaining: matches.reduce((sum, item) => sum + item.remaining, 0)
+                    };
+                })() : null;
                 return (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
                     <div className="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
@@ -1125,7 +1220,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                             >
                                                 <option value="">-- Không chọn --</option>
                                                 {projectVersions.map((v, i) => (
-                                                    <option key={v.id} value={v.name || `Đợt ${i + 1} - ${v.date}`}>{v.name || `Đợt ${i + 1} - Áp dụng từ ${formatDateVN(v.date)}`}</option>
+                                                    <option key={v.id} value={v.id}>{v.name || `Đợt ${i + 1} - Áp dụng từ ${formatDateVN(v.date)}`}</option>
                                                 ))}
                                             </select>
                                         </div>
@@ -1169,6 +1264,39 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                         <div className="flex justify-end">
                             <button onClick={() => setInfoModal({ isOpen: false, message: '' })} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition">OK</button>
                         </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Modal Edit Phase Name */}
+            {editPhaseModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[110] flex items-center justify-center p-4 animate-in fade-in">
+                    <div className="bg-white rounded-3xl w-full max-w-sm shadow-2xl overflow-hidden animate-in zoom-in-95">
+                        <div className="p-5 bg-amber-500 text-white flex items-center gap-3">
+                            <Edit2 size={24} />
+                            <h2 className="text-xl font-black">Đổi tên Đợt Đặt Hàng</h2>
+                        </div>
+                        <form onSubmit={submitEditOrderPhaseName} className="p-6">
+                            <div className="mb-4 text-sm text-slate-600 bg-amber-50 p-3 rounded-xl border border-amber-100">
+                                <span className="font-bold text-amber-700">Lưu ý:</span> Hành động này sẽ đổi tên đồng loạt tất cả các vật tư đang nằm trong đợt <span className="font-bold">"{editPhaseModal.oldPhaseName}"</span>.
+                            </div>
+                            <div className="mb-6">
+                                <label className="block text-xs font-bold text-slate-500 mb-2">Tên mới cho Đợt Đặt Hàng</label>
+                                <input 
+                                    autoFocus
+                                    type="text" 
+                                    required
+                                    value={editPhaseModal.newPhaseName} 
+                                    onChange={(e) => setEditPhaseModal({...editPhaseModal, newPhaseName: e.target.value})}
+                                    className="w-full border-2 border-slate-200 rounded-xl px-4 py-3 focus:border-amber-500 focus:ring-4 focus:ring-amber-500/20 outline-none font-bold text-slate-700 transition"
+                                    placeholder="Nhập tên mới..."
+                                />
+                            </div>
+                            <div className="flex justify-end gap-3">
+                                <button type="button" onClick={() => setEditPhaseModal({ isOpen: false, projectName: '', oldPhaseName: '', newPhaseName: '' })} className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy</button>
+                                <button type="submit" className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-xl font-bold shadow-lg shadow-amber-500/30 transition">Lưu Thay Đổi</button>
+                            </div>
+                        </form>
                     </div>
                 </div>
             )}

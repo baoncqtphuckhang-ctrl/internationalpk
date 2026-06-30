@@ -2476,7 +2476,7 @@ export default function Home() {
 
                 {activeTab === 'trash' && role === 'ADMIN' && (
                     <Trash 
-                        onRestore={() => window.location.reload()}
+                        onRestore={() => fetchData()}
                         isLoading={isLoading}
                         setIsLoading={setIsLoading}
                         showToast={showToast}
