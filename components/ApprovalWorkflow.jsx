@@ -475,7 +475,7 @@ export default function ApprovalWorkflow({
             </header>
 
             {view === 'create' ? (
-                <div className={`bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[15px] text-black border border-slate-200 w-full max-w-6xl mx-auto overflow-x-auto custom-scrollbar print:hidden`}>
+                <div className={`bg-white p-4 sm:p-8 md:p-12 shadow-lg rounded-xl font-['Times_New_Roman',_serif] text-[17px] text-black border border-slate-200 w-full max-w-[1250px] mx-auto overflow-x-auto custom-scrollbar print:hidden`}>
                     <div className="text-center mb-8 px-2"><h1 className="font-bold text-sm sm:text-[17px] uppercase tracking-wide leading-relaxed">CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG</h1><p className="text-xs sm:text-sm mt-1">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p></div>
                     
                     <div className="mb-6 flex flex-col sm:flex-row gap-3 sm:gap-6 bg-white p-3 rounded-xl border border-slate-200 w-full shadow-sm mx-auto items-start sm:items-center justify-center">
@@ -614,7 +614,7 @@ export default function ApprovalWorkflow({
                             const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username === 'admin' || currentUser?.username?.toUpperCase() === 'ADMIN';
                             const roleLabel = dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 
-                            if (isAdmin) {
+                            if (isAdmin && currentUser?.username === 'admin') {
                                 return (
                                     <div className="flex flex-col items-center">
                                         <div>{roleLabel}</div>
@@ -1188,7 +1188,7 @@ export default function ApprovalWorkflow({
 
             {/* Modal In Phiếu (DNTT / DNTƯ) */}
             {printItem && (
-                <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-center justify-center p-4 overflow-y-auto print:static print:block print:p-0 print:m-0">
+                <div className="fixed inset-0 bg-slate-900/70 print:bg-transparent backdrop-blur-md z-[1000] flex items-start justify-center p-4 overflow-y-auto print:static print:block print:p-0 print:m-0">
                     <div className={`bg-white rounded-3xl shadow-2xl w-full max-w-6xl overflow-hidden my-8 animate-in zoom-in-95 duration-300 print:shadow-none print:m-0 print:max-w-none print:w-full print:rounded-none`}>
                         {/* Control Bar (No Print) */}
                         <header className="bg-slate-900 text-white p-4 sm:p-6 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 no-print print:hidden">
@@ -1213,10 +1213,27 @@ export default function ApprovalWorkflow({
                         </header>
 
                         <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center print:block print:p-0 print:bg-white print:max-h-none print:overflow-visible">
-                            {(printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH') && (
-                                <style>{`@media print { @page { size: landscape; margin: 15mm; } }`}</style>
-                            )}
-                            <div className={`print-area bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1100px]' : 'max-w-[950px]'} font-['Times_New_Roman',_serif] text-[16px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
+                            <style>{`
+                                /* Bỏ qua cache globals.css bằng bộ chọn có độ ưu tiên cao */
+                                .print-area.document-view, .print-area.document-view * {
+                                    font-family: 'Times New Roman', Times, serif;
+                                }
+                                @media print { 
+                                    @page { size: ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'landscape' : 'portrait'}; margin: 15mm; } 
+                                    .print-area div.signature-wrapper {
+                                        height: 96px !important;
+                                        min-height: 96px !important;
+                                        display: flex !important;
+                                    }
+                                    .print-area div.signature-text {
+                                        font-family: 'Allura', cursive !important;
+                                        color: #1d4ed8 !important;
+                                        -webkit-print-color-adjust: exact !important;
+                                        print-color-adjust: exact !important;
+                                    }
+                                }
+                            `}</style>
+                            <div className={`print-area document-view bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1250px]' : 'max-w-[1100px]'} text-[18px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
                                 <div>
                                     {/* Company Header */}
                                     <div className="flex justify-between items-start mb-8 print:mb-2">
@@ -1430,11 +1447,11 @@ export default function ApprovalWorkflow({
                                             const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
                                             const roleLabel = printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 
-                                            if (isAdmin) {
+                                            if (isAdmin && creatorUsername === 'admin') {
                                                 return (
                                                     <div className="flex flex-col items-center">
                                                         <div>{roleLabel}</div>
-                                                        <div className="h-24 flex items-center justify-center"></div>
+                                                        <div className="h-24 signature-wrapper flex items-center justify-center"></div>
                                                     </div>
                                                 );
                                             }
@@ -1445,11 +1462,11 @@ export default function ApprovalWorkflow({
                                             return (
                                                 <div className="flex flex-col items-center">
                                                     <div>{roleLabel}</div>
-                                                    <div className="h-24 flex items-center justify-center">
+                                                    <div className="h-24 signature-wrapper flex items-center justify-center">
                                                         {creator?.signature_url ? (
                                                             <img src={creator.signature_url} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />
                                                         ) : sigName ? (
-                                                            <div className="font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                            <div className="signature-text font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
                                                                 {sigName}
                                                             </div>
                                                         ) : null}

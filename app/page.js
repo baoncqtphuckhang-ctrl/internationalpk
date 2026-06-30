@@ -1738,6 +1738,7 @@ export default function Home() {
                     <ApprovalWorkflow 
                         activeTab={activeTab === 'dntt-approvals' ? 'approvals' : activeTab}
                         currentUser={currentUser}
+                        usersList={usersList}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
                         onAddDNTT={handleAddDNTT}
@@ -2605,3 +2606,4 @@ export default function Home() {
         </div>
     );
 }
+ 

@@ -338,7 +338,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             if (formData.price_batch) {
                 // formData.price_batch is "Đợt giá: {date || id}"
                 // We need to store the actual version ID. 
-                const projData = getProjectMaterialTemplateData(formData.project_name);
+                const projData = getProjectMaterialTemplateData(formData.project_name, allTemplates);
                 const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === formData.price_batch);
                 if (selectedVer) {
                     pbName = selectedVer.id;
@@ -1009,14 +1009,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                         const address = proj?.address || '';
                                         const recipient = proj?.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '';
                                         const nextPhase = getNextOrderPhaseForProject(selectedName, orders);
-                                        const template = getProjectMaterialTemplate(selectedName);
+                                        const templateData = getProjectMaterialTemplateData(selectedName, allTemplates);
+                                        const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
+                                        const template = getProjectMaterialTemplate(selectedName, allTemplates, activeVerId);
                                         setFormData({ 
                                             ...formData, 
                                             project_name: selectedName, 
                                             address: address || '',
                                             recipient: recipient,
                                             order_phase: nextPhase,
-                                            categories: template
+                                            categories: template,
+                                            configVersionId: activeVerId
                                         });
                                     }}
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
@@ -1062,7 +1065,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                         setFormData(prev => {
                                             const newData = { ...prev, price_batch: selectedVerId };
                                             if (selectedVerId) {
-                                                const projData = getProjectMaterialTemplateData(prev.project_name);
+                                                const projData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
                                                 const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === selectedVerId);
                                                 if (selectedVer && selectedVer.categories) {
                                                     const newCats = JSON.parse(JSON.stringify(prev.categories));
@@ -1086,7 +1089,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                 >
                                     <option value="">-- Giữ nguyên đơn giá hiện tại --</option>
-                                    {(getProjectMaterialTemplateData(formData.project_name)?.versions || []).map((v, vIdx) => (
+                                    {(getProjectMaterialTemplateData(formData.project_name, allTemplates)?.versions || []).map((v, vIdx) => (
                                         <option key={v.id} value={`Đợt giá: ${v.id}`}>{v.name || `Đơn giá lần ${vIdx + 1}`} (Áp dụng từ {formatDateVN(v.date)})</option>
                                     ))}
                                 </select>

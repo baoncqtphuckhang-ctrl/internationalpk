@@ -54,132 +54,117 @@ body {
   background-color: #f1f5f9;
 }
 
-/* A4 Print Layout and Styling */
+/* --- PRINT AND PREVIEW SHARED STYLES --- */
+.print-area {
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  box-shadow: none !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  font-family: 'Times New Roman', Times, serif !important;
+  font-size: 13pt !important;
+}
+
+/* Grayscale Table Adjustments */
+.print-area table {
+  border-collapse: collapse !important;
+  width: 100% !important;
+  border: 1.5px solid #000000 !important;
+}
+
+.print-area th, .print-area td {
+  border: 1px solid #000000 !important;
+  padding: 4px 6px !important;
+  vertical-align: middle !important;
+  color: #000000 !important;
+  font-family: 'Times New Roman', Times, serif !important;
+  font-size: 13pt !important;
+  background-color: transparent !important;
+}
+
+.print-area th {
+  background-color: #e6e6e6 !important;
+  font-weight: bold !important;
+}
+
+/* Force font families and sizes on headings and text */
+.print-area h1, .print-area h2, .print-area h3, .print-area h4, .print-area h5, .print-area h6,
+.print-area p, .print-area span, .print-area div:not(.signature-text), .print-area td, .print-area th, .print-area label {
+  font-family: 'Times New Roman', Times, serif !important;
+  color: #000000 !important;
+}
+
+.print-area div.signature-text {
+  font-family: 'Allura', cursive !important;
+  color: #1d4ed8 !important; /* Tailwind blue-700 */
+}
+
+.print-area h1 {
+  font-size: 15pt !important;
+  font-weight: bold !important;
+}
+
+.print-area h2 {
+  font-size: 14pt !important;
+  font-weight: bold !important;
+}
+
+.print-area h3 {
+  font-size: 13pt !important;
+  font-weight: bold !important;
+}
+
+.print-area p, .print-area span, .print-area div:not(.title):not(.signature-text), .print-area td, .print-area th {
+  font-size: 13pt !important;
+}
+
+/* Override fixed heights and overflows that prevent pagination */
+.print-area html, .print-area body, .print-area main, .print-area table, .print-area tbody, .print-area thead, .print-area tr, .print-area td, .print-area th {
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  page-break-inside: auto;
+}
+
+.print-area tr {
+  page-break-inside: avoid;
+  page-break-after: auto;
+}
+
+.print-area thead {
+  display: table-header-group;
+}
+
+/* --- ACTUAL PRINT-ONLY STYLES --- */
 @media print {
   @page {
-    size: A3 landscape;
-    margin: 15mm 10mm 15mm 10mm;
+    size: A4 portrait;
+    margin: 1.5cm;
   }
 
-  /* Reset body and hide all screen-only elements */
   body {
     background: #ffffff !important;
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 11pt !important;
+    font-size: 13pt !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     display: block !important;
-  }
-
-  body * {
-    /* visibility: hidden; Removed to prevent whitespace */
   }
 
   aside, .no-print {
     display: none !important;
   }
 
-  /* Show only the designated print area and its descendants */
-  .print-area {
-    /* ... */
-  }
-
-  .print-area {
-    width: 100%;
-    margin: 0 !important;
-    padding: 0 !important;
-    border: none !important;
-    box-shadow: none !important;
-    background: #ffffff !important;
-    color: #000000 !important;
-    font-family: 'Times New Roman', Times, serif !important;
-    font-size: 11pt !important;
-  }
-
-  /* Override fixed heights and overflows that prevent pagination */
-  html, body, main, div, table, tbody, thead, tr, td, th {
+  html, body, main, table, tbody, thead, tr, td, th {
     height: auto !important;
     min-height: 0 !important;
     max-height: none !important;
     overflow: visible !important;
     page-break-inside: auto;
-  }
-  
-  tr {
-    page-break-inside: avoid;
-    page-break-after: auto;
-  }
-  
-  thead {
-    display: table-header-group;
-  }
-
-  /* Grayscale Table Adjustments */
-  .print-area table {
-    border-collapse: collapse !important;
-    width: 100% !important;
-    border: 1.5px solid #000000 !important;
-  }
-
-  .print-area th, .print-area td {
-    border: 1px solid #000000 !important;
-    padding: 4px 6px !important;
-    vertical-align: middle !important;
-    color: #000000 !important;
-    font-family: 'Times New Roman', Times, serif !important;
-    font-size: 11pt !important;
-    background-color: transparent !important;
-  }
-
-  .print-area th {
-    background-color: #e6e6e6 !important;
-    font-weight: bold !important;
-  }
-
-  /* Form Element Adjustments */
-  .print-area input, .print-area select, .print-area textarea {
-    border: none !important;
-    border-bottom: 1px dotted #000000 !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    font-family: 'Times New Roman', Times, serif !important;
-    font-size: 11pt !important;
-    padding: 0 !important;
-    border-radius: 0 !important;
-  }
-
-  /* Force font families and sizes on headings and text */
-  .print-area h1, .print-area h2, .print-area h3, .print-area h4, .print-area h5, .print-area h6,
-  .print-area p, .print-area span, .print-area div, .print-area td, .print-area th, .print-area label {
-    font-family: 'Times New Roman', Times, serif !important;
-    color: #000000 !important;
-  }
-
-  .print-area h1 {
-    font-size: 14pt !important;
-    font-weight: bold !important;
-  }
-
-  .print-area h2 {
-    font-size: 13pt !important;
-    font-weight: bold !important;
-  }
-
-  .print-area h3 {
-    font-size: 12pt !important;
-    font-weight: bold !important;
-  }
-
-  .print-area p, .print-area span, .print-area div:not(.title), .print-area td, .print-area th {
-    font-size: 11pt !important;
-  }
-
-  /* Signature visual formatting */
-  .print-signature {
-    font-family: 'Brush Script MT', cursive, sans-serif !important;
-    font-size: 24pt !important;
-    color: #000000 !important;
   }
 
   /* Hide interactive buttons, scrollbars, icons, action cards, sidebars, headers */
