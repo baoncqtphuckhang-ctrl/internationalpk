@@ -167,8 +167,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         return (Number(emp.leave_balance) || 0) - getUsedLeaves(emp, month);
     };
 
+    const [createdPeriods, setCreatedPeriods] = useState(() => {
+        if (typeof window !== 'undefined') {
+            try { return JSON.parse(localStorage.getItem('misa_created_periods')) || []; } catch(e) { return []; }
+        }
+        return [];
+    });
+
     const getDraftPeriods = () => {
-        const drafts = new Set();
+        const drafts = new Set(createdPeriods);
         employees.forEach(emp => {
             if (emp.attendance) {
                 Object.keys(emp.attendance).forEach(month => {
@@ -178,7 +185,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 });
             }
         });
-        const arr = Array.from(drafts).sort().reverse();
+        const arr = Array.from(drafts).filter(m => !historyRecords[m]).sort().reverse();
         if (arr.length === 0 && selectedMonth && !historyRecords[selectedMonth]) {
             arr.push(selectedMonth);
         }
@@ -198,6 +205,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         }
         
         // Cập nhật selectedMonth, dữ liệu sẽ tự động trống đối với kỳ này nhờ cấu trúc của attendance
+        setCreatedPeriods(prev => {
+            const next = Array.from(new Set([...prev, p]));
+            localStorage.setItem('misa_created_periods', JSON.stringify(next));
+            return next;
+        });
         setSelectedMonth(p);
         setCreatePeriodModal({ isOpen: false, periodName: '' });
     };
@@ -224,10 +236,17 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         leave_balance: e.leave_balance === -1 ? 'N/A' : (Number(e.leave_balance) || 0)
                     })));
                 } else {
-                    throw new Error("Empty DB");
+                    // Empty DB, fallback to localStorage but keep DB storage enabled so we can populate it
+                    setIsDbStorage(true);
+                    const localData = localStorage.getItem('misa_employees_base');
+                    if (localData) {
+                        try { setEmployees(JSON.parse(localData)); } catch(e) { setEmployees(INITIAL_DATA); }
+                    } else {
+                        setEmployees(INITIAL_DATA);
+                    }
                 }
             } catch (err) {
-                console.warn('Fallback to LocalStorage for employees');
+                console.warn('Fallback to LocalStorage for employees completely');
                 setIsDbStorage(false);
                 const localData = localStorage.getItem('misa_employees_base');
                 if (localData) {
@@ -304,11 +323,13 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         bank_name: e.bank_name || '',
                         leave_balance: e.leave_balance === 'N/A' ? -1 : (Number(e.leave_balance) || 0),
                         attendance: e.attendance || {},
-                        overtime_hours: Number(e.overtime_hours) || 0,
                         order_index: index
                     }));
-                    await supabase.from('employees').upsert(upsertData, { onConflict: 'id' });
-                } catch(err) { console.error('Save to Supabase failed', err); }
+                    const { error } = await supabase.from('employees').upsert(upsertData, { onConflict: 'id' });
+                    if (error) throw error;
+                } catch(err) { 
+                    console.error('Save to Supabase failed', err.message || err); 
+                }
             }
             localStorage.setItem('misa_employees_base', JSON.stringify(employees));
         }, 1500);
@@ -496,13 +517,18 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
                 
                 try {
-                    await supabase.from('salary_history').upsert([{
+                    const { error } = await supabase.from('salary_history').upsert([{
                         month_id: finalPeriodName,
                         timestamp: monthData.timestamp,
                         global_standard_days: monthData.globalStandardDays,
                         employees_data: [...monthData.employees, { id: 'metadata_holidays', holidays: monthData.holidays, base_month: selectedMonth }]
                     }], { onConflict: 'month_id' });
-                } catch(e) { console.error('History save error', e); }
+                    if (error) throw error;
+                } catch(e) { 
+                    console.error('History save error', e.message || e); 
+                    setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Lỗi khi lưu bảng lương: ${e.message || 'Xem console'}` }), 300);
+                    return false;
+                }
 
                 setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã lưu dữ liệu vào Lịch sử với tên: ${finalPeriodName}!` }), 300);
                 return true;
@@ -663,7 +689,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 });
                 
                 if (updatedMonthData) {
-                    await supabase.from('employees_data').update({ employees: updatedMonthData.employees }).eq('month', monthId);
+                    const metadata = prev[monthId]?.holidays ? { id: 'metadata_holidays', holidays: prev[monthId].holidays, base_month: monthId } : { id: 'metadata_holidays', holidays: [], base_month: monthId };
+                    const { error } = await supabase.from('salary_history').update({ employees_data: [...updatedMonthData.employees, metadata] }).eq('month_id', monthId);
+                    if (error) console.error('Error updating salary_history:', error);
                 }
                 
                 fetchHistoryTransactions(monthId);
@@ -746,6 +774,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     return updatedEmp;
                 });
                 setEmployees(newEmployees);
+                setCreatedPeriods(prev => {
+                    const next = prev.filter(m => m !== monthId);
+                    localStorage.setItem('misa_created_periods', JSON.stringify(next));
+                    return next;
+                });
                 if (selectedMonth === monthId) setSelectedMonth('');
                 
                 // Show success notification
