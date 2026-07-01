@@ -124,10 +124,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         name: '', department: 'VĂN PHÒNG', customDepartment: '', basic_salary: '', phone_allowance: '', parking_allowance: '', makeup_allowance: '', gondola_allowance: '', laptop_allowance: '', insurance_salary: '', leave_balance: ''
     });
     const [historyRecords, setHistoryRecords] = useState({});
+    const [draftRecords, setDraftRecords] = useState({});
     const [historyTransactions, setHistoryTransactions] = useState({});
     const [salaryTxModal, setSalaryTxModal] = useState({ isOpen: false, monthId: null, data: null, selectedProject: '' });
     const [viewingHistoryId, setViewingHistoryId] = useState(null);
-    const [createPeriodModal, setCreatePeriodModal] = useState({ isOpen: false, periodName: '' });
+    const [createPeriodModal, setCreatePeriodModal] = useState({ isOpen: false, periodName: '', copyFrom: '' });
     
     const today = new Date();
     const [selectedMonth, setSelectedMonth] = useState(`${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}`);
@@ -176,6 +177,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
 
     const getDraftPeriods = () => {
         const drafts = new Set(createdPeriods);
+        // Include periods from draftRecords (saved drafts from DB)
+        Object.keys(draftRecords).forEach(m => drafts.add(m));
         employees.forEach(emp => {
             if (emp.attendance) {
                 Object.keys(emp.attendance).forEach(month => {
@@ -200,18 +203,93 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             return;
         }
         if (historyRecords[p]) {
-            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương ${p} đã được chốt và nằm trong lịch sử. Bạn không thể tạo lại!` });
+            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương ${p} đã tồn tại trong Lịch sử. Bạn không thể tạo lại!` });
+            return;
+        }
+        if (draftRecords[p]) {
+            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương nháp ${p} đã tồn tại!` });
+            return;
+        }
+        // Check if period already exists in current draft periods list
+        const existingDrafts = getDraftPeriods();
+        if (existingDrafts.includes(p)) {
+            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương ${p} đã tồn tại trong danh sách nháp!` });
             return;
         }
         
-        // Cập nhật selectedMonth, dữ liệu sẽ tự động trống đối với kỳ này nhờ cấu trúc của attendance
-        setCreatedPeriods(prev => {
-            const next = Array.from(new Set([...prev, p]));
-            localStorage.setItem('misa_created_periods', JSON.stringify(next));
-            return next;
+        let sourceEmps = [];
+        if (createPeriodModal.copyFrom) {
+            if (draftRecords[createPeriodModal.copyFrom]) {
+                sourceEmps = draftRecords[createPeriodModal.copyFrom].employees || [];
+            } else if (historyRecords[createPeriodModal.copyFrom]) {
+                sourceEmps = historyRecords[createPeriodModal.copyFrom].employees || [];
+            }
+        }
+        
+        const [yStr, mStr] = p.split('-');
+        const y = parseInt(yStr), m = parseInt(mStr);
+        
+        // Create independent copy of employee data for this new period
+        const baseEmps = sourceEmps.length > 0 ? sourceEmps : employees;
+        const newEmployees = baseEmps.map(emp => {
+            if (emp.isDepartment) return { ...emp };
+            return {
+                ...emp,
+                attendance: {
+                    [p]: getDefaultAttendance(y, m)
+                }
+            };
         });
+        newEmployees.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
+        
+        // Store independently in draftRecords so each period has its own data
+        setDraftRecords(prev => ({
+            ...prev,
+            [p]: {
+                timestamp: new Date().toISOString(),
+                globalStandardDays: (() => {
+                    const daysInMonth = new Date(y, m, 0).getDate();
+                    let sundays = 0;
+                    for (let i = 1; i <= daysInMonth; i++) {
+                        if (new Date(y, m - 1, i).getDay() === 0) sundays++;
+                    }
+                    return daysInMonth - sundays;
+                })(),
+                employees: newEmployees
+            }
+        }));
+        
+        setEmployees(newEmployees);
         setSelectedMonth(p);
-        setCreatePeriodModal({ isOpen: false, periodName: '' });
+        setCreatePeriodModal({ isOpen: false, periodName: '', copyFrom: '' });
+    };
+
+    const handleSaveDraft = async (monthId) => {
+        const currentEmps = employees.map(calculateRow);
+        const draftData = {
+            timestamp: new Date().toISOString(),
+            globalStandardDays,
+            employees: currentEmps
+        };
+        
+        // Save to local draftRecords state
+        setDraftRecords(prev => ({ ...prev, [monthId]: draftData }));
+        localStorage.setItem('misa_draft_records', JSON.stringify({ ...draftRecords, [monthId]: draftData }));
+        
+        // Save to DB
+        try {
+            const { error } = await supabase.from('salary_history').upsert([{
+                month_id: `${monthId}-DRAFT`,
+                timestamp: draftData.timestamp,
+                global_standard_days: draftData.globalStandardDays,
+                employees_data: currentEmps
+            }], { onConflict: 'month_id' });
+            if (error) throw error;
+            setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã lưu nháp kỳ lương ${monthId} thành công!` });
+        } catch (e) {
+            console.error('Draft save error', e);
+            setSystemModal({ isOpen: true, type: 'info', title: 'Cảnh báo', message: `Đã lưu nháp cục bộ nhưng lỗi khi đồng bộ lên server: ${e.message || 'Xem console'}` });
+        }
     };
 
     useEffect(() => {
@@ -270,17 +348,26 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 if (error) throw error;
                 if (data && data.length > 0) {
                     const historyMap = {};
+                    const draftMap = {};
                     data.forEach(item => {
                         const emps = item.employees_data || [];
                         const metadata = emps.find(e => e.id === 'metadata_holidays');
-                        historyMap[item.month_id] = {
+                        const recordData = {
                             timestamp: item.timestamp,
                             globalStandardDays: item.global_standard_days,
                             holidays: metadata ? metadata.holidays : [],
                             employees: emps.filter(e => e.id !== 'metadata_holidays')
                         };
+                        
+                        if (item.month_id.endsWith('-DRAFT')) {
+                            const realMonthId = item.month_id.replace('-DRAFT', '');
+                            draftMap[realMonthId] = recordData;
+                        } else {
+                            historyMap[item.month_id] = recordData;
+                        }
                     });
                     setHistoryRecords(historyMap);
+                    setDraftRecords(draftMap);
                 } else {
                     throw new Error("Empty History DB");
                 }
@@ -289,53 +376,16 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 if (savedHistory) {
                     try { setHistoryRecords(JSON.parse(savedHistory)); } catch (e) {}
                 }
+                const savedDrafts = localStorage.getItem('misa_draft_records');
+                if (savedDrafts) {
+                    try { setDraftRecords(JSON.parse(savedDrafts)); } catch (e) {}
+                }
             }
         };
         fetchHistory();
     }, []);
 
-    useEffect(() => {
-        if (!initialLoaded || employees.length === 0) return;
-        
-        const saveTimer = setTimeout(async () => {
-            if (isDbStorage) {
-                try {
-                    const upsertData = employees.map((e, index) => ({
-                        id: e.id,
-                        name: e.name || '',
-                        department: e.department || '',
-                        is_department: !!e.isDepartment,
-                        is_custom_dept: !!e.isCustomDept,
-                        basic_salary: Number(e.basic_salary) || 0,
-                        phone_allowance: Number(e.phone_allowance) || 0,
-                        parking_allowance: Number(e.parking_allowance) || 0,
-                        makeup_allowance: Number(e.makeup_allowance) || 0,
-                        gondola_allowance: Number(e.gondola_allowance) || 0,
-                        laptop_allowance: Number(e.laptop_allowance) || 0,
-                        insurance_salary: Number(e.insurance_salary) || 0,
-                        advance: Number(e.advance) || 0,
-                        other_deductions: Number(e.other_deductions) || 0,
-                        other_additions: Number(e.other_additions) || 0,
-                        cash: Number(e.cash) || 0,
-                        notes: e.notes || '',
-                        bank_account: e.bank_account || '',
-                        bank_account_name: e.bank_account_name || '',
-                        bank_name: e.bank_name || '',
-                        leave_balance: e.leave_balance === 'N/A' ? -1 : (Number(e.leave_balance) || 0),
-                        attendance: e.attendance || {},
-                        order_index: index
-                    }));
-                    const { error } = await supabase.from('employees').upsert(upsertData, { onConflict: 'id' });
-                    if (error) throw error;
-                } catch(err) { 
-                    console.error('Save to Supabase failed', err.message || err); 
-                }
-            }
-            localStorage.setItem('misa_employees_base', JSON.stringify(employees));
-        }, 1500);
-
-        return () => clearTimeout(saveTimer);
-    }, [employees, isDbStorage, initialLoaded]);
+    // Removed auto-save timer as requested by user. Saves are now manual.
 
     useEffect(() => {
         if (!selectedMonth) return;
@@ -376,6 +426,14 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             if (new Date(y, m - 1, i).getDay() === 0) sundays++;
         }
         setGlobalStandardDays(daysInMonth - sundays);
+        
+        if (draftRecords[selectedMonth]) {
+            setEmployees(draftRecords[selectedMonth].employees || []);
+            if (draftRecords[selectedMonth].globalStandardDays) {
+                setGlobalStandardDays(draftRecords[selectedMonth].globalStandardDays);
+            }
+            return;
+        }
 
         setEmployees(prev => {
             let changed = false;
@@ -1654,10 +1712,28 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             onChange={(e) => setCreatePeriodModal({...createPeriodModal, periodName: e.target.value})}
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition font-bold text-slate-800"
                         />
-                        <p className="text-xs text-slate-500 mt-2">Dữ liệu nhân sự và mức lương sẽ được kế thừa tự động từ danh sách hiện tại.</p>
+                        <label className="block text-sm font-bold text-slate-700 mb-2 mt-4">Copy dữ liệu từ kỳ</label>
+                        <select 
+                            value={createPeriodModal.copyFrom}
+                            onChange={(e) => setCreatePeriodModal({...createPeriodModal, copyFrom: e.target.value})}
+                            className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition font-bold text-slate-800"
+                        >
+                            <option value="">-- Không copy (Dùng dữ liệu hiện tại) --</option>
+                            <optgroup label="Kỳ lương nháp">
+                                {Object.keys(draftRecords).sort().reverse().map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </optgroup>
+                            <optgroup label="Kỳ lương lịch sử">
+                                {Object.keys(historyRecords).sort().reverse().map(m => (
+                                    <option key={m} value={m}>{m}</option>
+                                ))}
+                            </optgroup>
+                        </select>
+                        <p className="text-xs text-slate-500 mt-2">Dữ liệu nhân sự và mức lương sẽ được kế thừa từ kỳ được chọn.</p>
                     </div>
                     <div className="p-4 bg-slate-50 flex justify-end gap-3">
-                        <button onClick={() => setCreatePeriodModal({ isOpen: false, periodName: '' })} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                        <button onClick={() => setCreatePeriodModal({ isOpen: false, periodName: '', copyFrom: '' })} className="px-4 py-2 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
                             Hủy bỏ
                         </button>
                         <button onClick={handleCreateNewPeriod} className="px-4 py-2 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition">
@@ -2015,6 +2091,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                         className="bg-red-50 hover:bg-red-100 text-red-500 px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-sm mr-2"
                                                     >
                                                         <Trash2 size={16} /> Xóa
+                                                    </button>
+                                                    <button 
+                                                        onClick={(e) => { e.stopPropagation(); handleSaveDraft(period); }} 
+                                                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg text-sm font-bold flex items-center gap-1 transition shadow-lg shadow-blue-200 mr-2"
+                                                    >
+                                                        <Save size={16} /> Lưu
                                                     </button>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleSaveMonth(); }} 

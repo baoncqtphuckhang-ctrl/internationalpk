@@ -1336,17 +1336,28 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                         <td className="border border-black p-2 text-center text-sm font-medium text-slate-600">
                                                             {item.unit}
                                                         </td>
-                                                        <td className="border border-black p-2 bg-yellow-50/30">
+                                                        <td className="border border-black p-1 bg-yellow-50/30">
                                                             <input 
                                                                 type="number"
+                                                                inputMode="numeric"
                                                                 min="0"
-                                                                value={item.quantity === undefined || item.quantity === null ? '' : item.quantity}
+                                                                step="any"
+                                                                value={item.quantity === undefined || item.quantity === null || item.quantity === '' ? '' : item.quantity}
                                                                 onChange={(e) => {
-                                                                    let val = e.target.value === '' ? '' : parseInt(e.target.value);
-                                                                    if (val !== '' && val < 0) val = 0;
-                                                                    handleItemChange(catIdx, itemIdx, 'quantity', val);
+                                                                    const raw = e.target.value;
+                                                                    if (raw === '') {
+                                                                        handleItemChange(catIdx, itemIdx, 'quantity', '');
+                                                                        return;
+                                                                    }
+                                                                    const val = parseFloat(raw);
+                                                                    if (isNaN(val) || val < 0) {
+                                                                        handleItemChange(catIdx, itemIdx, 'quantity', 0);
+                                                                    } else {
+                                                                        handleItemChange(catIdx, itemIdx, 'quantity', val);
+                                                                    }
                                                                 }}
-                                                                className="w-full outline-none text-right font-bold bg-transparent text-blue-700 placeholder:text-slate-300"
+                                                                onFocus={(e) => e.target.select()}
+                                                                className="w-full px-2 py-2 outline-none text-center font-bold bg-transparent text-blue-700 placeholder:text-slate-300 placeholder:font-normal placeholder:text-sm [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none focus:bg-yellow-100/60 rounded transition-colors cursor-text"
                                                                 placeholder="Nhập SL..."
                                                             />
                                                         </td>

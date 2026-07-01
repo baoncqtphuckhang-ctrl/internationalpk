@@ -273,6 +273,31 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                             .eq('id', reqId);
                         if (reqErr) throw reqErr;
                     }
+
+                    // Xóa luôn các bản ghi nhập kho trong material_warehouse liên quan đến đơn này
+                    try {
+                        const orderObj = allOrders.find(o => o.id === orderId);
+                        if (orderObj && orderObj.order_phase) {
+                            // Tìm các bản ghi kho có note chứa "Theo Đơn vật tư <order_phase>"
+                            const { data: whRecs } = await supabase
+                                .from('material_warehouse')
+                                .select('id')
+                                .eq('project_name', orderObj.project_name)
+                                .ilike('note', `%Theo Đơn vật tư ${orderObj.order_phase}.%`);
+                            if (whRecs && whRecs.length > 0) {
+                                const whIds = whRecs.map(r => r.id);
+                                // Lưu từng record vào trash_bin trước khi xóa
+                                for (const r of whRecs) {
+                                    await moveToTrashLocal('material_warehouse', 'id', r.id);
+                                }
+                                // Xóa khỏi kho
+                                await supabase.from('material_warehouse').delete().in('id', whIds);
+                            }
+                        }
+                    } catch (whErr) {
+                        console.warn('Không thể xóa bản ghi kho:', whErr);
+                        // Không throw – không để lỗi kho block toàn bộ flow xóa đơn
+                    }
                     showToast('Đã xóa đơn đặt hàng và dữ liệu liên đới thành công!');
                     await fetchOrders();
                     if (refreshData) {

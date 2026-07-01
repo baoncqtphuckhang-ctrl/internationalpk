@@ -294,29 +294,36 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
+                    // Dùng case-insensitive + trim để tránh mismatch do khoảng trắng hay khác case
+                    const normalize = (s) => (s || '').trim().toLowerCase();
                     const relatedTx = transactions.filter(t => {
                         const info = extractInfoFromNote(t.note);
-                        return t.project_name === item.project_name && 
-                               t.material_name === item.material_name && 
-                               (t.color_code || '') === (item.color_code || '') && 
-                               info.p === (item.price_phase || '') &&
-                               info.o === (item.order_phase || '');
+                        return normalize(t.project_name) === normalize(item.project_name) && 
+                               normalize(t.material_name) === normalize(item.material_name) && 
+                               normalize(t.color_code) === normalize(item.color_code) && 
+                               normalize(info.p) === normalize(item.price_phase) &&
+                               normalize(info.o) === normalize(item.order_phase);
                     });
 
                     const manualIds = relatedTx.map(t => t.id);
                     
-                    if (manualIds.length > 0) {
-                        const { error } = await supabase
-                            .from('material_warehouse')
-                            .delete()
-                            .in('id', manualIds);
-                        if (error) throw error;
+                    if (manualIds.length === 0) {
+                        showToast('Không tìm thấy bản ghi nào để xóa! Hãy thử làm mới trang.', 'error');
+                        setIsLoading(false);
+                        return;
                     }
 
-                    showToast('Đã xóa toàn bộ dữ liệu vật tư này!');
+                    const { error } = await supabase
+                        .from('material_warehouse')
+                        .delete()
+                        .in('id', manualIds);
+                    if (error) throw error;
+
+                    showToast(`Đã xóa ${manualIds.length} bản ghi của vật tư này!`);
 
                     await fetchTransactions();
                 } catch (err) {
+                    console.error('Delete inventory group error:', err);
                     showToast('Lỗi khi xóa dữ liệu!', 'error');
                 } finally {
                     setIsLoading(false);
@@ -908,10 +915,57 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                                         {currentUser?.role?.toUpperCase() === 'ADMIN' && projects.find(p => p.name === projectName)?.project_type === 'TỔNG THẦU MUA HỘ' && (
                                                                             <button 
                                                                                 onClick={(e) => { e.stopPropagation(); handleEditOrderPhaseName(projectName, phase); }} 
-                                                                                className="text-amber-500 hover:text-amber-700 hover:bg-amber-200/50 p-1 rounded-md transition mr-2 bg-amber-50" 
+                                                                                className="text-amber-500 hover:text-amber-700 hover:bg-amber-200/50 p-1 rounded-md transition mr-1 bg-amber-50" 
                                                                                 title="Đổi tên đợt đặt hàng"
                                                                             >
                                                                                 <Edit2 size={14} />
+                                                                            </button>
+                                                                        )}
+                                                                        {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                                            <button
+                                                                                onClick={(e) => {
+                                                                                    e.stopPropagation();
+                                                                                    setConfirmModal({
+                                                                                        isOpen: true,
+                                                                                        message: `Bạn có chắc chắn muốn xóa TOÀN BỘ dữ liệu kho của "${phase}" trong công trình "${projectName}"? Hành động này không thể hoàn tác.`,
+                                                                                        onConfirm: async () => {
+                                                                                            setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                                                                                            setIsLoading(true);
+                                                                                            try {
+                                                                                                const normalize = (s) => (s || '').trim().toLowerCase();
+                                                                                                const phaseNorm = normalize(phase);
+                                                                                                const relatedIds = transactions
+                                                                                                    .filter(t => {
+                                                                                                        const info = extractInfoFromNote(t.note);
+                                                                                                        return normalize(t.project_name) === normalize(projectName) &&
+                                                                                                               normalize(info.o) === phaseNorm;
+                                                                                                    })
+                                                                                                    .map(t => t.id);
+                                                                                                if (relatedIds.length === 0) {
+                                                                                                    showToast('Không tìm thấy bản ghi nào để xóa!', 'error');
+                                                                                                    setIsLoading(false);
+                                                                                                    return;
+                                                                                                }
+                                                                                                const { error } = await supabase
+                                                                                                    .from('material_warehouse')
+                                                                                                    .delete()
+                                                                                                    .in('id', relatedIds);
+                                                                                                if (error) throw error;
+                                                                                                showToast(`Đã xóa ${relatedIds.length} bản ghi của đợt "${phase}"!`);
+                                                                                                await fetchTransactions();
+                                                                                            } catch (err) {
+                                                                                                console.error('Delete phase error:', err);
+                                                                                                showToast('Lỗi khi xóa đợt!', 'error');
+                                                                                            } finally {
+                                                                                                setIsLoading(false);
+                                                                                            }
+                                                                                        }
+                                                                                    });
+                                                                                }}
+                                                                                className="text-red-400 hover:text-red-600 hover:bg-red-100 p-1 rounded-md transition mr-2 bg-red-50"
+                                                                                title="Xóa toàn bộ đợt đặt hàng này khỏi kho"
+                                                                            >
+                                                                                <Trash2 size={14} />
                                                                             </button>
                                                                         )}
                                                                         <span className="text-emerald-700 ml-auto mr-4 text-[13px] whitespace-nowrap bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-100">Tổng tiền: {new Intl.NumberFormat('vi-VN').format(projectData.phases[phase].reduce((sum, item) => sum + item.totalImportValue, 0))} ₫</span>

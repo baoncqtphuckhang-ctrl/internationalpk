@@ -441,6 +441,41 @@ export default function Home() {
         if (currentUser) fetchData();
     }, [currentUser]);
 
+    // Auto-refresh: Supabase Realtime subscription + polling mỗi 2 phút
+    useEffect(() => {
+        if (!currentUser) return;
+
+        // Debounce: gộp nhiều thay đổi liên tiếp thành 1 lần fetch duy nhất
+        let debounceTimer = null;
+        const debouncedFetch = () => {
+            if (debounceTimer) clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                fetchData();
+            }, 1500); // Đợi 1.5 giây sau thay đổi cuối cùng mới fetch
+        };
+
+        // Polling interval mỗi 2 phút để safety net
+        const pollInterval = setInterval(() => {
+            fetchData();
+        }, 2 * 60 * 1000);
+
+        // Supabase Realtime: lắng nghe thay đổi trên các bảng quan trọng
+        const channel = supabase
+            .channel('realtime-sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_requests' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'material_orders' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, debouncedFetch)
+            .subscribe();
+
+        return () => {
+            clearInterval(pollInterval);
+            if (debounceTimer) clearTimeout(debounceTimer);
+            supabase.removeChannel(channel);
+        };
+    }, [currentUser]);
+
     const [editTransaction, setEditTransaction] = useState(null);
     const [incomeTableCols, setIncomeTableCols] = useState({
         ngayHd: true,
@@ -1779,11 +1814,11 @@ export default function Home() {
                             <button onClick={() => setMaterialSubTab('catalog')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
-                            {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT'].includes(currentUser?.role?.toUpperCase()) && (
+                            {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
                                 <button onClick={() => setMaterialSubTab('warehouse')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
                             )}
                         </div>
-                        {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT'].includes(currentUser?.role?.toUpperCase()) ? (
+                        {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
                             <MaterialWarehouse 
                                 currentUser={currentUser} 
                                 projects={allowedProjects} 
