@@ -139,6 +139,23 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
         setShowModal(true);
     };
 
+    const handleOpenExportFromItem = (item) => {
+        setEditingId(null);
+        setModalType('XUẤT');
+        setFormData({
+            project_name: item.project_name,
+            material_name: item.material_name,
+            color_code: item.color_code || '',
+            unit: item.unit || 'Thùng/18lit',
+            quantity: '',
+            date: new Date().toISOString().split('T')[0],
+            price_phase: item.price_phase || '',
+            order_phase: item.order_phase || '',
+            note: ''
+        });
+        setShowModal(true);
+    };
+
     const handleSave = async (e) => {
         e.preventDefault();
         if (!formData.project_name || !formData.material_name || !formData.quantity || parseFloat(formData.quantity) <= 0) {
@@ -850,6 +867,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
                                                     <td className="px-6 py-3 text-center">
                                                         {!isTotalRow ? (
                                                             <div className="flex items-center justify-center gap-2">
+                                                                <button onClick={(e) => { e.stopPropagation(); handleOpenExportFromItem(item); }} className="text-slate-400 hover:text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition" title="Xuất kho"><ArrowUpFromLine size={16} /></button>
                                                                 <button onClick={(e) => { e.stopPropagation(); handleEditInventory(item); }} className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition" title="Thêm phiếu điều chỉnh tồn kho"><Edit2 size={16} /></button>
                                                                 <button onClick={(e) => { e.stopPropagation(); handleDeleteInventoryGroup(item); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition" title="Xóa TOÀN BỘ phiếu của vật tư này"><Trash2 size={16} /></button>
                                                             </div>
