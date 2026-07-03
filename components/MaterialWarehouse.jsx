@@ -13,7 +13,7 @@ export const extractInfoFromNote = (note) => {
     let p = '', o = '';
     if (!note) return { p, o };
     const priceMatch = note.match(/\[Đợt giá: (.*?)\]/);
-    if (priceMatch) p = priceMatch[1];
+    if (priceMatch) p = priceMatch[1].trim();
     if (note.includes('Tự động từ ĐVT')) {
         const orderMatch = note.match(/ĐVT: (.*)/);
         if (orderMatch) o = orderMatch[1].trim();
@@ -22,6 +22,25 @@ export const extractInfoFromNote = (note) => {
         if (orderMatch) o = orderMatch[1].trim();
     }
     return { p, o };
+};
+
+const normalizeWarehouseKey = (val) => (val || '').trim().toUpperCase();
+
+export const matchesWarehouseInventoryItem = (t, criteria, excludeId = null) => {
+    if (excludeId && t.id === excludeId) return false;
+    if (normalizeWarehouseKey(t.project_name) !== normalizeWarehouseKey(criteria.project_name)) return false;
+    if (normalizeWarehouseKey(t.material_name) !== normalizeWarehouseKey(criteria.material_name)) return false;
+    if (normalizeWarehouseKey(t.color_code) !== normalizeWarehouseKey(criteria.color_code)) return false;
+    if (normalizeWarehouseKey(t.unit) !== normalizeWarehouseKey(criteria.unit)) return false;
+
+    const info = extractInfoFromNote(t.note);
+    if (criteria.price_phase !== undefined && criteria.price_phase !== null) {
+        if (normalizeWarehouseKey(info.p) !== normalizeWarehouseKey(criteria.price_phase)) return false;
+    }
+    if (criteria.order_phase !== undefined && criteria.order_phase !== null) {
+        if (normalizeWarehouseKey(info.o) !== normalizeWarehouseKey(criteria.order_phase)) return false;
+    }
+    return true;
 };
 
 export default function MaterialWarehouse({ currentUser, projects, showToast }) {
@@ -151,25 +170,22 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             };
 
             if (modalType === 'XUẤT') {
+                const criteria = {
+                    project_name: payload.project_name,
+                    material_name: payload.material_name,
+                    color_code: payload.color_code || '',
+                    unit: payload.unit,
+                    price_phase: formData.price_phase || '',
+                    order_phase: formData.order_phase || ''
+                };
                 let currentImport = 0;
                 let currentExport = 0;
                 transactions.forEach(t => {
-                    const info = extractInfoFromNote(t.note);
-                    // If no price phase selected, match all. Otherwise match price phase or order phase.
-                    const matchPhase = !formData.price_phase ? true : (info.p === formData.price_phase || info.o === formData.price_phase);
-                    
-                    if (t.project_name === payload.project_name &&
-                        t.material_name === payload.material_name &&
-                        (t.color_code || '') === (payload.color_code || '') &&
-                        matchPhase) {
-                        // Bỏ qua phiếu đang sửa (nếu có) khỏi tổng xuất
-                        if (editingId && t.id === editingId) return;
-
-                        if (t.transaction_type === 'NHẬP') currentImport += Number(t.quantity);
-                        else if (t.transaction_type === 'XUẤT') currentExport += Number(t.quantity);
-                    }
+                    if (!matchesWarehouseInventoryItem(t, criteria, editingId)) return;
+                    if (t.transaction_type === 'NHẬP') currentImport += Number(t.quantity);
+                    else if (t.transaction_type === 'XUẤT') currentExport += Number(t.quantity);
                 });
-                
+
                 const remaining = currentImport - currentExport;
                 if (payload.quantity > remaining) {
                     alert(`Số lượng xuất (${payload.quantity}) vượt quá số lượng tồn kho hiện tại (${remaining})! Vui lòng kiểm tra lại.`);
@@ -1076,16 +1092,15 @@ export default function MaterialWarehouse({ currentUser, projects, showToast }) 
             {/* Modal Nhập / Xuất */}
             {showModal && (() => {
                 const selectedInventoryItem = modalType === 'XUẤT' && formData.material_name ? (() => {
-                    const matches = inventoryList.filter(i => 
-                        i.project_name === formData.project_name && 
-                        i.material_name === formData.material_name && 
-                        (i.color_code || '') === (formData.color_code || '') &&
-                        (formData.price_phase ? (i.price_phase || '') === formData.price_phase : true)
+                    const match = inventoryList.find(i =>
+                        normalizeWarehouseKey(i.project_name) === normalizeWarehouseKey(formData.project_name) &&
+                        normalizeWarehouseKey(i.material_name) === normalizeWarehouseKey(formData.material_name) &&
+                        normalizeWarehouseKey(i.color_code) === normalizeWarehouseKey(formData.color_code) &&
+                        normalizeWarehouseKey(i.unit) === normalizeWarehouseKey(formData.unit) &&
+                        normalizeWarehouseKey(i.price_phase) === normalizeWarehouseKey(formData.price_phase) &&
+                        normalizeWarehouseKey(i.order_phase) === normalizeWarehouseKey(formData.order_phase)
                     );
-                    if (matches.length === 0) return null;
-                    return {
-                        remaining: matches.reduce((sum, item) => sum + item.remaining, 0)
-                    };
+                    return match ? { remaining: match.remaining } : null;
                 })() : null;
                 return (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[100] flex items-center justify-center p-4">

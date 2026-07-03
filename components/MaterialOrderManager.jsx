@@ -38,7 +38,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
@@ -172,8 +172,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
 
         const matchesStatus = selectedStatusFilter === '' || normalizedStatus === selectedStatusFilter;
         
-        const isDeadStatus = normalizedStatus === 'Draft' || normalizedStatus === 'Rejected';
-        if (isDeadStatus) return false;
+        if (!isMuaHoManager) {
+            const isDeadStatus = normalizedStatus === 'Draft' || normalizedStatus === 'Rejected';
+            if (isDeadStatus) return false;
+        } else if (normalizedStatus === 'Rejected') {
+            return false;
+        }
         
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
         // If the order has a matched request and it's active, DO NOT hide it even if it's marked as is_deleted
@@ -1014,10 +1018,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 <div className="bg-indigo-600 p-2.5 rounded-2xl text-white shadow-lg shadow-indigo-600/25">
                                     <ClipboardList size={22} />
                                 </div>
-                                <span>Quản Lý Đơn Vật Tư</span>
+                                <span>{isMuaHoManager ? 'Quản Lý Đơn Order Hộ' : 'Quản Lý Đơn Vật Tư'}</span>
                             </h2>
                             <p className="text-slate-500 text-sm mt-1">
-                                Danh sách và tình trạng phê duyệt, phân bổ chi phí của các đơn đặt hàng vật tư sơn nước.
+                                {isMuaHoManager
+                                    ? 'Danh sách đơn đặt hàng vật tư cho công trình tổng thầu mua hộ (theo dõi nhập kho).'
+                                    : 'Danh sách và tình trạng phê duyệt, phân bổ chi phí của các đơn đặt hàng vật tư sơn nước.'}
                             </p>
                         </div>
                         <div className="flex gap-2">

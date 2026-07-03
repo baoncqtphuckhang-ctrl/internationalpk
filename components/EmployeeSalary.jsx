@@ -60,6 +60,17 @@ const getDefaultAttendance = (year, month) => {
     return att;
 };
 
+const cloneData = (data) => JSON.parse(JSON.stringify(data));
+
+const calcStandardDays = (year, month) => {
+    const daysInMonth = new Date(year, month, 0).getDate();
+    let sundays = 0;
+    for (let i = 1; i <= daysInMonth; i++) {
+        if (new Date(year, month - 1, i).getDay() === 0) sundays++;
+    }
+    return daysInMonth - sundays;
+};
+
 export const INITIAL_DATA = [
     { id: 'dep-1', department: 'VĂN PHÒNG', isDepartment: true, isCustomDept: false },
     { id: '1', name: 'Trần Thiên Chí Bình', basic_salary: 24255000, phone_allowance: 300000, parking_allowance: 0, makeup_allowance: 0, insurance_salary: 5000000, advance: 0, other_deductions: 10000000, other_additions: 0, cash: 0, notes: '(11) TRỪ TIỀN MƯỢN 17/10/2023 LẦN 5', bank_account: '108866666699', bank_account_name: 'TRẦN THIÊN CHÍ BÌNH', bank_name: 'VIETINBANK' },
@@ -98,7 +109,7 @@ export const INITIAL_DATA = [
 ];
 
 export default function EmployeeSalary({ currentUser, usersList = [], projects = [], refreshData }) {
-    const [draftPeriods, setDraftPeriods] = useState([]);
+    const [expandedPeriods, setExpandedPeriods] = useState([]);
     const [accountedTxs, setAccountedTxs] = useState([]);
     
     useEffect(() => {
@@ -138,6 +149,78 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [initialLoaded, setInitialLoaded] = useState(false);
 
+    const employeesRef = React.useRef(employees);
+    const draftRecordsRef = React.useRef(draftRecords);
+    const globalStandardDaysRef = React.useRef(globalStandardDays);
+    const historyRecordsRef = React.useRef(historyRecords);
+    const selectedMonthRef = React.useRef(selectedMonth);
+    const skipDraftSyncRef = React.useRef(true);
+
+    useEffect(() => { employeesRef.current = employees; }, [employees]);
+    useEffect(() => { draftRecordsRef.current = draftRecords; }, [draftRecords]);
+    useEffect(() => { globalStandardDaysRef.current = globalStandardDays; }, [globalStandardDays]);
+    useEffect(() => { historyRecordsRef.current = historyRecords; }, [historyRecords]);
+    useEffect(() => { selectedMonthRef.current = selectedMonth; }, [selectedMonth]);
+
+    const persistPeriodToDraft = (monthId, emps, stdDays) => {
+        if (!monthId || historyRecordsRef.current[monthId]) return;
+        if (!emps || emps.length === 0) return;
+        setDraftRecords(prev => ({
+            ...prev,
+            [monthId]: {
+                ...(prev[monthId] || {}),
+                timestamp: new Date().toISOString(),
+                globalStandardDays: stdDays ?? prev[monthId]?.globalStandardDays ?? globalStandardDaysRef.current,
+                employees: cloneData(emps)
+            }
+        }));
+    };
+
+    const loadPeriodIntoEditor = (periodId) => {
+        skipDraftSyncRef.current = true;
+        if (!periodId) {
+            setEmployees([]);
+            queueMicrotask(() => { skipDraftSyncRef.current = false; });
+            return;
+        }
+        const [yStr, mStr] = periodId.split('-');
+        const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+        const daysInMonth = new Date(y, m, 0).getDate();
+        const draft = draftRecordsRef.current[periodId];
+        const stdDays = draft?.globalStandardDays || calcStandardDays(y, m);
+        setYearMonth({ y, m });
+        setDaysInMonthCount(daysInMonth || 30);
+        setGlobalStandardDays(stdDays);
+        if (draft?.employees?.length > 0) {
+            setEmployees(cloneData(draft.employees));
+        } else {
+            setEmployees([]);
+        }
+        queueMicrotask(() => { skipDraftSyncRef.current = false; });
+    };
+
+    const activatePeriod = (periodId) => {
+        const prevMonth = selectedMonthRef.current;
+        if (prevMonth && prevMonth !== periodId && employeesRef.current.length > 0 && !historyRecordsRef.current[prevMonth]) {
+            persistPeriodToDraft(prevMonth, employeesRef.current, globalStandardDaysRef.current);
+        }
+        setSelectedMonth(periodId);
+        setViewingHistoryId(null);
+        loadPeriodIntoEditor(periodId);
+    };
+
+    const togglePeriodExpand = (period) => {
+        if (expandedPeriods.includes(period)) {
+            if (period === selectedMonth) {
+                persistPeriodToDraft(period, employeesRef.current, globalStandardDaysRef.current);
+            }
+            setExpandedPeriods(prev => prev.filter(p => p !== period));
+        } else {
+            setExpandedPeriods(prev => [...prev, period]);
+            activatePeriod(period);
+        }
+    };
+
     const getIsHoliday = (day, specificMonth = selectedMonth, historyId = viewingHistoryId) => {
         if (historyId && historyRecords[historyId]) {
             return (historyRecords[historyId].holidays || []).includes(day);
@@ -176,23 +259,19 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     });
 
     const getDraftPeriods = () => {
-        const drafts = new Set(createdPeriods);
-        // Include periods from draftRecords (saved drafts from DB)
+        const drafts = new Set();
+        // Only use draftRecords as the source of truth for draft periods
         Object.keys(draftRecords).forEach(m => drafts.add(m));
-        employees.forEach(emp => {
-            if (emp.attendance) {
-                Object.keys(emp.attendance).forEach(month => {
-                    if (!historyRecords[month]) {
-                        drafts.add(month);
-                    }
-                });
-            }
-        });
         const arr = Array.from(drafts).filter(m => !historyRecords[m]).sort().reverse();
-        if (arr.length === 0 && selectedMonth && !historyRecords[selectedMonth]) {
-            arr.push(selectedMonth);
-        }
         return arr;
+    };
+
+    // Save current employees state back into draftRecords for the given month
+    const saveCurrentToDraftRecords = (monthId, emps) => {
+        if (!monthId || historyRecords[monthId]) return;
+        const empsToSave = emps || employees;
+        if (!empsToSave || empsToSave.length === 0) return;
+        persistPeriodToDraft(monthId, empsToSave, globalStandardDays);
     };
 
     const handleCreateNewPeriod = () => {
@@ -210,71 +289,76 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương nháp ${p} đã tồn tại!` });
             return;
         }
-        // Check if period already exists in current draft periods list
-        const existingDrafts = getDraftPeriods();
-        if (existingDrafts.includes(p)) {
-            setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: `Kỳ lương ${p} đã tồn tại trong danh sách nháp!` });
-            return;
-        }
-        
+
+        const [yStr, mStr] = p.split('-');
+        const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+        const stdDays = calcStandardDays(y, m);
+
         let sourceEmps = [];
         if (createPeriodModal.copyFrom) {
             if (draftRecords[createPeriodModal.copyFrom]) {
-                sourceEmps = draftRecords[createPeriodModal.copyFrom].employees || [];
+                sourceEmps = cloneData(draftRecords[createPeriodModal.copyFrom].employees || []);
             } else if (historyRecords[createPeriodModal.copyFrom]) {
-                sourceEmps = historyRecords[createPeriodModal.copyFrom].employees || [];
+                sourceEmps = cloneData(historyRecords[createPeriodModal.copyFrom].employees || []);
             }
         }
-        
-        const [yStr, mStr] = p.split('-');
-        const y = parseInt(yStr), m = parseInt(mStr);
-        
-        // Create independent copy of employee data for this new period
-        const baseEmps = sourceEmps.length > 0 ? sourceEmps : employees;
+
+        const baseEmps = sourceEmps.length > 0 ? sourceEmps : cloneData(employees);
         const newEmployees = baseEmps.map(emp => {
-            if (emp.isDepartment) return { ...emp };
+            if (emp.isDepartment || emp.is_department) {
+                return { ...emp, isDepartment: true, is_department: true };
+            }
+            const copyFrom = createPeriodModal.copyFrom;
+            const periodAllocations = copyFrom && emp.allocations?.[copyFrom]
+                ? cloneData(emp.allocations[copyFrom])
+                : [];
             return {
                 ...emp,
-                attendance: {
-                    [p]: getDefaultAttendance(y, m)
-                }
+                isDepartment: false,
+                attendance: { [p]: getDefaultAttendance(y, m) },
+                allocations: periodAllocations.length > 0 ? { [p]: periodAllocations } : {}
             };
         });
         newEmployees.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
-        
-        // Store independently in draftRecords so each period has its own data
-        setDraftRecords(prev => ({
-            ...prev,
-            [p]: {
-                timestamp: new Date().toISOString(),
-                globalStandardDays: (() => {
-                    const daysInMonth = new Date(y, m, 0).getDate();
-                    let sundays = 0;
-                    for (let i = 1; i <= daysInMonth; i++) {
-                        if (new Date(y, m - 1, i).getDay() === 0) sundays++;
-                    }
-                    return daysInMonth - sundays;
-                })(),
-                employees: newEmployees
+
+        const newEmployeesCopy = cloneData(newEmployees);
+
+        setDraftRecords(prev => {
+            const next = { ...prev };
+            if (selectedMonth && !historyRecords[selectedMonth] && employees.length > 0) {
+                next[selectedMonth] = {
+                    ...(next[selectedMonth] || {}),
+                    timestamp: new Date().toISOString(),
+                    globalStandardDays: next[selectedMonth]?.globalStandardDays || globalStandardDays,
+                    employees: cloneData(employees)
+                };
             }
-        }));
-        
-        setEmployees(newEmployees);
+            next[p] = {
+                timestamp: new Date().toISOString(),
+                globalStandardDays: stdDays,
+                employees: newEmployeesCopy
+            };
+            return next;
+        });
+
+        setEmployees(newEmployeesCopy);
         setSelectedMonth(p);
+        setYearMonth({ y, m });
+        setDaysInMonthCount(new Date(y, m, 0).getDate());
+        setGlobalStandardDays(stdDays);
+        setExpandedPeriods(prev => prev.includes(p) ? prev : [...prev, p]);
         setCreatePeriodModal({ isOpen: false, periodName: '', copyFrom: '' });
     };
 
     const handleSaveDraft = async (monthId) => {
-        const currentEmps = employees.map(calculateRow);
+        const currentEmps = employees.map(e => calculateRow(e));
         const draftData = {
             timestamp: new Date().toISOString(),
             globalStandardDays,
-            employees: currentEmps
+            employees: cloneData(currentEmps)
         };
         
-        // Save to local draftRecords state
         setDraftRecords(prev => ({ ...prev, [monthId]: draftData }));
-        localStorage.setItem('misa_draft_records', JSON.stringify({ ...draftRecords, [monthId]: draftData }));
         
         // Save to DB
         try {
@@ -295,30 +379,100 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     useEffect(() => {
         if (!initialLoaded) return;
         const drafts = getDraftPeriods();
-        if (drafts.length > 0 && !drafts.includes(selectedMonth)) {
-            setSelectedMonth(drafts[0]);
+        if (drafts.length > 0 && !drafts.includes(selectedMonth) && !historyRecords[selectedMonth]) {
+            activatePeriod(drafts[0]);
+            setExpandedPeriods(prev => prev.length > 0 ? prev : [drafts[0]]);
         }
-    }, [historyRecords, employees, initialLoaded]);
+    }, [historyRecords, draftRecords, initialLoaded]);
 
     useEffect(() => {
-        const fetchBaseData = async () => {
+        if (!initialLoaded) return;
+        try {
+            localStorage.setItem('misa_draft_records', JSON.stringify(draftRecords));
+        } catch (e) {}
+    }, [draftRecords, initialLoaded]);
+
+    useEffect(() => {
+        const mapBaseEmployees = (data) => data.map(e => ({
+            ...e,
+            isDepartment: e.is_department,
+            isCustomDept: e.is_custom_dept,
+            leave_balance: e.leave_balance === -1 ? 'N/A' : (Number(e.leave_balance) || 0)
+        }));
+
+        const loadInitialData = async () => {
+            const localHolidays = localStorage.getItem('misa_holidays');
+            if (localHolidays) {
+                try { setHolidays(JSON.parse(localHolidays)); } catch (e) {}
+            }
+
+            let historyMap = {};
+            let draftMap = {};
+            try {
+                const { data, error } = await supabase.from('salary_history').select('*');
+                if (error) throw error;
+                if (data && data.length > 0) {
+                    data.forEach(item => {
+                        const emps = item.employees_data || [];
+                        const metadata = emps.find(e => e.id === 'metadata_holidays');
+                        const recordData = {
+                            timestamp: item.timestamp,
+                            globalStandardDays: item.global_standard_days,
+                            holidays: metadata ? cloneData(metadata.holidays) : [],
+                            base_month: metadata?.base_month,
+                            employees: cloneData(emps.filter(e => e.id !== 'metadata_holidays'))
+                        };
+                        if (item.month_id.endsWith('-DRAFT')) {
+                            draftMap[item.month_id.replace('-DRAFT', '')] = recordData;
+                        } else {
+                            historyMap[item.month_id] = recordData;
+                        }
+                    });
+                }
+            } catch (err) {
+                const savedHistory = localStorage.getItem('misa_salary_history');
+                if (savedHistory) {
+                    try { historyMap = JSON.parse(savedHistory); } catch (e) {}
+                }
+                const savedDrafts = localStorage.getItem('misa_draft_records');
+                if (savedDrafts) {
+                    try { draftMap = JSON.parse(savedDrafts); } catch (e) {}
+                }
+            }
+
+            setHistoryRecords(historyMap);
+            setDraftRecords(draftMap);
+
+            const draftKeys = Object.keys(draftMap).filter(m => !historyMap[m]);
+            if (draftKeys.length > 0) {
+                setIsDbStorage(true);
+                const firstDraft = draftKeys.sort().reverse()[0];
+                draftRecordsRef.current = draftMap;
+                skipDraftSyncRef.current = true;
+                setSelectedMonth(firstDraft);
+                setExpandedPeriods([firstDraft]);
+                const [yStr, mStr] = firstDraft.split('-');
+                const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
+                const draft = draftMap[firstDraft];
+                setYearMonth({ y, m });
+                setDaysInMonthCount(new Date(y, m, 0).getDate());
+                setGlobalStandardDays(draft?.globalStandardDays || calcStandardDays(y, m));
+                setEmployees(draft?.employees?.length ? cloneData(draft.employees) : []);
+                queueMicrotask(() => { skipDraftSyncRef.current = false; });
+                setInitialLoaded(true);
+                return;
+            }
+
             try {
                 const { data, error } = await supabase.from('employees').select('*').order('order_index', { ascending: true });
                 if (error) throw error;
+                setIsDbStorage(true);
                 if (data && data.length > 0) {
-                    setIsDbStorage(true);
-                    setEmployees(data.map(e => ({
-                        ...e,
-                        isDepartment: e.is_department,
-                        isCustomDept: e.is_custom_dept,
-                        leave_balance: e.leave_balance === -1 ? 'N/A' : (Number(e.leave_balance) || 0)
-                    })));
+                    setEmployees(mapBaseEmployees(data));
                 } else {
-                    // Empty DB, fallback to localStorage but keep DB storage enabled so we can populate it
-                    setIsDbStorage(true);
                     const localData = localStorage.getItem('misa_employees_base');
                     if (localData) {
-                        try { setEmployees(JSON.parse(localData)); } catch(e) { setEmployees(INITIAL_DATA); }
+                        try { setEmployees(JSON.parse(localData)); } catch (e) { setEmployees(INITIAL_DATA); }
                     } else {
                         setEmployees(INITIAL_DATA);
                     }
@@ -328,133 +482,24 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 setIsDbStorage(false);
                 const localData = localStorage.getItem('misa_employees_base');
                 if (localData) {
-                    try { setEmployees(JSON.parse(localData)); } catch(e) { setEmployees(INITIAL_DATA); }
+                    try { setEmployees(JSON.parse(localData)); } catch (e) { setEmployees(INITIAL_DATA); }
                 } else {
                     setEmployees(INITIAL_DATA);
                 }
             }
+            skipDraftSyncRef.current = false;
             setInitialLoaded(true);
         };
-        fetchBaseData();
 
-        const localHolidays = localStorage.getItem('misa_holidays');
-        if (localHolidays) {
-            try { setHolidays(JSON.parse(localHolidays)); } catch(e) {}
-        }
-
-        const fetchHistory = async () => {
-            try {
-                const { data, error } = await supabase.from('salary_history').select('*');
-                if (error) throw error;
-                if (data && data.length > 0) {
-                    const historyMap = {};
-                    const draftMap = {};
-                    data.forEach(item => {
-                        const emps = item.employees_data || [];
-                        const metadata = emps.find(e => e.id === 'metadata_holidays');
-                        const recordData = {
-                            timestamp: item.timestamp,
-                            globalStandardDays: item.global_standard_days,
-                            holidays: metadata ? metadata.holidays : [],
-                            employees: emps.filter(e => e.id !== 'metadata_holidays')
-                        };
-                        
-                        if (item.month_id.endsWith('-DRAFT')) {
-                            const realMonthId = item.month_id.replace('-DRAFT', '');
-                            draftMap[realMonthId] = recordData;
-                        } else {
-                            historyMap[item.month_id] = recordData;
-                        }
-                    });
-                    setHistoryRecords(historyMap);
-                    setDraftRecords(draftMap);
-                } else {
-                    throw new Error("Empty History DB");
-                }
-            } catch (err) {
-                const savedHistory = localStorage.getItem('misa_salary_history');
-                if (savedHistory) {
-                    try { setHistoryRecords(JSON.parse(savedHistory)); } catch (e) {}
-                }
-                const savedDrafts = localStorage.getItem('misa_draft_records');
-                if (savedDrafts) {
-                    try { setDraftRecords(JSON.parse(savedDrafts)); } catch (e) {}
-                }
-            }
-        };
-        fetchHistory();
+        loadInitialData();
     }, []);
 
     // Removed auto-save timer as requested by user. Saves are now manual.
 
     useEffect(() => {
-        if (!selectedMonth) return;
-        if (viewingHistoryId && selectedMonth !== viewingHistoryId) {
-            setViewingHistoryId(null);
-        }
-        let y, m;
-        try {
-            if (viewingHistoryId && historyRecords[viewingHistoryId] && historyRecords[viewingHistoryId].base_month) {
-                const [year, month] = historyRecords[viewingHistoryId].base_month.split('-');
-                y = parseInt(year);
-                m = parseInt(month);
-            } else if (selectedMonth.includes('-')) {
-                const [year, month] = selectedMonth.split('-');
-                y = parseInt(year);
-                m = parseInt(month);
-            }
-        } catch (e) { console.error(e); }
-        
-        if (!y || isNaN(y) || !m || isNaN(m)) {
-            const match = selectedMonth.match(/(\d{2})\/(\d{4})/);
-            if (match) {
-                m = parseInt(match[1]);
-                y = parseInt(match[2]);
-            } else {
-                const today = new Date();
-                y = today.getFullYear();
-                m = today.getMonth() + 1;
-            }
-        }
-        setYearMonth({ y, m });
-        
-        const daysInMonth = new Date(y, m, 0).getDate();
-        setDaysInMonthCount(daysInMonth || 30);
-        
-        let sundays = 0;
-        for (let i = 1; i <= daysInMonth; i++) {
-            if (new Date(y, m - 1, i).getDay() === 0) sundays++;
-        }
-        setGlobalStandardDays(daysInMonth - sundays);
-        
-        if (draftRecords[selectedMonth]) {
-            setEmployees(draftRecords[selectedMonth].employees || []);
-            if (draftRecords[selectedMonth].globalStandardDays) {
-                setGlobalStandardDays(draftRecords[selectedMonth].globalStandardDays);
-            }
-            return;
-        }
-
-        setEmployees(prev => {
-            let changed = false;
-            const newEmployees = prev.map(emp => {
-                if (emp.isDepartment) return emp;
-                const currentAtt = emp.attendance || {};
-                if (!currentAtt[selectedMonth]) {
-                    changed = true;
-                    return {
-                        ...emp,
-                        attendance: {
-                            ...currentAtt,
-                            [selectedMonth]: getDefaultAttendance(y, m)
-                        }
-                    };
-                }
-                return emp;
-            });
-            return changed ? newEmployees : prev;
-        });
-    }, [selectedMonth]);
+        if (!initialLoaded || skipDraftSyncRef.current || !selectedMonth || viewingHistoryId) return;
+        persistPeriodToDraft(selectedMonth, employees, globalStandardDays);
+    }, [employees, globalStandardDays, selectedMonth, initialLoaded, viewingHistoryId]);
 
     const handleAddEmployeeSubmit = () => {
         if (!newEmpData.name.trim()) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng nhập tên nhân viên'});
@@ -512,16 +557,24 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             isOpen: true,
             type: 'password',
             title: 'Xác nhận xóa nhân viên',
-            message: 'Vui lòng nhập mật khẩu quản trị để xóa nhân viên này.',
+            message: `Nhân viên này sẽ chỉ bị xóa khỏi kỳ lương ${selectedMonth} hiện tại. Các kỳ lương khác KHÔNG bị ảnh hưởng.\nVui lòng nhập mật khẩu quản trị để xác nhận.`,
             onConfirm: async (pwd) => {
                 if (pwd === currentUser?.password) {
-                    setEmployees(employees.filter(e => e.id !== id));
-                    if (isDbStorage) {
-                        try {
-                            await supabase.from('employees').delete().eq('id', id);
-                        } catch(e) {}
-                    }
-                    setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa nhân viên thành công!' }), 300);
+                    // Only delete from current period's employees (not from DB base table)
+                    const newEmps = employees.filter(e => e.id !== id);
+                    setEmployees(newEmps);
+                    // Also update draftRecords for this period immediately
+                    setDraftRecords(prev => ({
+                        ...prev,
+                        [selectedMonth]: {
+                            ...(prev[selectedMonth] || {}),
+                            timestamp: new Date().toISOString(),
+                            employees: JSON.parse(JSON.stringify(newEmps))
+                        }
+                    }));
+                    // NOTE: We do NOT delete from the employees DB table anymore
+                    // because that would affect the base data for creating new periods
+                    setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã xóa nhân viên khỏi kỳ ${selectedMonth} thành công!` }), 300);
                     return true;
                 } else {
                     return 'Sai mật khẩu!';
@@ -564,7 +617,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     timestamp: new Date().toISOString(),
                     globalStandardDays,
                     holidays: evaluatedHolidays,
-                    employees: newEmployeesState.map(calculateRow)
+                    employees: newEmployeesState.map(e => calculateRow(e))
                 };
                 const newHistory = {
                     ...historyRecords,
@@ -572,8 +625,18 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 };
                 setEmployees(newEmployeesState);
                 setHistoryRecords(newHistory);
+                setDraftRecords(prev => {
+                    const next = { ...prev };
+                    delete next[finalPeriodName];
+                    return next;
+                });
+                setExpandedPeriods(prev => prev.filter(p => p !== finalPeriodName));
                 localStorage.setItem('misa_salary_history', JSON.stringify(newHistory));
                 
+                try {
+                    await supabase.from('salary_history').delete().eq('month_id', `${finalPeriodName}-DRAFT`);
+                } catch (e) { console.error('Delete draft after close error', e); }
+
                 try {
                     const { error } = await supabase.from('salary_history').upsert([{
                         month_id: finalPeriodName,
@@ -823,23 +886,30 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             isOpen: true,
             type: 'warning',
             title: 'Xóa kỳ lương nháp',
-            message: `Bạn có chắc muốn XÓA VĨNH VIỄN kỳ lương nháp ${monthId} không?`,
-            onConfirm: () => {
-                const newEmployees = employees.map(emp => {
-                    const updatedEmp = { ...emp };
-                    if (updatedEmp.attendance) delete updatedEmp.attendance[monthId];
-                    if (updatedEmp.allocations) delete updatedEmp.allocations[monthId];
-                    return updatedEmp;
+            message: `Bạn có chắc muốn XÓA VĨNH VIỄN kỳ lương nháp ${monthId} không? Các kỳ lương khác KHÔNG bị ảnh hưởng.`,
+            onConfirm: async () => {
+                // Remove from draftRecords (independent - doesn't affect other periods)
+                setDraftRecords(prev => {
+                    const next = { ...prev };
+                    delete next[monthId];
+                    return next;
                 });
-                setEmployees(newEmployees);
                 setCreatedPeriods(prev => {
                     const next = prev.filter(m => m !== monthId);
                     localStorage.setItem('misa_created_periods', JSON.stringify(next));
                     return next;
                 });
-                if (selectedMonth === monthId) setSelectedMonth('');
+                // Delete from DB too
+                try {
+                    await supabase.from('salary_history').delete().eq('month_id', `${monthId}-DRAFT`);
+                } catch(e) { console.error('Delete draft error', e); }
+                if (selectedMonth === monthId) {
+                    const remaining = getDraftPeriods().filter(m => m !== monthId);
+                    setExpandedPeriods(prev => prev.filter(p => p !== monthId));
+                    if (remaining.length > 0) activatePeriod(remaining[0]);
+                    else setSelectedMonth('');
+                }
                 
-                // Show success notification
                 setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa kỳ lương nháp thành công!' });
             }
         });
@@ -866,7 +936,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     const handleChange = (id, field, value) => {
-        setEmployees(employees.map(e => e.id === id ? { ...e, [field]: value } : e));
+        // Only update the current period's employees (isolated)
+        setEmployees(prev => prev.map(e => e.id === id ? { ...e, [field]: value } : e));
     };
 
     const handleToggleHoliday = (day) => {
@@ -968,9 +1039,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         });
     };
 
-    const calculateRow = (emp) => {
+    const calculateRow = (emp, periodMonth = selectedMonth, stdDays = globalStandardDays) => {
         if (emp.isDepartment) return emp;
-        
+
+        const monthKey = (typeof periodMonth === 'string' && periodMonth.includes('-')) ? periodMonth : selectedMonth;
+        const std = (typeof stdDays === 'number' && stdDays > 0) ? stdDays : globalStandardDays;
         const basic = Number(emp.basic_salary) || 0;
         const phone = Number(emp.phone_allowance) || 0;
         const parking = Number(emp.parking_allowance) || 0;
@@ -980,26 +1053,22 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         
         const total_income_5 = basic + phone + parking + makeup + gondola + laptop;
         
-        const [yStr, mStr] = selectedMonth.split('-');
-        const y = parseInt(yStr), m = parseInt(mStr);
+        const [yStr, mStr] = monthKey.split('-');
+        const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
         const daysInMonth = new Date(y, m, 0).getDate();
         let actual = 0;
         for (let i = 1; i <= daysInMonth; i++) {
             const isSunday = new Date(y, m - 1, i).getDay() === 0;
-            const isHoliday = getIsHoliday(i);
+            const isHoliday = getIsHoliday(i, monthKey);
             const defaultAtt = isHoliday || isSunday ? 0 : 1;
-            let attVal = emp.attendance?.[selectedMonth]?.[i] ?? defaultAtt;
+            let attVal = emp.attendance?.[monthKey]?.[i] ?? defaultAtt;
             if (isHoliday && attVal === 1) attVal = 0;
             
-            // P = 1 ngày phép có lương (nghỉ cả ngày, được trả lương 1 ngày)
-            // P/2 = Nửa ngày phép có lương (thường là làm nửa ngày, nghỉ nửa ngày có phép => vẫn hưởng đủ 1 ngày công)
             actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 1 : (Number(attVal) || 0));
         }
         const overtimeHours = Number(emp.overtime_hours) || 0;
-        const overtimeDays = (overtimeHours * 2) / 8; // Tăng ca x2
+        const overtimeDays = (overtimeHours * 2) / 8;
         actual += overtimeDays;
-
-        const std = globalStandardDays || 1;
         
         const total_actual_salary_8_raw = (total_income_5 / std) * actual;
         const total_actual_salary_8 = Math.ceil(total_actual_salary_8_raw / 1000) * 1000;
@@ -1040,8 +1109,58 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         };
     };
 
+    const getPeriodDisplayData = (periodId) => {
+        const period = periodId || selectedMonth;
+        const isActive = period === selectedMonth && !viewingHistoryId;
+        const isHistoryView = viewingHistoryId === period;
+
+        if (isHistoryView && historyRecords[period]) {
+            const hist = historyRecords[period];
+            const bm = hist.base_month || period;
+            const [yy, mm] = bm.split('-').map(Number);
+            const stdDays = hist.globalStandardDays || calcStandardDays(yy, mm);
+            const emps = hist.employees || [];
+            return {
+                period,
+                isActive: false,
+                isReadOnly: true,
+                calculatedEmployees: emps.map(e => calculateRow(e, bm, stdDays)),
+                stdDays,
+                ym: { y: yy, m: mm },
+                daysInMonth: new Date(yy, mm, 0).getDate()
+            };
+        }
+
+        if (isActive) {
+            const displayEmployees = employees;
+            return {
+                period,
+                isActive: true,
+                isReadOnly: false,
+                calculatedEmployees: displayEmployees.map(e => calculateRow(e, period, globalStandardDays)),
+                stdDays: globalStandardDays,
+                ym: yearMonth,
+                daysInMonth: daysInMonthCount
+            };
+        }
+
+        const draft = draftRecords[period];
+        const [yy, mm] = period.split('-').map(Number);
+        const stdDays = draft?.globalStandardDays || calcStandardDays(yy, mm);
+        const emps = draft?.employees || [];
+        return {
+            period,
+            isActive: false,
+            isReadOnly: true,
+            calculatedEmployees: emps.map(e => calculateRow(e, period, stdDays)),
+            stdDays,
+            ym: { y: yy, m: mm },
+            daysInMonth: new Date(yy, mm, 0).getDate()
+        };
+    };
+
     const displayEmployees = viewingHistoryId && historyRecords[viewingHistoryId] ? historyRecords[viewingHistoryId].employees : employees;
-    const calculatedEmployees = viewingHistoryId && historyRecords[viewingHistoryId] ? displayEmployees : displayEmployees.map(calculateRow);
+    const calculatedEmployees = viewingHistoryId && historyRecords[viewingHistoryId] ? displayEmployees : displayEmployees.map(e => calculateRow(e));
 
     const totals = calculatedEmployees.reduce((acc, emp) => {
         if (emp.isDepartment) return acc;
@@ -1237,14 +1356,58 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         link.click();
     };
 
-    let stt = 0;
-
-    const renderTableContent = (forceTab) => {
+    const renderTableContent = (forceTab, periodId) => {
         const tabToRender = typeof forceTab === 'string' ? forceTab : activeTab;
+        const ctx = getPeriodDisplayData(periodId);
+        const {
+            period,
+            isActive,
+            isReadOnly,
+            calculatedEmployees: periodCalculatedEmployees,
+            stdDays: periodStdDays,
+            ym: periodYm,
+            daysInMonth: periodDaysInMonth
+        } = ctx;
+        const tableReadOnly = isReadOnly || !!viewingHistoryId;
+        const periodTotals = periodCalculatedEmployees.reduce((acc, emp) => {
+            if (emp.isDepartment) return acc;
+            acc.basic_salary += Number(emp.basic_salary) || 0;
+            acc.phone_allowance += Number(emp.phone_allowance) || 0;
+            acc.parking_allowance += Number(emp.parking_allowance) || 0;
+            acc.makeup_allowance += Number(emp.makeup_allowance) || 0;
+            acc.gondola_allowance += Number(emp.gondola_allowance) || 0;
+            acc.laptop_allowance += Number(emp.laptop_allowance) || 0;
+            acc.total_income_5 += emp.calculated?.total_income_5 || 0;
+            acc.total_actual_salary_8 += emp.calculated?.total_actual_salary_8 || 0;
+            acc.insurance_salary += Number(emp.insurance_salary) || 0;
+            acc.dn_bhxh += emp.calculated?.dn_bhxh || 0;
+            acc.dn_bhyt += emp.calculated?.dn_bhyt || 0;
+            acc.dn_tnld += emp.calculated?.dn_tnld || 0;
+            acc.dn_bhtn += emp.calculated?.dn_bhtn || 0;
+            acc.dn_total += emp.calculated?.dn_total || 0;
+            acc.nld_bhxh += emp.calculated?.nld_bhxh || 0;
+            acc.nld_bhyt += emp.calculated?.nld_bhyt || 0;
+            acc.nld_bhtn += emp.calculated?.nld_bhtn || 0;
+            acc.nld_total_9 += emp.calculated?.nld_total_9 || 0;
+            acc.advance += Number(emp.advance) || 0;
+            acc.other_deductions += Number(emp.other_deductions) || 0;
+            acc.other_additions += Number(emp.other_additions) || 0;
+            acc.actual_receive += emp.calculated?.actual_receive || 0;
+            acc.cash += Number(emp.cash) || 0;
+            acc.remaining += emp.calculated?.remaining || 0;
+            return acc;
+        }, {
+            basic_salary: 0, phone_allowance: 0, parking_allowance: 0, makeup_allowance: 0, gondola_allowance: 0, laptop_allowance: 0, total_income_5: 0,
+            total_actual_salary_8: 0, insurance_salary: 0,
+            dn_bhxh: 0, dn_bhyt: 0, dn_tnld: 0, dn_bhtn: 0, dn_total: 0,
+            nld_bhxh: 0, nld_bhyt: 0, nld_bhtn: 0, nld_total_9: 0,
+            advance: 0, other_deductions: 0, other_additions: 0, actual_receive: 0, cash: 0, remaining: 0
+        });
+        let localStt = 0;
         return (
 <div className={`overflow-x-auto custom-scrollbar pb-4`} style={{ maxHeight: 'calc(100vh - 200px)' }}>
         {tabToRender === 'salary' ? (
-    <table id="salary-table" className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
+    <table id={`salary-table-${period}`} className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${tableReadOnly ? 'pointer-events-none' : ''}`}>
         <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
             <tr>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-10">STT</th>
@@ -1290,7 +1453,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             </tr>
         </thead>
         <tbody>
-            {calculatedEmployees.map((emp) => {
+            {periodCalculatedEmployees.map((emp) => {
                 if (emp.isDepartment) {
                     return (
                         <tr key={emp.id} className="bg-slate-200/80 font-bold hover:bg-slate-300 transition-colors">
@@ -1317,7 +1480,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             </td>
                             <td colSpan={26} className="border border-slate-300"></td>
                             <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
-                                {!viewingHistoryId && (
+                                {isActive && !viewingHistoryId && (
                                     <div className="flex items-center justify-center gap-1">
                                         <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition" title="Xóa phòng ban"><Trash2 size={14}/></button>
                                     </div>
@@ -1327,11 +1490,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     );
                 }
 
-                stt++;
+                localStt++;
 
                 return (
                     <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors group">
-                        <td className="border border-slate-300 p-1 text-center text-slate-500">{stt}</td>
+                        <td className="border border-slate-300 p-1 text-center text-slate-500">{localStt}</td>
                         <td className="border border-slate-300 p-0 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">
                             <input type="text" value={emp.name} onChange={(e) => handleChange(emp.id, 'name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent" placeholder="Tên nhân viên..." />
                         </td>
@@ -1361,7 +1524,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </td>
                         
                         <td className="border border-slate-300 p-1 px-2 text-center font-bold text-amber-700 bg-amber-50/50">
-                            {viewingHistoryId && historyRecords[viewingHistoryId] ? historyRecords[viewingHistoryId].globalStandardDays : globalStandardDays}
+                            {periodStdDays}
                         </td>
                         
                         <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.total_actual_salary_8).replace('₫', '')}</td>
@@ -1413,7 +1576,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </td>
                         <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
                             <div className="flex items-center justify-center gap-1">
-                                {!viewingHistoryId ? (
+                                {isActive && !viewingHistoryId ? (
                                     <button onClick={() => handleDeleteRow(emp.id)} className="text-red-500 hover:bg-red-100 p-1 rounded transition" title="Xóa nhân viên"><Trash2 size={14}/></button>
                                 ) : (
                                     emp.calculated?.remaining > 0 ? (
@@ -1453,45 +1616,45 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         <tfoot className="bg-slate-800 text-white font-bold sticky bottom-0 z-30 shadow-lg">
             <tr>
                 <td colSpan={2} className="border border-slate-700 p-2 text-center sticky left-0 bg-slate-800 z-40 shadow-[2px_0_5px_rgba(0,0,0,0.1)]">TỔNG CỘNG</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.basic_salary).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.phone_allowance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.parking_allowance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.makeup_allowance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.gondola_allowance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.laptop_allowance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.total_income_5).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.basic_salary).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.phone_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.parking_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.makeup_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.gondola_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.laptop_allowance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(periodTotals.total_income_5).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-center">-</td>
                 <td className="border border-slate-700 p-2 text-center">-</td>
-                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.total_actual_salary_8).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-blue-300">{formatCurrency(totals.insurance_salary).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhxh).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhyt).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_tnld).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.dn_bhtn).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.dn_total).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhxh).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhyt).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.nld_bhtn).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(totals.nld_total_9).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.advance).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_deductions).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.other_additions).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-blue-300 text-sm">{formatCurrency(totals.actual_receive).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right">{formatCurrency(totals.cash).replace('₫', '')}</td>
-                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(totals.remaining).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(periodTotals.total_actual_salary_8).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-blue-300">{formatCurrency(periodTotals.insurance_salary).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.dn_bhxh).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.dn_bhyt).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.dn_tnld).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.dn_bhtn).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(periodTotals.dn_total).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.nld_bhxh).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.nld_bhyt).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.nld_bhtn).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(periodTotals.nld_total_9).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.advance).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.other_deductions).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.other_additions).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-blue-300 text-sm">{formatCurrency(periodTotals.actual_receive).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.cash).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(periodTotals.remaining).replace('₫', '')}</td>
                 <td colSpan={5} className="border border-slate-700 p-2 text-center print:hidden"></td>
             </tr>
         </tfoot>
     </table>
         ) : (
-    <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${viewingHistoryId ? 'pointer-events-none' : ''}`}>
+    <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${tableReadOnly ? 'pointer-events-none' : ''}`}>
         <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
             <tr>
                 <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-12 min-w-[48px] max-w-[48px] sticky left-0 z-40 bg-slate-100">STT</th>
                 <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-[200px] min-w-[200px] max-w-[200px] sticky left-[48px] md:left-[48px] z-40 bg-slate-100">HỌ VÀ TÊN</th>
                 <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-[80px] min-w-[80px] max-w-[80px] bg-slate-100">PHÉP CÓ</th>
-                {Array.from({ length: daysInMonthCount }).map((_, i) => {
-                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
+                {Array.from({ length: periodDaysInMonth }).map((_, i) => {
+                    const date = new Date(periodYm.y, periodYm.m - 1, i + 1);
                     const dayOfWeek = date.getDay();
                     const dayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
                     const isSunday = dayOfWeek === 0;
@@ -1506,15 +1669,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <th rowSpan="2" className="border border-slate-300 p-2 text-center font-bold text-slate-700 w-16 bg-blue-50">TỔNG CÔNG<br/><span className="text-[10px] text-slate-500">(ĐÃ CỘNG TĂNG CA)</span></th>
             </tr>
             <tr>
-                {Array.from({ length: daysInMonthCount }).map((_, i) => {
-                    const date = new Date(yearMonth.y, yearMonth.m - 1, i + 1);
+                {Array.from({ length: periodDaysInMonth }).map((_, i) => {
+                    const date = new Date(periodYm.y, periodYm.m - 1, i + 1);
                     const isSunday = date.getDay() === 0;
                     const day = i + 1;
-                    const isHoliday = getIsHoliday(day);
+                    const isHoliday = getIsHoliday(day, period);
                     
                     return (
                         <th key={i} 
-                            onClick={() => handleToggleHoliday(day)}
+                            onClick={() => isActive && handleToggleHoliday(day)}
                             className={`border border-slate-300 p-1 text-center font-bold w-10 cursor-pointer transition ${isHoliday ? 'bg-blue-600 text-white shadow-inner' : isSunday ? 'bg-red-100 text-red-600' : 'text-slate-700 hover:bg-slate-200'}`}
                             title="Click để đánh dấu/bỏ đánh dấu ngày lễ"
                         >
@@ -1528,14 +1691,14 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             {(() => {
                 let localStt = 0;
                 let currentDept = '';
-                return calculatedEmployees.map(emp => {
+                return periodCalculatedEmployees.map(emp => {
                     if (emp.isDepartment) {
                         currentDept = emp.department;
                         return (
                             <tr key={emp.id} className="bg-slate-200/80 font-bold">
                                 <td className="border border-slate-300 p-2 text-center sticky left-0 z-20 bg-slate-200/80"></td>
                                 <td className="border border-slate-300 p-2 sticky left-[48px] md:left-[48px] z-20 bg-slate-200/80 uppercase">{emp.department}</td>
-                                <td colSpan={daysInMonthCount + 2} className="border border-slate-300"></td>
+                                <td colSpan={periodDaysInMonth + 2} className="border border-slate-300"></td>
                             </tr>
                         );
                     }
@@ -1543,25 +1706,23 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     localStt++;
                     const actualDays = emp.calculated.actual_days;
                     
-                    const thisRowDept = currentDept?.trim().toUpperCase();
-                    
                     return (
                         <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors">
                             <td className="border border-slate-300 p-2 text-center font-medium text-slate-500 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">{localStt}</td>
                             <td className="border border-slate-300 p-2 font-medium text-slate-700 sticky left-[48px] md:left-[48px] z-20 bg-white group-hover:bg-blue-50/50 truncate max-w-[200px]">{emp.name || '---'}</td>
                             <td 
-                                className={`border border-slate-300 p-2 text-center font-bold text-blue-600 bg-white transition ${!viewingHistoryId ? 'cursor-pointer hover:bg-blue-200 group-hover:bg-blue-100' : 'group-hover:bg-blue-50/50'}`}
-                                onClick={() => !viewingHistoryId && setLeaveModal({ isOpen: true, empId: emp.id, name: emp.name, currentBalance: emp.leave_balance === 'N/A' ? 'N/A' : (Number(emp.leave_balance) || 0) })}
-                                title={!viewingHistoryId ? "Click để điều chỉnh phép" : ""}
+                                className={`border border-slate-300 p-2 text-center font-bold text-blue-600 bg-white transition ${isActive && !viewingHistoryId ? 'cursor-pointer hover:bg-blue-200 group-hover:bg-blue-100' : 'group-hover:bg-blue-50/50'}`}
+                                onClick={() => isActive && !viewingHistoryId && setLeaveModal({ isOpen: true, empId: emp.id, name: emp.name, currentBalance: emp.leave_balance === 'N/A' ? 'N/A' : (Number(emp.leave_balance) || 0) })}
+                                title={isActive && !viewingHistoryId ? "Click để điều chỉnh phép" : ""}
                             >
-                                {getRemainingLeaves(emp, selectedMonth)}
+                                {getRemainingLeaves(emp, period)}
                             </td>
-                            {Array.from({ length: daysInMonthCount }).map((_, i) => {
+                            {Array.from({ length: periodDaysInMonth }).map((_, i) => {
                                 const day = i + 1;
-                                const isSunday = new Date(yearMonth.y, yearMonth.m - 1, day).getDay() === 0;
-                                const isHoliday = getIsHoliday(day);
+                                const isSunday = new Date(periodYm.y, periodYm.m - 1, day).getDay() === 0;
+                                const isHoliday = getIsHoliday(day, period);
                                 const defaultAtt = isHoliday || isSunday ? 0 : 1;
-                                let attValue = emp.attendance?.[selectedMonth]?.[day] ?? defaultAtt;
+                                let attValue = emp.attendance?.[period]?.[day] ?? defaultAtt;
                                 if (isHoliday && attValue === 1) attValue = 0;
                                 
                                 return (
@@ -1987,8 +2148,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                         onClick={() => {
                                             if (isExpanded) {
                                                 setViewingHistoryId(null);
-                                                const drafts = getDraftPeriods();
-                                                setSelectedMonth(drafts.length > 0 ? drafts[0] : '');
+                                                setSelectedMonth('');
                                             } else {
                                                 setViewingHistoryId(monthId);
                                                 setSelectedMonth(monthId);
@@ -2064,27 +2224,28 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </div>
                     ) : (
                         getDraftPeriods().map(period => {
-                            const isExpanded = selectedMonth === period;
+                            const isExpanded = expandedPeriods.includes(period);
+                            const isActive = selectedMonth === period;
                             return (
-                                <div key={period} className="bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden transition">
+                                <div key={period} className={`bg-white rounded-xl border shadow-sm flex flex-col overflow-hidden transition ${isActive ? 'border-blue-400 ring-1 ring-blue-200' : 'border-slate-200'}`}>
                                     <div 
                                         className={`flex items-center justify-between p-4 cursor-pointer hover:bg-slate-50 transition ${isExpanded ? 'bg-slate-50 border-b border-slate-200' : ''}`}
-                                        onClick={() => {
-                                            setSelectedMonth(isExpanded ? '' : period);
-                                            setViewingHistoryId(null);
-                                        }}
+                                        onClick={() => togglePeriodExpand(period)}
                                     >
                                         <div className="flex items-center gap-3">
-                                            <div className="p-2 bg-blue-50 text-blue-600 rounded-lg">
+                                            <div className={`p-2 rounded-lg ${isActive ? 'bg-blue-100 text-blue-700' : 'bg-blue-50 text-blue-600'}`}>
                                                 <Calendar size={20} />
                                             </div>
                                             <div>
-                                                <div className="font-bold text-slate-800 text-lg">{period}</div>
-                                                <div className="text-xs text-slate-500 mt-1">Bảng lương và chấm công tạm tính</div>
+                                                <div className="font-bold text-slate-800 text-lg flex items-center gap-2">
+                                                    {period}
+                                                    {isActive && <span className="text-[10px] bg-blue-600 text-white px-2 py-0.5 rounded-full uppercase tracking-wide">Đang sửa</span>}
+                                                </div>
+                                                <div className="text-xs text-slate-500 mt-1">Bảng lương và chấm công tạm tính — mỗi kỳ lưu độc lập</div>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-2 text-slate-400">
-                                            {isExpanded && (
+                                            {isExpanded && isActive && (
                                                 <>
                                                     <button 
                                                         onClick={(e) => { e.stopPropagation(); handleDeleteDraftPeriod(period); }} 
@@ -2111,13 +2272,18 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     </div>
                                     {isExpanded && (
                                         <div className="bg-white p-0 relative" onClick={(e) => e.stopPropagation()}>
+                                            {!isActive && (
+                                                <div className="px-4 py-2 bg-amber-50 border-b border-amber-100 text-sm text-amber-800">
+                                                    Đang xem ở chế độ chỉ đọc. Click tiêu đề kỳ để chuyển sang chỉnh sửa kỳ này.
+                                                </div>
+                                            )}
                                             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                                                 <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-lg">
-                                                    <button onClick={() => setActiveTab('salary')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab !== 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
-                                                    <button onClick={() => setActiveTab('attendance')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
+                                                    <button onClick={() => { if (isActive) setActiveTab('salary'); else activatePeriod(period); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab !== 'attendance' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
+                                                    <button onClick={() => { if (!isActive) activatePeriod(period); setActiveTab('attendance'); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'attendance' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
                                                 </div>
                                             </div>
-                                            {renderTableContent()}
+                                            {renderTableContent(undefined, period)}
                                         </div>
                                     )}
                                 </div>

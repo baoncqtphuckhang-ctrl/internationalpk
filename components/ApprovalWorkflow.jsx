@@ -193,7 +193,7 @@ export default function ApprovalWorkflow({
 
     const dnttTotalAmount = dnttData.items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         if(e) e.preventDefault();
         setFormError('');
         if (dnttTotalAmount <= 0) return setFormError("Chưa nhập số tiền thanh toán! Vui lòng điền 'Thành tiền' ở phần A.");
@@ -208,9 +208,9 @@ export default function ApprovalWorkflow({
         };
 
         if (editingId && onUpdateDNTT) {
-            onUpdateDNTT(editingId, payload);
+            await onUpdateDNTT(editingId, payload);
         } else {
-            onAddDNTT(payload);
+            await onAddDNTT(payload);
         }
 
         setView('list');

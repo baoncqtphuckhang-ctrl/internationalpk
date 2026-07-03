@@ -459,6 +459,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
 
             fetchOrders();
+            if (isMainContractorSave) {
+                showToast('Đã lưu đơn mua hộ. Xem tại tab "Quản Lý Đơn Order Hộ".', 'success');
+            }
             setView('list');
         } catch (err) {
             console.error(err);
@@ -787,9 +790,16 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         showToast('Đã xuất file Excel đơn đặt hàng thành công!');
     };
 
-    // Filtered orders
+    // Filtered orders — chỉ hàng chờ đơn trực tiếp (nháp hoặc bị từ chối); đơn mua hộ nằm ở tab Quản lý Order Hộ
+    const isMuaHoProject = (projectName) =>
+        projects.find(p => p.name === projectName)?.project_type === 'TỔNG THẦU MUA HỘ';
+
     const filteredOrders = orders.filter(o => {
-        const allowedProjectNames = projects.map(p => p.name);
+        if (isMuaHoProject(o.project_name)) return false;
+
+        const allowedProjectNames = projects
+            .filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ')
+            .map(p => p.name);
         if (!allowedProjectNames.includes(o.project_name)) return false;
 
         const matchesProject = selectedProjectFilter ? o.project_name === selectedProjectFilter : true;
@@ -798,7 +808,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                               o.recipient.toLowerCase().includes(searchTerm.toLowerCase());
         
         const req = getMatchedRequest(o);
-        // Hide successfully placed orders (only show Rejected or Draft)
         const status = req ? req.status : 'Draft';
         const isPlaced = status !== 'Rejected' && status !== 'Bị từ chối' && status !== 'Draft';
 
@@ -841,7 +850,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             </div>
                             <span>Đặt Hàng Vật Tư</span>
                         </h2>
-                        <p className="text-slate-500 text-sm mt-1">Lập và quản lý các đơn đặt hàng vật tư, sơn nước cho công trình.</p>
+                        <p className="text-slate-500 text-sm mt-1">Hàng chờ đơn đặt hàng trực tiếp (nháp hoặc bị từ chối). Đơn mua hộ xem tại tab Quản Lý Đơn Order Hộ.</p>
                     </div>
                     <div className="flex gap-2 flex-wrap">
                         <button 
@@ -876,7 +885,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-600 outline-none focus:border-blue-500 focus:bg-white transition"
                             >
                                 <option value="">-- Tất cả công trình --</option>
-                                {projects.map(p => (
+                                {projects.filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ').map(p => (
                                     <option key={p.name} value={p.name}>{p.name}</option>
                                 ))}
                             </select>
@@ -887,8 +896,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     {filteredOrders.length === 0 ? (
                         <div className="bg-white p-16 text-center rounded-3xl border border-dashed border-slate-300 text-slate-400">
                             <ClipboardList className="mx-auto mb-4 text-slate-300" size={48} />
-                            <p className="font-bold text-slate-500 text-lg">Chưa có đơn đặt hàng vật tư nào</p>
-                            <p className="text-slate-400 text-sm mt-1">Bấm &quot;Lập đơn đặt hàng mới&quot; để tạo đơn hàng đầu tiên.</p>
+                            <p className="font-bold text-slate-500 text-lg">Chưa có đơn trực tiếp nào trong hàng chờ</p>
+                            <p className="text-slate-400 text-sm mt-1">Bấm &quot;Lập đơn đặt hàng mới&quot; để tạo đơn, hoặc kiểm tra tab Quản Lý Đơn Order Hộ cho đơn mua hộ.</p>
                         </div>
                     ) : (
                         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">

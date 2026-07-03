@@ -311,8 +311,8 @@ export default function Home() {
         }
     };
 
-    const fetchData = async () => {
-        setIsLoading(true);
+    const fetchData = async (showLoading = true) => {
+        if (showLoading) setIsLoading(true);
         try {
             const { data: projData } = await supabase.from('projects').select('*').order('name');
             setProjects(projData || []);
@@ -406,7 +406,7 @@ export default function Home() {
         } catch (error) {
             showToast('Lỗi kết nối Database!', 'error');
         } finally {
-            setIsLoading(false);
+            if (showLoading) setIsLoading(false);
         }
     };
 
@@ -445,19 +445,13 @@ export default function Home() {
     useEffect(() => {
         if (!currentUser) return;
 
-        // Debounce: gộp nhiều thay đổi liên tiếp thành 1 lần fetch duy nhất
         let debounceTimer = null;
         const debouncedFetch = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                fetchData();
-            }, 1500); // Đợi 1.5 giây sau thay đổi cuối cùng mới fetch
+                fetchData(false);
+            }, 500);
         };
-
-        // Polling interval mỗi 2 phút để safety net
-        const pollInterval = setInterval(() => {
-            fetchData();
-        }, 2 * 60 * 1000);
 
         // Supabase Realtime: lắng nghe thay đổi trên các bảng quan trọng
         const channel = supabase
@@ -470,7 +464,6 @@ export default function Home() {
             .subscribe();
 
         return () => {
-            clearInterval(pollInterval);
             if (debounceTimer) clearTimeout(debounceTimer);
             supabase.removeChannel(channel);
         };
@@ -1055,7 +1048,7 @@ export default function Home() {
             if (error) throw error;
             showToast('Đã gửi yêu cầu phê duyệt!');
             logActivity('Thêm', 'Đề nghị thanh toán', `Tạo yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
-            fetchData();
+            await fetchData();
         } catch (error) {
             showToast('Lỗi khi gửi yêu cầu!', 'error');
         } finally {
@@ -1073,7 +1066,7 @@ export default function Home() {
             if (error) throw error;
             showToast('Đã cập nhật và gửi lại!');
             logActivity('Cập nhật', 'Đề nghị thanh toán', `Cập nhật yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
-            fetchData();
+            await fetchData();
         } catch (error) {
             showToast('Lỗi khi cập nhật yêu cầu!', 'error');
         } finally {
@@ -1814,6 +1807,7 @@ export default function Home() {
                             <button onClick={() => setMaterialSubTab('catalog')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('manage-ho')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage-ho' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Order Hộ</button>
                             {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
                                 <button onClick={() => setMaterialSubTab('warehouse')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
                             )}
@@ -1836,14 +1830,33 @@ export default function Home() {
                                 />
                         ) : materialSubTab === 'catalog' ? (
                                 <MaterialCatalog 
-                                    projects={allowedProjects} 
+                                    projects={allowedProjects.filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ')} 
                                     showToast={showToast} 
                                 />
+                        ) : materialSubTab === 'manage-ho' ? (
+                            <MaterialOrderManager 
+                                currentUser={currentUser}
+                                usersList={usersList}
+                                projects={allowedProjects.filter(p => p.project_type === 'TỔNG THẦU MUA HỘ')}
+                                dnttList={allowedDnttList}
+                                isMuaHoManager={true}
+                                showToast={showToast}
+                                onNavigateToHistory={(searchTerm) => {
+                                    setHistorySearchTerm(searchTerm);
+                                    setActiveTab('history');
+                                }}
+                                onNavigateToProject={(projectName) => {
+                                    setSelectedProject(projectName);
+                                    setActiveTab('project-detail');
+                                }}
+                                onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
+                                refreshData={fetchData}
+                            />
                         ) : (
                             <MaterialOrderManager 
                                 currentUser={currentUser}
                                 usersList={usersList}
-                                projects={allowedProjects}
+                                projects={allowedProjects.filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ')}
                                 dnttList={allowedDnttList}
                                 showToast={showToast}
                                 onNavigateToHistory={(searchTerm) => {
