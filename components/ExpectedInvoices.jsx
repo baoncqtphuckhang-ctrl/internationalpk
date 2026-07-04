@@ -18,7 +18,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [bulkAddMonth, setBulkAddMonth] = useState('');
     const [activeSubTab, setActiveSubTab] = useState('customer_debt');
     const [uploadingPdfId, setUploadingPdfId] = useState(null);
+    const [uploadingProjectPdfKey, setUploadingProjectPdfKey] = useState(null);
     const [confirmDeletePdf, setConfirmDeletePdf] = useState(null);
+    const [confirmDeleteProjectPdf, setConfirmDeleteProjectPdf] = useState(null);
     const [tableZoom, setTableZoom] = useState(1);
     const [hideZeroRowsOnPrint, setHideZeroRowsOnPrint] = useState(true);
     const [formData, setFormData] = useState({
@@ -80,50 +82,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         });
         return Array.from(periods).sort();
     }, [invoices]);
-
-    useEffect(() => {
-        if (activeSubTab === 'team' && !editingId && formData.projectName && formData.teamName) {
-            const teamInvs = invoices.filter(i => i.projectName === formData.projectName && i.teamName === formData.teamName && !i.is_completed);
-            
-            if (teamInvs.length > 0) {
-                let maxPhaseNum = 0;
-                teamInvs.forEach(i => {
-                    const p = i.phase || '';
-                    const match = p.match(/\d+/);
-                    if (match) {
-                        const num = parseInt(match[0], 10);
-                        if (num > maxPhaseNum) maxPhaseNum = num;
-                    }
-                });
-                if (maxPhaseNum > 0) {
-                    setFormData(prev => ({ ...prev, phase: `Đợt ${maxPhaseNum + 1}` }));
-                } else {
-                    setFormData(prev => ({ ...prev, phase: `Đợt 1` }));
-                }
-            } else {
-                const otherInvs = invoices.filter(i => i.projectName === formData.projectName && !i.is_completed);
-                let latestPhaseForProject = '';
-                let maxOtherPhaseNum = 0;
-                otherInvs.forEach(i => {
-                    const p = i.phase || '';
-                    const match = p.match(/\d+/);
-                    if (match) {
-                        const num = parseInt(match[0], 10);
-                        if (num > maxOtherPhaseNum) {
-                            maxOtherPhaseNum = num;
-                            latestPhaseForProject = p;
-                        }
-                    }
-                });
-                
-                if (latestPhaseForProject) {
-                    setFormData(prev => ({ ...prev, phase: latestPhaseForProject }));
-                } else {
-                    setFormData(prev => ({ ...prev, phase: `Đợt 1` }));
-                }
-            }
-        }
-    }, [formData.projectName, formData.teamName, activeSubTab, editingId, invoices]);
 
     useEffect(() => {
         fetchInvoices();
@@ -191,6 +149,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const existingPeriod = invoices.find(i => 
                 i.projectName === formData.projectName && 
                 i.teamName === formData.teamName && 
+                formData.phase &&
                 i.phase === formData.phase &&
                 !i.is_completed
             );
@@ -646,6 +605,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         )));
     };
 
+    const getInvoicePeriod = (inv) => inv.payment_period || inv.phase || 'Chưa phân kỳ';
+
+    const updateProjectPdfUrl = (projectName, period, pdfUrl) => {
+        setInvoices(prev => prev.map(inv => (
+            (!projectName || inv.projectName === projectName) && getInvoicePeriod(inv) === period
+                ? { ...inv, project_pdf_url: pdfUrl }
+                : inv
+        )));
+    };
+
     const handleUploadTeamPdf = async (e, inv) => {
         const file = e.target.files?.[0];
         if (!file) return;
@@ -731,6 +700,84 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
+    const handleUploadProjectPdf = async (e, projectName, period) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            if (showToast) showToast('Vui lòng chọn file PDF!', 'error');
+            e.target.value = '';
+            return;
+        }
+
+        const key = `${projectName}__${period}`;
+        setUploadingProjectPdfKey(key);
+        try {
+            const originalName = file.name.replace(/\.[^/.]+$/, '') || 'project_pdf';
+            const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = (projectName || 'tong_ky').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedPeriod = (period || 'period').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const fileStamp = `${file.lastModified}_${file.size}`;
+            const filePath = `${sanitizedProject}/project-total/${sanitizedPeriod}_${fileStamp}_${sanitizedName}.pdf`;
+
+            const { error: uploadError } = await supabase.storage.from('invoices').upload(filePath, file, {
+                cacheControl: '3600',
+                upsert: false
+            });
+            if (uploadError) throw uploadError;
+
+            const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(filePath);
+            const ids = invoices
+                .filter(inv => (!projectName || inv.projectName === projectName) && getInvoicePeriod(inv) === period)
+                .map(inv => inv.id);
+
+            const { error } = await supabase
+                .from('expected_invoices')
+                .update({ project_pdf_url: publicUrl })
+                .in('id', ids);
+            if (error) throw error;
+
+            updateProjectPdfUrl(projectName, period, publicUrl);
+            if (showToast) showToast('Tải lên PDF tổng công trình thành công!', 'success');
+        } catch (err) {
+            console.error('Error uploading project PDF:', err);
+            if (showToast) showToast(err.message || 'Lỗi khi tải lên PDF tổng công trình!', 'error');
+        } finally {
+            setUploadingProjectPdfKey(null);
+            e.target.value = '';
+        }
+    };
+
+    const handleDeleteProjectPdf = async (projectName, period, pdfUrl) => {
+        try {
+            if (pdfUrl && pdfUrl.includes('/public/invoices/')) {
+                const parts = pdfUrl.split('/public/invoices/');
+                if (parts.length > 1) {
+                    const filePath = decodeURIComponent(parts[1]);
+                    const { error: storageError } = await supabase.storage.from('invoices').remove([filePath]);
+                    if (storageError) console.warn('Error deleting project PDF from storage:', storageError);
+                }
+            }
+
+            const ids = invoices
+                .filter(inv => (!projectName || inv.projectName === projectName) && getInvoicePeriod(inv) === period)
+                .map(inv => inv.id);
+            const { error } = await supabase
+                .from('expected_invoices')
+                .update({ project_pdf_url: null })
+                .in('id', ids);
+            if (error) throw error;
+
+            updateProjectPdfUrl(projectName, period, null);
+            if (showToast) showToast('Đã xóa PDF tổng công trình!', 'success');
+        } catch (err) {
+            console.error('Error deleting project PDF:', err);
+            if (showToast) showToast(err.message || 'Lỗi khi xóa PDF tổng công trình!', 'error');
+        } finally {
+            setConfirmDeleteProjectPdf(null);
+        }
+    };
+
     const changeTableZoom = (delta) => {
         setTableZoom(prev => Math.min(1.25, Math.max(0.45, Number((prev + delta).toFixed(2)))));
     };
@@ -762,6 +809,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     if (activeSubTab === 'history_team') {
         filteredInvoices.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
     }
+
+    const printPeriods = [...new Set(filteredInvoices.map(inv => getInvoicePeriod(inv)).filter(Boolean))];
+    const printPeriodTitle = printPeriods.length === 1 ? printPeriods[0] : 'TẤT CẢ CÁC KỲ';
 
     const customerDebts = useMemo(() => {
         if (activeSubTab !== 'customer_debt') return [];
@@ -1160,15 +1210,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt *</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
                                         <input 
                                             type="text" 
                                             name="phase" 
                                             value={formData.phase || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: Đợt 1"
-                                            required
+                                            placeholder="Có thể để trống"
                                         />
                                     </div>
                                     <div>
@@ -1440,53 +1489,97 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             </div>
             )}
 
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
-                    <div style={{ zoom: tableZoom }}>
-                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1500px] sm:min-w-[1400px] [&_td]:align-middle [&_th]:align-middle max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px]">
+            <div className="expected-print-report bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print:rounded-none print:border-none print:shadow-none print:overflow-visible">
+                <div className="expected-print-scroll overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)] print:overflow-visible print:max-h-none">
+                    <div className="expected-print-zoom" style={{ zoom: tableZoom }}>
+                    {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
+                        <div className="expected-print-title">
+                            BẢNG KHỐI LƯỢNG TỔ ĐỘI KỲ {printPeriodTitle}
+                        </div>
+                    )}
+                    <table 
+                        id="expected-invoices-table" 
+                        className={`w-full text-left border-collapse min-w-[1580px] sm:min-w-[1500px] [&_td]:align-middle [&_th]:align-middle [&_th]:h-14 [&_th]:leading-tight max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px] ${activeSubTab === 'team' || activeSubTab === 'history_team' ? 'expected-team-print-table' : ''}`}
+                        style={{
+                            '--row-count': (activeSubTab === 'team' || activeSubTab === 'history_team') ? (
+                                1 + // Header
+                                Object.entries(filteredInvoices.reduce((acc, inv) => {
+                                    const period = inv.payment_period || inv.phase || 'Chưa phân kỳ';
+                                    if (!acc[period]) acc[period] = {};
+                                    const proj = inv.projectName || 'Khác';
+                                    if (!acc[period][proj]) acc[period][proj] = [];
+                                    acc[period][proj].push(inv);
+                                    return acc;
+                                }, {})).reduce((sum, [_, projs]) => {
+                                    return sum + 1 + // Period header
+                                        Object.values(projs).reduce((pSum, rows) => pSum + 1 + rows.length, 0) + // Project summary + data rows
+                                        1; // Period total
+                                }, 0) + 1 // Global total
+                            ) : 10
+                        }}
+                    >
+                        {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
+                            <colgroup>
+                                <col className="w-14" />
+                                <col className="w-80" />
+                                <col className="w-32" />
+                                <col className="w-24" />
+                                <col className="w-36" />
+                                <col className="w-36" />
+                                <col className="w-36" />
+                                <col className="w-20" />
+                                <col className="w-28" />
+                                <col className="w-32" />
+                                <col className="w-36" />
+                                <col className="w-28" />
+                                {activeSubTab === 'history_team' && <col className="w-36" />}
+                                <col className="w-24 print-hide-col" />
+                                <col className="w-28 print-hide-col" />
+                            </colgroup>
+                        )}
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-20">
-                                <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
-                                <th className="p-4 font-black uppercase text-xs tracking-wider">
-                                    {activeSubTab === 'customer_debt' ? 'Tên' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'Đợt' : 'Tên công trình')}
+                                <th className="p-4 font-black uppercase text-sm w-16 text-center">STT</th>
+                                <th className="p-4 font-black uppercase text-sm">
+                                    {activeSubTab === 'customer_debt' ? 'Tên' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'Tên tổ đội' : 'Tên công trình')}
                                 </th>
                                 {activeSubTab === 'invoice' ? (
                                     <>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị trước thuế</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-32">Thuế VAT</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Giá trị sau thuế</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center print:hidden">Thao tác</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuế VAT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Giá trị sau thuế</th>
+                                        <th className="p-4 font-black uppercase text-sm">Đợt</th>
+                                        <th className="p-4 font-black uppercase text-sm">Ghi chú</th>
+                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Tên tổ đội</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-32">Giá trị KL</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-32">Thu lại đội</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Lũy kế tạm ứng</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-36">Giá trị kỳ này</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Tổng cộng</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Tên TK</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số TK</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngân hàng</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
-                                        {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-xs tracking-wider text-center w-36">Trạng thái duyệt</th>}
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center print:hidden">PDF</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-32 text-center print:hidden">Thao tác</th>
+                                        <th className="p-3 font-black uppercase text-sm text-right">Thực chi</th>
+                                        <th className="p-3 font-black uppercase text-sm text-right">Thu</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kì trước</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kỳ này</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">đến nay</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Tên TK</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Số TK</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Ngân hàng</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Ghi chú</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Đợt</th>
+                                        {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-sm text-center w-36">Trạng thái duyệt</th>}
+                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">PDF</th>
+                                        <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : (
                                     <>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số hợp đồng</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số HĐ</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày HĐ</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Ngày tới hạn</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider text-center">Quá hạn</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Số CT</th>
-                                        <th className="p-4 font-black uppercase text-xs tracking-wider">Đợt TT</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Cần thu (HSTT)</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Đã thu</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase tracking-wider text-right w-40">Còn lại</th>
+                                        <th className="p-4 font-black uppercase text-sm">Số hợp đồng</th>
+                                        <th className="p-4 font-black uppercase text-sm">Số HĐ</th>
+                                        <th className="p-4 font-black uppercase text-sm">Ngày HĐ</th>
+                                        <th className="p-4 font-black uppercase text-sm">Ngày tới hạn</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">Quá hạn</th>
+                                        <th className="p-4 font-black uppercase text-sm">Số CT</th>
+                                        <th className="p-4 font-black uppercase text-sm">Đợt TT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Cần thu (HSTT)</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Đã thu</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Còn lại</th>
                                     </>
                                 )}
                             </tr>
@@ -1659,8 +1752,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 const hasPrintableGroupRows = sortedGroupInvoices.some(inv => (parseFloat(inv.teamValue) || 0) > 0);
                                                 return (
                                                 <React.Fragment key={projName}>
-                                                    <tr className={`${color.bg} border-y ${color.border} ${hideZeroRowsOnPrint && !hasPrintableGroupRows ? 'print:hidden' : ''}`}>
-                                                        <td colSpan="2"></td>
+                                                    <tr className={`expected-project-summary-row ${color.bg} border-y ${color.border} ${hideZeroRowsOnPrint && !hasPrintableGroupRows ? 'print:hidden' : ''}`}>
+                                                        <td></td>
                                                         <td 
                                                             className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
                                                             onDoubleClick={() => onNavigateToProject && onNavigateToProject(projName)}
@@ -1668,12 +1761,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         >
                                                             {projName}:
                                                         </td>
-                                                        <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-red-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0)), 0))}</td>
-                                                        <td colSpan={activeSubTab === 'history_team' ? 7 : 6}></td>
+                                                        <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                        <td colSpan={activeSubTab === 'history_team' ? 8 : 7}></td>
                                                     </tr>
                                                     {sortedGroupInvoices.map((inv, idx) => {
                                                         const role = currentUser?.role?.toUpperCase();
@@ -1687,17 +1780,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         return (
                                                         <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                                            <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.phase || '-'}</td>
                                                             <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-black ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0))}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0))}</td>
                                                             <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
                                                             <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
                                                             <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
                                                             <td className={`p-4 text-sm max-w-[150px] truncate ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
                                                             {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
                                                             <td className="p-4 text-center print:hidden">
                                                                 {teamPdfUrl ? (
@@ -1753,7 +1846,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                     setAdvanceData({
                                                                                         project_name: inv.projectName,
                                                                                         recipient: inv.teamName,
-                                                                                        amount: (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0),
+                                                                                        amount: parseFloat(inv.teamValue) || 0,
                                                                                         payment_period: inv.payment_period,
                                                                                         note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
                                                                                         code: '622',
@@ -1775,6 +1868,43 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     })}
                                                 </React.Fragment>
                                             )})}
+                                            {!collapsedPhases[period] && (
+                                                <tr className="bg-indigo-50 border-y-2 border-indigo-300 shadow-[inset_0_1px_0_rgba(99,102,241,0.22),inset_0_-1px_0_rgba(99,102,241,0.22)]">
+                                                    <td></td>
+                                                    <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">TỔNG:</td>
+                                                    <td className="p-4 text-base text-right font-black text-emerald-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-red-600">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-blue-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-amber-600">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-indigo-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    <td></td>
+                                                    {activeSubTab === 'history_team' && <td></td>}
+                                                    <td className="p-4 text-center print:hidden">
+                                                        {periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url ? (
+                                                            <div className="flex items-center justify-center gap-1.5">
+                                                                <a href={periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF tổng">
+                                                                    <Eye size={16} />
+                                                                </a>
+                                                                <button onClick={() => setConfirmDeleteProjectPdf({ projectName: null, period, pdfUrl: periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="Xóa PDF tổng">
+                                                                    <Trash2 size={16} />
+                                                                </button>
+                                                            </div>
+                                                        ) : (
+                                                            <div className="relative group/upload flex items-center justify-center">
+                                                                <input type="file" accept=".pdf,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleUploadProjectPdf(e, null, period)} disabled={uploadingProjectPdfKey === `null__${period}`} title="Tải lên PDF tổng" />
+                                                                <button className={`p-1.5 rounded-lg transition border ${uploadingProjectPdfKey === `null__${period}` ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Tải lên PDF tổng">
+                                                                    <Upload size={16} className={uploadingProjectPdfKey === `null__${period}` ? 'animate-bounce' : ''} />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </td>
+                                                    <td></td>
+                                                </tr>
+                                            )}
                                         </React.Fragment>
                                         );
                                     })
@@ -1825,6 +1955,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                         </tbody>
                     </table>
+                    <div className="expected-print-signatures hidden">
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">QS</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">KẾ TOÁN</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">GIÁM ĐỐC</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -1846,6 +1990,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 type="danger"
                 onConfirm={() => confirmDeletePdf && handleDeleteTeamPdf(confirmDeletePdf)}
                 onCancel={() => setConfirmDeletePdf(null)}
+            />
+
+            <ConfirmModal
+                isOpen={!!confirmDeleteProjectPdf}
+                title="Xóa PDF tổng công trình"
+                message="Bạn có chắc chắn muốn xóa file PDF tổng công trình này không?"
+                confirmText="Xóa PDF"
+                type="danger"
+                onConfirm={() => confirmDeleteProjectPdf && handleDeleteProjectPdf(confirmDeleteProjectPdf.projectName, confirmDeleteProjectPdf.period, confirmDeleteProjectPdf.pdfUrl)}
+                onCancel={() => setConfirmDeleteProjectPdf(null)}
             />
 
             <ConfirmModal

@@ -23,6 +23,11 @@ body {
   color: var(--foreground);
 }
 
+.expected-print-title,
+.expected-print-signatures {
+  display: none;
+}
+
 .custom-scrollbar::-webkit-scrollbar {
   width: 8px;
   height: 10px; /* Thanh scroll ngang rõ hơn, dễ kéo */
@@ -141,8 +146,8 @@ body {
 /* --- ACTUAL PRINT-ONLY STYLES --- */
 @media print {
   @page {
-    size: A4 portrait;
-    margin: 1.5cm;
+    size: A3 landscape;
+    margin: 5mm;
   }
 
   body {
@@ -171,6 +176,179 @@ body {
   .no-print, .print\:hidden, button, .print-area button, svg:not(.keep-svg), .print-area svg:not(.keep-svg) {
     display: none !important;
     visibility: hidden !important;
+  }
+
+  .expected-print-report,
+  .expected-print-report *,
+  .expected-print-scroll,
+  .expected-print-zoom {
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .expected-print-report {
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    border: 0 !important;
+    box-shadow: none !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  .expected-print-scroll {
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .expected-print-zoom {
+    zoom: 0.92 !important;
+    transform: none !important;
+    transform-origin: top left !important;
+    width: 108.7% !important;
+  }
+
+  .expected-print-title {
+    display: block !important;
+    margin: 0 0 5mm 0 !important;
+    text-align: center !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    font-size: 15pt !important;
+    line-height: 1.25 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    color: #000000 !important;
+  }
+
+  #expected-invoices-table {
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 175mm !important;
+    border-collapse: collapse !important;
+    font-family: Arial, Helvetica, sans-serif !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+  }
+
+  #expected-invoices-table thead {
+    display: table-header-group !important;
+  }
+
+  #expected-invoices-table tbody {
+    display: table-row-group !important;
+  }
+
+  #expected-invoices-table tr {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table tr {
+    height: calc(165mm / var(--row-count, 20)) !important;
+  }
+
+  #expected-invoices-table th,
+  #expected-invoices-table td {
+    padding: 4px 8px !important;
+    font-size: 8.7pt !important;
+    line-height: 1.12 !important;
+    white-space: normal !important;
+  }
+
+  #expected-invoices-table th {
+    height: auto !important;
+    text-align: center !important;
+    font-weight: 800 !important;
+    font-size: 8.7pt !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table td:nth-child(3),
+  #expected-invoices-table.expected-team-print-table th:nth-child(3) {
+    font-weight: 800 !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table th:nth-child(3),
+  #expected-invoices-table.expected-team-print-table th:nth-child(4),
+  #expected-invoices-table.expected-team-print-table th:nth-child(5),
+  #expected-invoices-table.expected-team-print-table th:nth-child(6),
+  #expected-invoices-table.expected-team-print-table th:nth-child(7),
+  #expected-invoices-table.expected-team-print-table td:nth-child(3),
+  #expected-invoices-table.expected-team-print-table td:nth-child(4),
+  #expected-invoices-table.expected-team-print-table td:nth-child(5),
+  #expected-invoices-table.expected-team-print-table td:nth-child(6),
+  #expected-invoices-table.expected-team-print-table td:nth-child(7) {
+    text-align: right !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table th:nth-child(8),
+  #expected-invoices-table.expected-team-print-table th:nth-child(9),
+  #expected-invoices-table.expected-team-print-table th:nth-child(10),
+  #expected-invoices-table.expected-team-print-table td:nth-child(8),
+  #expected-invoices-table.expected-team-print-table td:nth-child(9),
+  #expected-invoices-table.expected-team-print-table td:nth-child(10) {
+    text-align: center !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table th:nth-child(11),
+  #expected-invoices-table.expected-team-print-table td:nth-child(11) {
+    text-align: left !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table .expected-project-summary-row {
+    background: #dbe4ee !important;
+    border-top: 1px solid #9ca3af !important;
+    border-bottom: 1px solid #9ca3af !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table .expected-project-summary-row td {
+    font-size: 9.5pt !important;
+    font-weight: 800 !important;
+    color: #111827 !important;
+  }
+
+  #expected-invoices-table td:nth-child(1),
+  #expected-invoices-table th:nth-child(1),
+  #expected-invoices-table td:nth-last-child(1),
+  #expected-invoices-table th:nth-last-child(1) {
+    text-align: center !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table col.print-hide-col,
+  #expected-invoices-table.expected-team-print-table th.print\:hidden,
+  #expected-invoices-table.expected-team-print-table td.print\:hidden {
+    display: none !important;
+  }
+
+  .expected-print-signatures {
+    display: grid !important;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18mm;
+    position: fixed !important;
+    left: 12mm !important;
+    right: 12mm !important;
+    bottom: 5mm !important;
+    margin-top: 0 !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    font-family: 'Times New Roman', Times, serif !important;
+    color: #000000 !important;
+  }
+
+  .expected-print-signature-box {
+    min-height: 14mm !important;
+    text-align: center;
+  }
+
+  .expected-print-signature-title {
+    font-size: 10.5pt !important;
+    line-height: 1.15 !important;
+    font-weight: 700 !important;
+    text-transform: uppercase;
+  }
+
+  .expected-print-signature-space {
+    height: 7mm !important;
   }
 }
 
