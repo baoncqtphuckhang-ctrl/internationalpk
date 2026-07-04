@@ -1,12 +1,20 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
     Home, LayoutDashboard, PieChart, PlusCircle, History, 
     FileSignature, ShieldCheck, Users, LogOut, 
     ChevronRight, Building2, Menu, X, Trash2,
-    ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock, Search
+    ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock, Search, Bell, CheckCheck
 } from 'lucide-react';
+
+const normalizeRoleName = (value = '') =>
+    value
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
 
 export default function Sidebar({ 
     currentUser, 
@@ -26,6 +34,10 @@ export default function Sidebar({
     dnttList,
     partnerDebts,
     expectedInvoices,
+    notifications = [],
+    onMarkNotificationsRead,
+    onClearNotifications,
+    onNotificationOpen,
     STATUSES,
     onDeleteProject,
     handleExportBackup,
@@ -39,16 +51,11 @@ export default function Sidebar({
     const [projectSearchTerm, setProjectSearchTerm] = useState('');
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
     const [deletePassword, setDeletePassword] = useState('');
+    const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
     const isKeToanThue = currentUser?.role?.toUpperCase() === 'KẾ TOÁN THUẾ';
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
-
-    useEffect(() => {
-        if (!isProjectsMenuOpen) {
-            setProjectSearchTerm('');
-        }
-    }, [isProjectsMenuOpen]);
 
     const filteredSidebarProjects = useMemo(() => {
         if (!projectSearchTerm) return projects;
@@ -70,6 +77,15 @@ export default function Sidebar({
 
     const pendingDebtsCount = partnerDebts?.filter(d => d.status === 'CHƯA XONG').length || 0;
     const expectedInvoicesCount = expectedInvoices?.length || 0;
+    const unreadNotifications = notifications?.filter(item => {
+        const currentRoleName = normalizeRoleName(currentUser?.role);
+        const isRecipient = item.recipient_username === currentUser?.username ||
+                            normalizeRoleName(item.recipient_role) === currentRoleName ||
+                            normalizeRoleName(item.recipient_role) === 'ALL';
+        return !item.is_read && isRecipient;
+    }) || [];
+    const unreadNotificationsCount = unreadNotifications.length;
+    const recentNotifications = notifications?.slice(0, 8) || [];
 
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
@@ -160,6 +176,90 @@ export default function Sidebar({
                     <button onClick={onOpenSignatureScanner} className="w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2">
                         <FileSignature size={14} className="text-blue-400" /> Cập nhật chữ ký
                     </button>
+                    <div className="relative mt-2">
+                        <button
+                            type="button"
+                            onClick={() => setIsNotificationsOpen(prev => !prev)}
+                            className="w-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 py-2 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 relative"
+                        >
+                            <Bell size={14} className="text-amber-400" /> Thông báo
+                            {unreadNotificationsCount > 0 && (
+                                <span className="absolute right-3 top-1.5 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">
+                                    {unreadNotificationsCount}
+                                </span>
+                            )}
+                        </button>
+
+                        {isNotificationsOpen && (
+                            <div className="absolute left-0 right-0 top-full mt-2 z-[130] bg-slate-950 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+                                <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
+                                    <span className="text-[11px] font-black text-white uppercase tracking-wide">Thông báo</span>
+                                    <div className="flex items-center gap-2">
+                                        {unreadNotificationsCount > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => onMarkNotificationsRead?.(unreadNotifications.map(item => item.id))}
+                                                className="text-[10px] text-blue-300 hover:text-blue-100 font-bold flex items-center gap-1"
+                                            >
+                                                <CheckCheck size={12} /> Đã đọc
+                                            </button>
+                                        )}
+                                        {notifications.length > 0 && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    if (window.confirm('Bạn muốn xóa toàn bộ thông báo hiện có?')) {
+                                                        onClearNotifications?.();
+                                                    }
+                                                }}
+                                                className="text-[10px] text-red-300 hover:text-red-100 font-bold flex items-center gap-1"
+                                            >
+                                                <Trash2 size={12} /> Xóa hết
+                                            </button>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                                    {recentNotifications.length === 0 ? (
+                                        <div className="px-4 py-6 text-center text-xs text-slate-500 font-bold">Chưa có thông báo.</div>
+                                    ) : recentNotifications.map(notification => (
+                                        <button
+                                            key={notification.id}
+                                            type="button"
+                                            onClick={() => {
+                                                onNotificationOpen?.(notification);
+                                                setIsNotificationsOpen(false);
+                                                setIsMobileMenuOpen(false);
+                                            }}
+                                            className={`w-full text-left px-3 py-3 border-b border-slate-800 last:border-b-0 transition hover:bg-slate-800 ${notification.is_read ? 'opacity-70' : 'bg-slate-900/70'}`}
+                                        >
+                                            <div className="flex items-start gap-2">
+                                                <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${notification.is_read ? 'bg-slate-600' : 'bg-red-500'}`} />
+                                                <div className="min-w-0">
+                                                    <p className="text-xs font-black text-slate-100 leading-tight">{notification.title}</p>
+                                                    <p className="text-[11px] text-slate-400 leading-snug mt-1 line-clamp-3">{notification.message}</p>
+                                                    <p className="text-[10px] text-slate-600 mt-1 flex items-center justify-between">
+                                                        <span>{notification.created_at ? new Date(notification.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                        {notification.created_by === currentUser?.username &&
+                                                         (normalizeRoleName(notification.recipient_role) === 'ADMIN' || notification.recipient_username === 'admin') &&
+                                                         !(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username?.toLowerCase() === 'admin') && (
+                                                            notification.recipient_deleted ? (
+                                                                <span className="text-red-400 font-bold ml-1">Admin đã xóa</span>
+                                                            ) : notification.is_read ? (
+                                                                <span className="text-emerald-400 font-bold ml-1">Admin đã xem</span>
+                                                            ) : (
+                                                                <span className="text-amber-400 font-bold ml-1">Admin chưa xem</span>
+                                                            )
+                                                        )}
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 </div>
 
                 <nav className="flex-1 px-3 space-y-1 overflow-y-auto custom-scrollbar pb-6">
@@ -219,7 +319,11 @@ export default function Sidebar({
 
                     {!isKeToanThue && (
                         <div className="pt-6 pb-2 space-y-1 border-t border-slate-800 mt-4">
-                            <div className="w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group hover:bg-slate-800 text-slate-400 hover:text-slate-200 uppercase mb-1 cursor-pointer" onClick={() => setIsProjectsMenuOpen(!isProjectsMenuOpen)}>
+                            <div className="w-full flex items-center justify-between p-3.5 rounded-xl font-bold transition-all duration-200 group hover:bg-slate-800 text-slate-400 hover:text-slate-200 uppercase mb-1 cursor-pointer" onClick={() => {
+                                const nextOpen = !isProjectsMenuOpen;
+                                setIsProjectsMenuOpen(nextOpen);
+                                if (!nextOpen) setProjectSearchTerm('');
+                            }}>
                                 <span className="text-sm">Công trình</span>
                                 <div className="flex items-center gap-3">
                                     <Search 

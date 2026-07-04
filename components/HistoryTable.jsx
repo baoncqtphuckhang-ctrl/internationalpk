@@ -2,7 +2,7 @@
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useEffect } from 'react';
-import { Search, Upload, Copy, Download, Edit, Trash2, Filter, Printer } from 'lucide-react';
+import { Search, Upload, Copy, Download, Edit, Trash2, Filter, Printer, Send } from 'lucide-react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
 import ConfirmModal from '@/components/ConfirmModal';
 
@@ -114,14 +114,15 @@ export default function HistoryTable({
     systemConfig,
     initialSearchNote = '',
     highlightedReqId,
-    setHighlightedReqId
+    setHighlightedReqId,
+    onRequestDelete
 }) {
-    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
+    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false, type: 'danger', confirmText: null });
 
-    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa', requirePassword = false) => {
-        setConfirmState({ isOpen: true, message, onConfirm, title, requirePassword });
+    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa', requirePassword = false, type = 'danger', confirmText = null) => {
+        setConfirmState({ isOpen: true, message, onConfirm, title, requirePassword, type, confirmText });
     };
-    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false });
+    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false, type: 'danger', confirmText: null });
     const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
 
     const getUnique = (key) => {
@@ -326,7 +327,8 @@ export default function HistoryTable({
                 requirePassword={confirmState.requirePassword}
                 onConfirm={(pwd) => { confirmState.onConfirm?.(pwd); closeConfirm(); }}
                 onCancel={closeConfirm}
-                type="danger"
+                type={confirmState.type}
+                confirmText={confirmState.confirmText}
             />
 
             <div className="mb-6 flex flex-wrap justify-between items-end gap-4">
@@ -479,6 +481,24 @@ export default function HistoryTable({
                                                     className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
                                                 >
                                                     <Trash2 size={14} />
+                                                </button>
+                                            )}
+                                            {!isAdmin && onRequestDelete && (
+                                                <button
+                                                    onClick={() => {
+                                                        openConfirm(
+                                                            `Gửi đề nghị admin xóa giao dịch ngày ${formatDateVN(t.accounting_date)} - ${t.note || 'không có diễn giải'}?`,
+                                                            () => onRequestDelete(t),
+                                                            'Đề nghị xóa giao dịch',
+                                                            false,
+                                                            'info',
+                                                            'Gửi đề nghị'
+                                                        );
+                                                    }}
+                                                    title="Đề nghị admin xóa dòng này"
+                                                    className="p-1.5 rounded-lg transition text-sky-600 hover:bg-sky-50"
+                                                >
+                                                    <Send size={14} />
                                                 </button>
                                             )}
                                         </div>

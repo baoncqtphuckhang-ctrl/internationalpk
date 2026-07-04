@@ -17,12 +17,12 @@ const STATUS_LABELS = {
     'Waiting Print': { label: 'Chờ in UNC', color: 'bg-purple-50 text-purple-700 border-purple-100', icon: Clock },
     'Waiting Pay': { label: 'Chờ chi tiền', color: 'bg-blue-50 text-blue-700 border-blue-100', icon: Clock },
     'Paid': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
-    'Accounted': { label: 'Hoàn tất hạch toán', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle },
+    'Accounted': { label: 'Hoàn tất hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: CheckCircle },
     'Rejected': { label: 'Bị từ chối', color: 'bg-red-50 text-red-700 border-red-100 hover:bg-red-100', icon: XCircle },
     'Deleted': { label: 'Đã xóa', color: 'bg-slate-50 text-slate-500 border-slate-100 hover:bg-slate-200', icon: XCircle },
     // Fallback for legacy statuses
     'Pending': { label: 'Chờ hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: Clock },
-    'Approved': { label: 'Hoàn tất hạch toán', color: 'bg-green-50 text-green-700 border-green-100 hover:bg-green-100', icon: CheckCircle }
+    'Approved': { label: 'Hoàn tất hạch toán', color: 'bg-indigo-50 text-indigo-700 border-indigo-100 hover:bg-indigo-100', icon: CheckCircle }
 };
 
 const getCommanderName = (recipient) => {
@@ -391,6 +391,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }
 
         setIsSavingReceive(true);
+        let orderItemsBeforeReceive = null;
+        let orderItemsUpdated = false;
         try {
             const currentItem = order.items[catIdx].items[itemIdx];
             const newHistory = currentItem.received_history ? [...currentItem.received_history] : [];
@@ -402,6 +404,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             });
 
             // Update in material_orders
+            orderItemsBeforeReceive = order.items;
             const newOrderItems = [...order.items];
             newOrderItems[catIdx] = { ...newOrderItems[catIdx] };
             newOrderItems[catIdx].items = [...newOrderItems[catIdx].items];
@@ -423,11 +426,17 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 .eq('id', order.id);
 
             if (updateError) throw updateError;
+            orderItemsUpdated = true;
 
             // Insert into material_warehouse
             const priceVal = parseFloat(currentItem.price?.toString().replace(/\D/g, '') || 0);
             
-            let priceBatchStr = (order.items && order.items[0] && order.items[0]._price_batch) || 'Không rõ đợt';
+            let priceBatchStr = (
+                order.items?.[catIdx]?._price_batch ||
+                currentItem._price_batch ||
+                order.items?.find(cat => cat._price_batch)?._price_batch ||
+                'Không rõ đợt'
+            );
             // Make sure it doesn't duplicate the [Đợt giá:] prefix
             if (priceBatchStr.startsWith('Đợt giá: ')) {
                 priceBatchStr = `[${priceBatchStr}]`;
@@ -465,6 +474,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             await fetchOrders();
         } catch (err) {
             console.error('Save Receive Error:', err);
+            if (orderItemsUpdated && orderItemsBeforeReceive && !order._is_orphan) {
+                await supabase
+                    .from('material_orders')
+                    .update({ items: orderItemsBeforeReceive })
+                    .eq('id', order.id);
+            }
             showToast(`Có lỗi xảy ra: ${err.message || 'Không thể lưu dữ liệu'}`, 'error');
         } finally {
             setIsSavingReceive(false);
@@ -1221,6 +1236,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                     
                                                     if (deliveryLabel) {
                                                         statusConfig = { ...statusConfig, label: `${statusConfig.label} (${deliveryLabel})` };
+                                                        if (isFullyReceived && (status === 'Accounted' || status === 'Approved')) {
+                                                            statusConfig.color = 'bg-teal-50 text-teal-700 border-teal-100 hover:bg-teal-100';
+                                                        }
                                                     }
                                                 }
                                                 
@@ -1980,3 +1998,4 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         </div>
     );
 }
+

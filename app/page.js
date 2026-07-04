@@ -53,6 +53,14 @@ const STATUSES = {
     APPROVED: 'Approved', REJECTED: 'Rejected', PAID: 'Paid', ACCOUNTED: 'Accounted'
 };
 
+const normalizeRoleName = (value = '') =>
+    value
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+
 const MOCK_USERS = [
     { id: 'u1', username: 'admin', password: '0000', role: ROLES.ADMIN, name: 'Quản trị hệ thống', isLocked: false },
     { id: 'u2', username: 'giamdoc', password: '1', role: ROLES.GIAMDOC, name: 'Giám Đốc', isLocked: false },
@@ -183,6 +191,8 @@ export default function Home() {
     const [historyModal, setHistoryModal] = useState({ isOpen: false, user: null });
     const [isSignatureScannerOpen, setIsSignatureScannerOpen] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
+    const [notifications, setNotifications] = useState([]);
+    const [notificationsAvailable, setNotificationsAvailable] = useState(false);
     const [highlightId, setHighlightId] = useState(null);
     
     const showToast = (msg, type = 'success') => {
@@ -251,6 +261,96 @@ export default function Home() {
         }
     };
 
+    const handleMarkNotificationsRead = async (ids = []) => {
+        if (!ids.length) return;
+
+        setNotifications(prev => prev.map(item => (
+            ids.includes(item.id) ? { ...item, is_read: true } : item
+        )));
+
+        try {
+            const { error } = await supabase
+                .from('notifications')
+                .update({ is_read: true })
+                .in('id', ids);
+            if (error) throw error;
+        } catch (error) {
+            console.warn('Could not mark notifications as read:', error);
+        }
+    };
+
+    const handleClearNotifications = async () => {
+        const visibleIds = notifications.map(item => item.id).filter(Boolean);
+        if (visibleIds.length === 0) return;
+
+        setNotifications([]);
+
+        try {
+            const toUpdateAsRecipient = [];
+            const toUpdateAsSender = [];
+            const toDeleteCompletely = [];
+
+            notifications.forEach(n => {
+                const currentRoleName = normalizeRoleName(currentUser?.role);
+                const isRecipient = n.recipient_username === currentUser?.username || 
+                                    normalizeRoleName(n.recipient_role) === currentRoleName ||
+                                    normalizeRoleName(n.recipient_role) === 'ALL';
+                const isSender = n.created_by === currentUser?.username;
+
+                if (isRecipient && isSender) {
+                    toDeleteCompletely.push(n.id);
+                } else if (isRecipient) {
+                    toUpdateAsRecipient.push(n.id);
+                } else if (isSender) {
+                    toUpdateAsSender.push(n.id);
+                }
+            });
+
+            if (toDeleteCompletely.length > 0) {
+                const { error } = await supabase.from('notifications').delete().in('id', toDeleteCompletely);
+                if (error) throw error;
+            }
+            if (toUpdateAsRecipient.length > 0) {
+                const { error } = await supabase.from('notifications').update({ recipient_deleted: true }).in('id', toUpdateAsRecipient);
+                if (error) throw error;
+            }
+            if (toUpdateAsSender.length > 0) {
+                const { error } = await supabase.from('notifications').update({ sender_deleted: true }).in('id', toUpdateAsSender);
+                if (error) throw error;
+            }
+        } catch (error) {
+            console.warn('Could not clear notifications:', error);
+            await fetchData(false);
+        }
+    };
+
+    const handleNotificationOpen = async (notification) => {
+        if (!notification) return;
+        if (notification.id && !notification.is_read) {
+            const currentRoleName = normalizeRoleName(currentUser?.role);
+            const isRecipient = notification.recipient_username === currentUser?.username || 
+                                normalizeRoleName(notification.recipient_role) === currentRoleName ||
+                                normalizeRoleName(notification.recipient_role) === 'ALL';
+            if (isRecipient) {
+                await handleMarkNotificationsRead([notification.id]);
+            }
+        }
+
+        if (notification.project_name && projects.some(p => p.name === notification.project_name)) {
+            setSelectedProject(notification.project_name);
+        }
+
+        if (notification.source_table === 'approval_requests') {
+            setActiveTab('dntt-approvals');
+            return;
+        }
+
+        if (notification.source_table === 'transactions') {
+            setActiveTab('project-detail');
+            if (notification.source_id) setHighlightId(notification.source_id);
+        }
+    };
+
     useEffect(() => {
         if (highlightId && !isLoading) {
             const timer = setTimeout(() => {
@@ -308,6 +408,105 @@ export default function Home() {
             }
         } catch (e) {
             console.error('Failed to log activity', e);
+        }
+    };
+
+    const isFieldDnttCreatorRole = (roleName) => {
+        const normalizedRole = normalizeRoleName(roleName);
+        return normalizedRole === 'GS' || normalizedRole === 'CHT' || normalizedRole === 'CHI HUY TRUONG';
+    };
+
+    const getNotificationRecipients = (roleMatcher, fallbackRole) => {
+        const matchedUsers = usersList.filter(user => {
+            if (!user?.username || user.username === '__system_config__') return false;
+            return roleMatcher(normalizeRoleName(user.role));
+        });
+
+        if (matchedUsers.length > 0) {
+            return matchedUsers.map(user => ({
+                username: user.username,
+                role: user.role
+            }));
+        }
+
+        return fallbackRole ? [{ recipient_role: fallbackRole }] : [];
+    };
+
+    const getCostAccountingRecipients = () =>
+        getNotificationRecipients(roleName => roleName.includes('KE TOAN CHI PHI'), 'KẾ TOÁN CHI PHÍ');
+
+    const getAdminRecipients = () =>
+        getNotificationRecipients(roleName => roleName === 'ADMIN', 'ADMIN');
+
+    const createNotifications = async ({
+        recipients = [],
+        title,
+        message,
+        type = 'info',
+        sourceTable = null,
+        sourceId = null,
+        projectName = null
+    }) => {
+        const uniqueRecipients = Array.from(new Map(recipients.map(recipient => {
+            const key = recipient.username || recipient.recipient_username || `role:${recipient.role || recipient.recipient_role || 'ALL'}`;
+            return [key, recipient];
+        })).values());
+
+        if (uniqueRecipients.length === 0) return false;
+
+        const rows = uniqueRecipients.map(recipient => ({
+            recipient_username: recipient.username || recipient.recipient_username || null,
+            recipient_role: recipient.role || recipient.recipient_role || null,
+            title,
+            message,
+            type,
+            source_table: sourceTable,
+            source_id: sourceId ? String(sourceId) : null,
+            project_name: projectName,
+            created_by: currentUser?.username || null,
+            is_read: false
+        }));
+
+        try {
+            const { data: existingNotifications, error: existingError } = await supabase
+                .from('notifications')
+                .select('id, recipient_username, recipient_role, source_table, source_id, type');
+
+            if (existingError) {
+                console.warn('Could not check duplicate notifications:', existingError);
+            }
+
+            const existingKeys = new Set((existingNotifications || []).map(item => (
+                [
+                    item.source_table || '',
+                    item.source_id || '',
+                    item.type || '',
+                    item.recipient_username || '',
+                    item.recipient_role || ''
+                ].join('|')
+            )));
+
+            const filteredRows = rows.filter(row => !existingKeys.has([
+                row.source_table || '',
+                row.source_id || '',
+                row.type || '',
+                row.recipient_username || '',
+                row.recipient_role || ''
+            ].join('|')));
+
+            if (filteredRows.length === 0) {
+                return false;
+            }
+
+            const { error } = await supabase.from('notifications').insert(filteredRows);
+            if (error) {
+                console.warn('Notifications table might not exist yet:', error);
+                return false;
+            }
+            return true;
+        } catch (error) {
+            console.warn('Failed to create notifications:', error);
+            return false;
         }
     };
 
@@ -397,6 +596,59 @@ export default function Home() {
                 console.warn('Expected invoices table might not exist yet', e);
             }
 
+            try {
+                const { data: notificationData, error: notificationError } = await supabase
+                    .from('notifications')
+                    .select('*')
+                    .order('created_at', { ascending: false })
+                    .limit(100);
+
+                if (!notificationError) {
+                    setNotificationsAvailable(true);
+                    const currentRoleName = normalizeRoleName(currentUser?.role);
+                    const visibleNotifications = Array.from(
+                        new Map(
+                            (notificationData || [])
+                                .filter(notification => {
+                                    const isRecipient = notification.recipient_username === currentUser?.username ||
+                                                        normalizeRoleName(notification.recipient_role) === currentRoleName ||
+                                                        normalizeRoleName(notification.recipient_role) === 'ALL';
+                                    if (isRecipient && !notification.recipient_deleted) {
+                                        return true;
+                                    }
+                                    const isSender = notification.created_by === currentUser?.username;
+                                    const sentToAdmin = normalizeRoleName(notification.recipient_role) === 'ADMIN' ||
+                                                        notification.recipient_username === 'admin';
+                                    if (isSender && sentToAdmin && !notification.sender_deleted) {
+                                        return true;
+                                    }
+                                    return false;
+                                })
+                                .map(notification => {
+                                    const key = [
+                                        notification.source_table || '',
+                                        notification.source_id || '',
+                                        notification.type || '',
+                                        notification.title || '',
+                                        notification.message || '',
+                                        notification.recipient_username || '',
+                                        notification.recipient_role || ''
+                                    ].join('|');
+                                    return [key, notification];
+                                })
+                        ).values()
+                    );
+                    setNotifications(visibleNotifications);
+                } else {
+                    setNotificationsAvailable(false);
+                    setNotifications([]);
+                }
+            } catch (e) {
+                console.warn('Notifications table might not exist yet', e);
+                setNotificationsAvailable(false);
+                setNotifications([]);
+            }
+
             if (isAdminUser) {
                 try {
                     const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
@@ -435,7 +687,6 @@ export default function Home() {
                     can_view_finance: false
                 }]);
             }
-            showToast('Lưu cấu hình hệ thống thành công!', 'success');
             logActivity('Cập nhật', 'Hệ thống', 'Lưu cấu hình hệ thống');
         } catch (err) {
             console.error('Error saving system config:', err);
@@ -498,6 +749,32 @@ export default function Home() {
             supabase.removeChannel(channel);
         };
     }, [currentUser]);
+
+    useEffect(() => {
+        if (!currentUser || !notificationsAvailable) return;
+
+        let notificationTimer = null;
+        const refreshNotifications = () => {
+            if (notificationTimer) clearTimeout(notificationTimer);
+            notificationTimer = setTimeout(() => {
+                fetchData(false);
+            }, 500);
+        };
+
+        const notificationChannel = supabase
+            .channel('notifications-sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'notifications' }, refreshNotifications)
+            .subscribe((status) => {
+                if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+                    console.warn('Notifications realtime is not available:', status);
+                }
+            });
+
+        return () => {
+            if (notificationTimer) clearTimeout(notificationTimer);
+            supabase.removeChannel(notificationChannel);
+        };
+    }, [currentUser, notificationsAvailable]);
 
     const [editTransaction, setEditTransaction] = useState(null);
     const [incomeTableCols, setIncomeTableCols] = useState({
@@ -968,6 +1245,38 @@ export default function Home() {
         }
     };
 
+    const handleRequestDeleteTransaction = async (transaction) => {
+        if (!transaction) return;
+
+        setIsLoading(true);
+        try {
+            const cleanNote = (transaction.note || 'không có diễn giải').replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '');
+            const amount = Number(transaction.debit) || Math.abs((Number(transaction.credit) || 0) - (Number(transaction.debit) || 0));
+            const sent = await createNotifications({
+                recipients: getAdminRecipients(),
+                title: 'Đề nghị xóa giao dịch chi',
+                message: `${currentUser?.name || currentUser?.username} đề nghị admin xóa giao dịch chi của công trình ${transaction.project_name}, ngày ${formatDateVN(transaction.accounting_date)}, số tiền ${formatCurrency(amount)}: ${cleanNote}.`,
+                type: 'delete_request',
+                sourceTable: 'transactions',
+                sourceId: transaction.id,
+                projectName: transaction.project_name
+            });
+
+            logActivity('Đề nghị xóa', 'Chi phí', `Đề nghị admin xóa giao dịch (ID: ${transaction.id}) - Số tiền: ${new Intl.NumberFormat('vi-VN').format(amount)}`, transaction.project_name);
+            showToast(
+                sent
+                    ? 'Đã gửi đề nghị xóa tới Admin!'
+                    : 'Chưa gửi được thông báo. Vui lòng chạy setup_notifications.sql rồi thử lại.',
+                sent ? 'success' : 'error'
+            );
+        } catch (error) {
+            console.error('Error requesting transaction delete:', error);
+            showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
     const handleDeleteIncome = async (id) => {
         setIsLoading(true);
         try {
@@ -1070,12 +1379,23 @@ export default function Home() {
     const handleAddDNTT = async (data) => {
         setIsLoading(true);
         try {
-            const { error } = await supabase.from('approval_requests').insert([{
+            const { data: createdRequest, error } = await supabase.from('approval_requests').insert([{
                 ...data,
                 created_by: currentUser.username,
                 status: STATUSES.WAITING_QS
-            }]);
+            }]).select('id').single();
             if (error) throw error;
+            if (isFieldDnttCreatorRole(currentUser?.role)) {
+                await createNotifications({
+                    recipients: getCostAccountingRecipients(),
+                    title: 'ĐNTT mới từ công trình',
+                    message: `${currentUser?.name || currentUser?.username} vừa tạo ${data.doc_type} cho công trình ${data.project_name} - ${data.recipient || 'chưa có đối tượng'} (${formatCurrency(data.total_amount || 0)}).`,
+                    type: 'dntt_created',
+                    sourceTable: 'approval_requests',
+                    sourceId: createdRequest?.id,
+                    projectName: data.project_name
+                });
+            }
             showToast('Đã gửi yêu cầu phê duyệt!');
             logActivity('Thêm', 'Đề nghị thanh toán', `Tạo yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
             await fetchData();
@@ -1165,12 +1485,38 @@ export default function Home() {
     const handleUpdateApprovalStatus = async (id, newStatus) => {
         setIsLoading(true);
         try {
+            let requestDetails = null;
+            if (newStatus === STATUSES.REJECTED) {
+                const { data, error: fetchErr } = await supabase
+                    .from('approval_requests')
+                    .select('created_by, doc_type, project_name, recipient, total_amount')
+                    .eq('id', id)
+                    .single();
+                if (!fetchErr) {
+                    requestDetails = data;
+                }
+            }
+
             const { error } = await supabase.from('approval_requests').update({ status: newStatus }).eq('id', id);
             if (error) throw error;
             showToast('Đã cập nhật trạng thái!');
             logActivity('Duyệt', 'Đề nghị thanh toán', `Cập nhật trạng thái phiếu (ID: ${id}) thành: ${newStatus}`);
+
+            if (newStatus === STATUSES.REJECTED && requestDetails && requestDetails.created_by) {
+                await createNotifications({
+                    recipients: [{ username: requestDetails.created_by }],
+                    title: 'Đề nghị thanh toán bị từ chối',
+                    message: `${currentUser?.name || currentUser?.username} đã từ chối ${requestDetails.doc_type || 'Đề nghị thanh toán'} cho công trình ${requestDetails.project_name || ''} - ${requestDetails.recipient || 'chưa có đối tượng'} (${formatCurrency(requestDetails.total_amount || 0)}).`,
+                    type: 'dntt_rejected',
+                    sourceTable: 'approval_requests',
+                    sourceId: id,
+                    projectName: requestDetails.project_name
+                });
+            }
+
             fetchData();
         } catch (error) {
+            console.error('Error updating approval status:', error);
             showToast('Lỗi khi cập nhật!', 'error');
         } finally {
             setIsLoading(false);
@@ -1211,11 +1557,22 @@ export default function Home() {
     const handleCreateAccountingRequest = async (dnttPayload) => {
         setIsLoading(true);
         try {
-            const { error } = await supabase.from('approval_requests').insert([{
+            const { data: createdRequest, error } = await supabase.from('approval_requests').insert([{
                 ...dnttPayload,
                 created_by: currentUser.username
-            }]);
+            }]).select('id').single();
             if (error) throw error;
+            if (isFieldDnttCreatorRole(currentUser?.role)) {
+                await createNotifications({
+                    recipients: getCostAccountingRecipients(),
+                    title: 'ĐNTT vật tư mới từ công trình',
+                    message: `${currentUser?.name || currentUser?.username} vừa chuyển ${dnttPayload.doc_type} sang kế toán cho công trình ${dnttPayload.project_name} - ${dnttPayload.recipient || 'chưa có đối tượng'} (${formatCurrency(dnttPayload.total_amount || 0)}).`,
+                    type: 'dntt_created',
+                    sourceTable: 'approval_requests',
+                    sourceId: createdRequest?.id,
+                    projectName: dnttPayload.project_name
+                });
+            }
             showToast('Đơn đặt hàng đã được chuyển sang kế toán hạch toán!');
             logActivity('Thêm', 'Đề nghị thanh toán', `Chuyển đơn đặt hàng sang kế toán: ${dnttPayload.doc_type}`, dnttPayload.project_name);
             fetchData();
@@ -1262,11 +1619,22 @@ export default function Home() {
                 logActivity('Sửa', 'Đề nghị thanh toán', `Sửa đơn đặt hàng vật tư: ${dnttPayload.doc_type}`, dnttPayload.project_name);
             } else {
                 // If not found, create new
-                const { error } = await supabase.from('approval_requests').insert([{
+                const { data: createdRequest, error } = await supabase.from('approval_requests').insert([{
                     ...dnttPayload,
                     created_by: currentUser.username
-                }]);
+                }]).select('id').single();
                 if (error) throw error;
+                if (isFieldDnttCreatorRole(currentUser?.role)) {
+                    await createNotifications({
+                        recipients: getCostAccountingRecipients(),
+                        title: 'ĐNTT vật tư mới từ công trình',
+                        message: `${currentUser?.name || currentUser?.username} vừa chuyển ${dnttPayload.doc_type} sang kế toán cho công trình ${dnttPayload.project_name} - ${dnttPayload.recipient || 'chưa có đối tượng'} (${formatCurrency(dnttPayload.total_amount || 0)}).`,
+                        type: 'dntt_created',
+                        sourceTable: 'approval_requests',
+                        sourceId: createdRequest?.id,
+                        projectName: dnttPayload.project_name
+                    });
+                }
                 showToast('Đơn đặt hàng đã được chuyển sang kế toán hạch toán!');
                 logActivity('Thêm', 'Đề nghị thanh toán', `Chuyển đơn đặt hàng sang kế toán: ${dnttPayload.doc_type}`, dnttPayload.project_name);
             }
@@ -1718,7 +2086,7 @@ export default function Home() {
     if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} systemConfig={systemConfig} />;
 
     return (
-        <div className="h-screen w-full overflow-hidden bg-slate-50 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
+        <div className="min-h-screen md:h-screen w-full overflow-y-auto md:overflow-hidden bg-slate-100 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
             {toast.show && (
                 <div className={`fixed top-4 right-4 z-[9999] px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-bold text-white ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
                     {toast.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -1744,6 +2112,10 @@ export default function Home() {
                 dnttList={allowedDnttList}
                 partnerDebts={allowedPartnerDebts}
                 expectedInvoices={expectedInvoices}
+                notifications={notifications}
+                onMarkNotificationsRead={handleMarkNotificationsRead}
+                onClearNotifications={handleClearNotifications}
+                onNotificationOpen={handleNotificationOpen}
                 STATUSES={STATUSES}
                 onDeleteProject={handleDeleteProject}
                 systemConfig={systemConfig}
@@ -1752,7 +2124,7 @@ export default function Home() {
                 usersList={usersList}
             />
 
-            <main className="flex-1 min-w-0 p-4 md:p-8 overflow-y-auto overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible">
+            <main className="flex-1 min-w-0 p-4 md:p-8 md:overflow-y-auto md:overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible">
                 {isLoading && (
                     <div className="fixed inset-0 bg-white/30 z-[200] flex items-center justify-center backdrop-blur-sm">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -1833,13 +2205,13 @@ export default function Home() {
 
                 {activeTab === 'materials' && (
                     <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
-                        <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm">
-                            <button onClick={() => setMaterialSubTab('catalog')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
-                            <button onClick={() => setMaterialSubTab('order')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
-                            <button onClick={() => setMaterialSubTab('manage')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
-                            <button onClick={() => setMaterialSubTab('manage-ho')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'manage-ho' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Order Hộ</button>
+                        <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm overflow-x-auto whitespace-nowrap scrollbar-none">
+                            <button onClick={() => setMaterialSubTab('catalog')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('order')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('manage')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('manage-ho')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage-ho' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Order Hộ</button>
                             {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
-                                <button onClick={() => setMaterialSubTab('warehouse')} className={`px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
+                                <button onClick={() => setMaterialSubTab('warehouse')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
                             )}
                         </div>
                         {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
@@ -2369,7 +2741,7 @@ export default function Home() {
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} />
+                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (

@@ -65,17 +65,18 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
     if (!isMounted) return <div className="min-h-screen bg-[#050505]"></div>;
 
     return (
-        <div className="min-h-screen flex relative overflow-hidden font-sans text-[#FFFFFF] bg-[#050505]">
+        <div className="min-h-screen flex relative overflow-hidden font-sans text-[#FFFFFF] bg-[#020201]">
             
             {/* FULLSCREEN BACKGROUND */}
             <div className="absolute inset-0 z-0 pointer-events-none">
                 <div 
-                    className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-90 mix-blend-lighten"
+                    className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-95 saturate-[1.25] contrast-[1.18] brightness-[0.68]"
                     style={{ backgroundImage: 'url(/bg-hcm.jpg)' }}
                 />
-                {/* Gradient overlay: keep left side clear, fade to dark on right side for the login form */}
-                <div className="absolute inset-0 bg-gradient-to-r from-transparent via-[#050505]/40 to-[#050505] lg:to-[#050505]" />
-                <div className="absolute inset-0 bg-gradient-to-t from-[#050505] via-transparent to-transparent opacity-50" />
+                <div className="absolute inset-0 bg-[#050200]/35 mix-blend-multiply" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_67%_46%,rgba(245,210,122,0.18),transparent_24%),radial-gradient(circle_at_30%_55%,rgba(212,175,55,0.10),transparent_28%)]" />
+                <div className="absolute inset-0 bg-gradient-to-r from-[#020201]/15 via-[#020201]/20 to-[#020201]/45" />
+                <div className="absolute inset-0 bg-gradient-to-t from-[#020201] via-[#020201]/25 to-[#020201]/45" />
             </div>
 
             {/* TOP RIGHT TOGGLE */}
@@ -87,9 +88,9 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
 
             <div className="flex-1 flex w-full max-w-[1600px] mx-auto relative z-10">
                 {/* LEFT SIDE - BRANDING */}
-                <div className="hidden lg:flex flex-col justify-center w-[55%] p-16 relative">
+                <div className="hidden lg:flex flex-col justify-center w-[55%] p-16 xl:p-20 relative">
                     <div className="flex flex-col max-w-[500px]">
-                        <div className="w-[80px] h-[80px] rounded-2xl border border-[rgba(212,175,55,0.4)] bg-[#050505]/40 backdrop-blur-md flex items-center justify-center shadow-[0_0_30px_rgba(212,175,55,0.2)] mb-6">
+                        <div className="w-[80px] h-[80px] rounded-2xl border border-[rgba(245,210,122,0.45)] bg-[#030302]/45 backdrop-blur-md flex items-center justify-center shadow-[0_0_34px_rgba(212,175,55,0.28)] mb-6">
                             <Building2 size={36} strokeWidth={1.5} className="text-[#D4AF37]" />
                         </div>
                         
@@ -123,7 +124,7 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
                 {/* RIGHT SIDE - LOGIN FORM */}
                 <div className="flex-1 flex flex-col justify-center items-center p-6 lg:p-12 w-full lg:w-[45%]">
                     
-                    <div className="w-full max-w-[460px] bg-[#0A0A0A]/90 backdrop-blur-[24px] rounded-[32px] border border-[rgba(212,175,55,0.25)] p-10 shadow-[0_20px_60px_rgba(0,0,0,0.8)] relative animate-in zoom-in-[0.98] duration-700">
+                    <div className="w-full max-w-[460px] bg-[#080704]/88 backdrop-blur-[26px] rounded-[32px] border border-[rgba(245,210,122,0.30)] p-10 shadow-[0_24px_80px_rgba(0,0,0,0.86),0_0_42px_rgba(212,175,55,0.10)] relative animate-in zoom-in-[0.98] duration-700">
                         
                         {/* Glowing Top Edge */}
                         <div className="absolute top-0 left-[20%] right-[20%] h-[1px] bg-gradient-to-r from-transparent via-[#D4AF37]/60 to-transparent shadow-[0_0_15px_rgba(212,175,55,0.8)]"></div>

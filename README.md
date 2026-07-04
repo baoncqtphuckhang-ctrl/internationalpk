@@ -14,7 +14,18 @@ pnpm dev
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:9999](http://localhost:9999) with your browser to see the result.
+
+If `localhost` is blocked in your browser, use:
+
+- [http://127.0.0.1:9999](http://127.0.0.1:9999)
+- [http://192.168.10.154:9999](http://192.168.10.154:9999)
+
+On Windows, you can also start the app with:
+
+```bat
+start-dev.bat
+```
 
 You can start editing the page by modifying `app/page.js`. The page auto-updates as you edit the file.
 

@@ -1,7 +1,6 @@
--- Kích hoạt Realtime cho các bảng cần thiết
+-- Kich hoat Realtime cho cac bang can thiet.
+-- Script nay co the chay lai nhieu lan ma khong bi loi "already member".
 BEGIN;
-  -- Kiểm tra xem publication supabase_realtime đã tồn tại chưa (mặc định có sẵn trên Supabase)
-  -- Nếu chưa có thì tạo mới (phòng hờ)
   DO $$
   BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
@@ -10,10 +9,30 @@ BEGIN;
   END
   $$;
 
-  -- Bật Realtime cho các bảng
-  ALTER PUBLICATION supabase_realtime ADD TABLE approval_requests;
-  ALTER PUBLICATION supabase_realtime ADD TABLE transactions;
-  ALTER PUBLICATION supabase_realtime ADD TABLE incomes;
-  ALTER PUBLICATION supabase_realtime ADD TABLE material_orders;
-  ALTER PUBLICATION supabase_realtime ADD TABLE partner_debts;
+  DO $$
+  DECLARE
+    table_name text;
+    table_names text[] := ARRAY[
+      'approval_requests',
+      'transactions',
+      'incomes',
+      'material_orders',
+      'partner_debts',
+      'notifications'
+    ];
+  BEGIN
+    FOREACH table_name IN ARRAY table_names LOOP
+      IF to_regclass('public.' || table_name) IS NOT NULL
+         AND NOT EXISTS (
+          SELECT 1
+          FROM pg_publication_tables
+          WHERE pubname = 'supabase_realtime'
+            AND schemaname = 'public'
+            AND tablename = table_name
+        ) THEN
+        EXECUTE format('ALTER PUBLICATION supabase_realtime ADD TABLE public.%I', table_name);
+      END IF;
+    END LOOP;
+  END
+  $$;
 COMMIT;

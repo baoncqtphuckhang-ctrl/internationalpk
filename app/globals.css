@@ -147,7 +147,7 @@ body {
 @media print {
   @page {
     size: A3 landscape;
-    margin: 5mm;
+    margin: 15mm;
   }
 
   body {
@@ -203,10 +203,10 @@ body {
   }
 
   .expected-print-zoom {
-    zoom: 0.92 !important;
+    zoom: 1 !important;
     transform: none !important;
     transform-origin: top left !important;
-    width: 108.7% !important;
+    width: 100% !important;
   }
 
   .expected-print-title {
@@ -224,7 +224,10 @@ body {
   #expected-invoices-table {
     width: 100% !important;
     min-width: 0 !important;
-    height: 175mm !important;
+    height: 220mm !important;
+    border: 1px solid #9ca3af !important;
+    outline: 1px solid #9ca3af !important;
+    outline-offset: -1px !important;
     border-collapse: collapse !important;
     font-family: Arial, Helvetica, sans-serif !important;
     page-break-inside: auto !important;
@@ -242,25 +245,89 @@ body {
   #expected-invoices-table tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
+    border-left: 0 !important;
+    border-right: 0 !important;
   }
 
   #expected-invoices-table.expected-team-print-table tr {
-    height: calc(165mm / var(--row-count, 20)) !important;
+    height: calc(210mm / var(--row-count, 20)) !important;
   }
 
   #expected-invoices-table th,
   #expected-invoices-table td {
-    padding: 4px 8px !important;
-    font-size: 8.7pt !important;
+    padding: var(--print-cell-padding-y, 3px) var(--print-cell-padding-x, 6px) !important;
+    font-size: var(--print-font-size, 8.2pt) !important;
     line-height: 1.12 !important;
     white-space: normal !important;
+    vertical-align: middle !important;
   }
 
   #expected-invoices-table th {
     height: auto !important;
     text-align: center !important;
     font-weight: 800 !important;
-    font-size: 8.7pt !important;
+    font-size: var(--print-header-font-size, 8.2pt) !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table thead th {
+    padding-top: 5px !important;
+    padding-bottom: 5px !important;
+    line-height: 1.15 !important;
+    vertical-align: middle !important;
+    text-align: center !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table thead tr {
+    min-height: 9mm !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table thead th span {
+    display: block !important;
+    width: 100% !important;
+    text-align: center !important;
+    margin: 0 auto !important;
+  }
+
+  #expected-invoices-table.expected-customer-debt-print-table thead th {
+    padding-top: 8px !important;
+    padding-bottom: 8px !important;
+    font-size: 9.8pt !important;
+    line-height: 1.18 !important;
+    text-align: center !important;
+    vertical-align: middle !important;
+  }
+
+  #expected-invoices-table.expected-customer-debt-print-table thead tr {
+    min-height: 11mm !important;
+  }
+
+  #expected-invoices-table.expected-customer-debt-print-table tbody td {
+    font-size: 8.6pt !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(1) { width: 3% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(2) { width: 24% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(3) { width: 8% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(4) { width: 5% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(5) { width: 8% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(6) { width: 8% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(7) { width: 9% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(8) { width: calc(17% - var(--print-note-width, 7%)) !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(9) { width: 8% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(10) { width: 10% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(11) { width: var(--print-note-width, 7%) !important; }
+
+  #expected-invoices-table.expected-team-print-table th:first-child,
+  #expected-invoices-table.expected-team-print-table td:first-child {
+    border-left: 1px solid #9ca3af !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table thead th {
+    border-top: 1px solid #9ca3af !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table tbody tr:last-child td {
+    border-bottom: 1px solid #9ca3af !important;
   }
 
   #expected-invoices-table.expected-team-print-table td:nth-child(3),
@@ -268,17 +335,13 @@ body {
     font-weight: 800 !important;
   }
 
-  #expected-invoices-table.expected-team-print-table th:nth-child(3),
-  #expected-invoices-table.expected-team-print-table th:nth-child(4),
-  #expected-invoices-table.expected-team-print-table th:nth-child(5),
-  #expected-invoices-table.expected-team-print-table th:nth-child(6),
-  #expected-invoices-table.expected-team-print-table th:nth-child(7),
   #expected-invoices-table.expected-team-print-table td:nth-child(3),
   #expected-invoices-table.expected-team-print-table td:nth-child(4),
   #expected-invoices-table.expected-team-print-table td:nth-child(5),
   #expected-invoices-table.expected-team-print-table td:nth-child(6),
   #expected-invoices-table.expected-team-print-table td:nth-child(7) {
-    text-align: right !important;
+    text-align: center !important;
+    font-variant-numeric: tabular-nums !important;
   }
 
   #expected-invoices-table.expected-team-print-table th:nth-child(8),
@@ -290,9 +353,38 @@ body {
     text-align: center !important;
   }
 
+  #expected-invoices-table.expected-team-print-table th:nth-child(2),
+  #expected-invoices-table.expected-team-print-table td:nth-child(2),
+  #expected-invoices-table.expected-team-print-table th:nth-child(8),
+  #expected-invoices-table.expected-team-print-table td:nth-child(8),
+  #expected-invoices-table.expected-team-print-table th:nth-child(9),
+  #expected-invoices-table.expected-team-print-table td:nth-child(9),
+  #expected-invoices-table.expected-team-print-table th:nth-child(10),
+  #expected-invoices-table.expected-team-print-table td:nth-child(10),
+  #expected-invoices-table.expected-team-print-table th:nth-child(11) {
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(12),
+  #expected-invoices-table.expected-team-print-table th:nth-child(12),
+  #expected-invoices-table.expected-team-print-table td:nth-child(12) {
+    display: none !important;
+  }
+
   #expected-invoices-table.expected-team-print-table th:nth-child(11),
   #expected-invoices-table.expected-team-print-table td:nth-child(11) {
-    text-align: left !important;
+    text-align: center !important;
+    border-right: 1px solid #9ca3af !important;
+  }
+
+  #expected-invoices-table.expected-team-print-table td:nth-child(11) {
+    white-space: normal !important;
+    overflow: visible !important;
+    text-overflow: clip !important;
+    overflow-wrap: anywhere !important;
+    word-break: break-word !important;
   }
 
   #expected-invoices-table.expected-team-print-table .expected-project-summary-row {
@@ -302,7 +394,7 @@ body {
   }
 
   #expected-invoices-table.expected-team-print-table .expected-project-summary-row td {
-    font-size: 9.5pt !important;
+    font-size: var(--print-summary-font-size, 9.2pt) !important;
     font-weight: 800 !important;
     color: #111827 !important;
   }
@@ -320,15 +412,17 @@ body {
     display: none !important;
   }
 
+  #expected-invoices-table.expected-team-print-table .print-hide-col {
+    display: none !important;
+  }
+
   .expected-print-signatures {
     display: grid !important;
     grid-template-columns: repeat(3, 1fr);
     gap: 18mm;
-    position: fixed !important;
-    left: 12mm !important;
-    right: 12mm !important;
-    bottom: 5mm !important;
-    margin-top: 0 !important;
+    position: static !important;
+    width: 100% !important;
+    margin-top: 2mm !important;
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     font-family: 'Times New Roman', Times, serif !important;

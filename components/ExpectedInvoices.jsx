@@ -812,6 +812,60 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const printPeriods = [...new Set(filteredInvoices.map(inv => getInvoicePeriod(inv)).filter(Boolean))];
     const printPeriodTitle = printPeriods.length === 1 ? printPeriods[0] : 'TẤT CẢ CÁC KỲ';
+    const hasLongPrintNotes = filteredInvoices.some(inv => (inv.note || '').trim().length > 12);
+    const teamPrintLayout = useMemo(() => {
+        if (activeSubTab !== 'team' && activeSubTab !== 'history_team') {
+            return {
+                rowCount: 10,
+                fontSize: 8.2,
+                headerFontSize: 8.2,
+                summaryFontSize: 9.2,
+                cellPaddingY: 3,
+                cellPaddingX: 6,
+            };
+        }
+
+        const grouped = filteredInvoices.reduce((acc, inv) => {
+            const period = inv.payment_period || inv.phase || 'Chưa phân kỳ';
+            if (!acc[period]) acc[period] = {};
+            const proj = inv.projectName || 'Khác';
+            if (!acc[period][proj]) acc[period][proj] = [];
+            acc[period][proj].push(inv);
+            return acc;
+        }, {});
+
+        const rowCount = Object.entries(grouped).reduce((sum, [period, projectGroups]) => {
+            if (collapsedPhases[period]) return sum;
+
+            const periodRows = Object.values(projectGroups).flat();
+            const visiblePeriodRows = hideZeroRowsOnPrint
+                ? periodRows.filter(inv => (parseFloat(inv.teamValue) || 0) > 0)
+                : periodRows;
+
+            let periodCount = visiblePeriodRows.length > 0 ? 1 : 0; // Period header
+            Object.values(projectGroups).forEach(rows => {
+                const visibleRows = hideZeroRowsOnPrint
+                    ? rows.filter(inv => (parseFloat(inv.teamValue) || 0) > 0)
+                    : rows;
+                if (visibleRows.length > 0) {
+                    periodCount += 1 + visibleRows.length; // Project summary + rows
+                }
+            });
+
+            return sum + periodCount + 1; // Period total
+        }, 1); // Table header
+
+        if (rowCount >= 58) {
+            return { rowCount, fontSize: 5.9, headerFontSize: 6.4, summaryFontSize: 7.2, cellPaddingY: 1, cellPaddingX: 4 };
+        }
+        if (rowCount >= 48) {
+            return { rowCount, fontSize: 6.4, headerFontSize: 6.8, summaryFontSize: 7.7, cellPaddingY: 1, cellPaddingX: 4 };
+        }
+        if (rowCount >= 40) {
+            return { rowCount, fontSize: 7.0, headerFontSize: 7.4, summaryFontSize: 8.3, cellPaddingY: 2, cellPaddingX: 5 };
+        }
+        return { rowCount, fontSize: 8.2, headerFontSize: 8.2, summaryFontSize: 9.2, cellPaddingY: 3, cellPaddingX: 6 };
+    }, [activeSubTab, filteredInvoices, collapsedPhases, hideZeroRowsOnPrint]);
 
     const customerDebts = useMemo(() => {
         if (activeSubTab !== 'customer_debt') return [];
@@ -962,7 +1016,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         <div className="w-full mx-auto animate-in fade-in duration-500 font-sans text-slate-800 print:w-full print:max-w-none print:bg-white print:text-black">
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
-                    @page { size: A3 landscape; margin: 10mm; }
+                    @page { size: A3 landscape; margin: 15mm; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
                     .print-table-container { overflow: visible !important; max-height: none !important; }
                 }
@@ -1499,42 +1553,34 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     )}
                     <table 
                         id="expected-invoices-table" 
-                        className={`w-full text-left border-collapse min-w-[1580px] sm:min-w-[1500px] [&_td]:align-middle [&_th]:align-middle [&_th]:h-14 [&_th]:leading-tight max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px] ${activeSubTab === 'team' || activeSubTab === 'history_team' ? 'expected-team-print-table' : ''}`}
+                        className={`w-full text-left border-collapse table-fixed min-w-[1580px] sm:min-w-[1500px] [&_td]:align-middle [&_th]:align-middle [&_th]:h-14 [&_th]:leading-tight [&_td]:leading-tight max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px] ${activeSubTab === 'team' || activeSubTab === 'history_team' ? 'expected-team-print-table' : ''} ${activeSubTab === 'customer_debt' ? 'expected-customer-debt-print-table' : ''}`}
                         style={{
-                            '--row-count': (activeSubTab === 'team' || activeSubTab === 'history_team') ? (
-                                1 + // Header
-                                Object.entries(filteredInvoices.reduce((acc, inv) => {
-                                    const period = inv.payment_period || inv.phase || 'Chưa phân kỳ';
-                                    if (!acc[period]) acc[period] = {};
-                                    const proj = inv.projectName || 'Khác';
-                                    if (!acc[period][proj]) acc[period][proj] = [];
-                                    acc[period][proj].push(inv);
-                                    return acc;
-                                }, {})).reduce((sum, [_, projs]) => {
-                                    return sum + 1 + // Period header
-                                        Object.values(projs).reduce((pSum, rows) => pSum + 1 + rows.length, 0) + // Project summary + data rows
-                                        1; // Period total
-                                }, 0) + 1 // Global total
-                            ) : 10
+                            '--row-count': teamPrintLayout.rowCount,
+                            '--print-font-size': `${teamPrintLayout.fontSize}pt`,
+                            '--print-header-font-size': `${teamPrintLayout.headerFontSize}pt`,
+                            '--print-summary-font-size': `${teamPrintLayout.summaryFontSize}pt`,
+                            '--print-cell-padding-y': `${teamPrintLayout.cellPaddingY}px`,
+                            '--print-cell-padding-x': `${teamPrintLayout.cellPaddingX}px`,
+                            '--print-note-width': hasLongPrintNotes ? '10%' : '7%',
                         }}
                     >
                         {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                             <colgroup>
-                                <col className="w-14" />
-                                <col className="w-80" />
-                                <col className="w-32" />
+                                <col className="w-12" />
+                                <col className="w-[320px]" />
                                 <col className="w-24" />
-                                <col className="w-36" />
-                                <col className="w-36" />
-                                <col className="w-36" />
                                 <col className="w-20" />
-                                <col className="w-28" />
+                                <col className="w-24" />
+                                <col className="w-24" />
                                 <col className="w-32" />
-                                <col className="w-36" />
-                                <col className="w-28" />
-                                {activeSubTab === 'history_team' && <col className="w-36" />}
+                                <col className="w-[190px]" />
+                                <col className="w-[110px]" />
+                                <col className="w-[110px]" />
+                                <col className={hasLongPrintNotes ? 'w-[150px]' : 'w-[110px]'} />
+                                <col className="w-[72px] print-hide-col" />
+                                {activeSubTab === 'history_team' && <col className="w-32" />}
+                                <col className="w-20 print-hide-col" />
                                 <col className="w-24 print-hide-col" />
-                                <col className="w-28 print-hide-col" />
                             </colgroup>
                         )}
                         <thead>
@@ -1563,7 +1609,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-3 font-black uppercase text-sm text-center">Số TK</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Ngân hàng</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Ghi chú</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center">Đợt</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center print:hidden">Đợt</th>
                                         {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-sm text-center w-36">Trạng thái duyệt</th>}
                                         <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">PDF</th>
                                         <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tác</th>
@@ -1780,17 +1826,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         return (
                                                         <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
-                                                            <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
+                                                            <td className={`p-4 text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0))}</td>
-                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
                                                             <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
-                                                            <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
-                                                            <td className={`p-4 text-sm max-w-[150px] truncate ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
-                                                            <td className={`p-4 text-sm font-medium ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
+                                                            <td className={`p-4 text-sm break-words ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
+                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap print:hidden ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
                                                             {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
                                                             <td className="p-4 text-center print:hidden">
                                                                 {teamPdfUrl ? (
@@ -1881,7 +1927,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
-                                                    <td></td>
+                                                    <td className="print:hidden"></td>
                                                     {activeSubTab === 'history_team' && <td></td>}
                                                     <td className="p-4 text-center print:hidden">
                                                         {periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url ? (
@@ -1902,7 +1948,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             </div>
                                                         )}
                                                     </td>
-                                                    <td></td>
+                                                    <td className="print:hidden"></td>
                                                 </tr>
                                             )}
                                         </React.Fragment>
