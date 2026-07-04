@@ -11,6 +11,13 @@ export const metadata = {
   description: "Hệ Thống Quản Lý Nội Bộ CB Pro",
 };
 
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 5,
+  userScalable: true,
+};
+
 export default function RootLayout({ children }) {
   return (
     <html

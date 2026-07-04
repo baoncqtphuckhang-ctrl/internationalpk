@@ -7,6 +7,7 @@ CREATE TABLE IF NOT EXISTS expected_invoices (
     "teamValue" NUMERIC,
     "accumulatedAdvance" NUMERIC,
     "teamName" TEXT,
+    "team_pdf_url" TEXT,
     "phase" TEXT,
     "note" TEXT,
     "is_completed" BOOLEAN DEFAULT false,

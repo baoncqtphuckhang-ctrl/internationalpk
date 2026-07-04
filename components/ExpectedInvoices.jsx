@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy, Upload, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -17,6 +17,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
     const [bulkAddMonth, setBulkAddMonth] = useState('');
     const [activeSubTab, setActiveSubTab] = useState('customer_debt');
+    const [uploadingPdfId, setUploadingPdfId] = useState(null);
+    const [confirmDeletePdf, setConfirmDeletePdf] = useState(null);
+    const [tableZoom, setTableZoom] = useState(1);
+    const [hideZeroRowsOnPrint, setHideZeroRowsOnPrint] = useState(true);
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -636,6 +640,101 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
+    const updateInvoicePdfUrl = (id, pdfUrl) => {
+        setInvoices(prev => prev.map(inv => (
+            inv.id === id ? { ...inv, team_pdf_url: pdfUrl } : inv
+        )));
+    };
+
+    const handleUploadTeamPdf = async (e, inv) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            if (showToast) showToast('Vui lòng chọn file PDF!', 'error');
+            e.target.value = '';
+            return;
+        }
+
+        setUploadingPdfId(inv.id);
+        try {
+            const originalName = file.name.replace(/\.[^/.]+$/, '') || 'team_pdf';
+            const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = (inv.projectName || 'project').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedTeam = (inv.teamName || 'team').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const fileStamp = `${file.lastModified}_${file.size}`;
+            const filePath = `${sanitizedProject}/team-values/${sanitizedTeam}_${inv.id}_${fileStamp}_${sanitizedName}.pdf`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, file, {
+                    cacheControl: '3600',
+                    upsert: false
+                });
+
+            if (uploadError) {
+                throw new Error(
+                    uploadError.message === 'Bucket not found'
+                        ? 'Không tìm thấy bucket "invoices". Hãy tạo bucket public tên "invoices" trong Supabase Storage.'
+                        : uploadError.message
+                );
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+
+            const { error } = await supabase
+                .from('expected_invoices')
+                .update({ team_pdf_url: publicUrl })
+                .eq('id', inv.id);
+
+            if (error) throw error;
+
+            updateInvoicePdfUrl(inv.id, publicUrl);
+            if (showToast) showToast('Tải lên PDF thành công!', 'success');
+        } catch (err) {
+            console.error('Error uploading team PDF:', err);
+            if (showToast) showToast(err.message || 'Lỗi khi tải lên PDF!', 'error');
+        } finally {
+            setUploadingPdfId(null);
+            e.target.value = '';
+        }
+    };
+
+    const handleDeleteTeamPdf = async (inv) => {
+        const pdfUrl = inv.team_pdf_url || inv.pdf_url;
+        try {
+            if (pdfUrl && pdfUrl.includes('/public/invoices/')) {
+                const parts = pdfUrl.split('/public/invoices/');
+                if (parts.length > 1) {
+                    const filePath = decodeURIComponent(parts[1]);
+                    const { error: storageError } = await supabase.storage.from('invoices').remove([filePath]);
+                    if (storageError) console.warn('Error deleting team PDF from storage:', storageError);
+                }
+            }
+
+            const { error } = await supabase
+                .from('expected_invoices')
+                .update({ team_pdf_url: null })
+                .eq('id', inv.id);
+
+            if (error) throw error;
+
+            updateInvoicePdfUrl(inv.id, null);
+            if (showToast) showToast('Đã xóa PDF!', 'success');
+        } catch (err) {
+            console.error('Error deleting team PDF:', err);
+            if (showToast) showToast(err.message || 'Lỗi khi xóa PDF!', 'error');
+        } finally {
+            setConfirmDeletePdf(null);
+        }
+    };
+
+    const changeTableZoom = (delta) => {
+        setTableZoom(prev => Math.min(1.25, Math.max(0.45, Number((prev + delta).toFixed(2)))));
+    };
+
     let filteredInvoices = invoices.filter(inv => {
         if (activeSubTab === 'invoice') {
             if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
@@ -950,6 +1049,43 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <option key={ph} value={ph}>{ph}</option>
                         ))}
                     </select>
+                </div>
+                {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
+                    <button
+                        type="button"
+                        onClick={() => setHideZeroRowsOnPrint(prev => !prev)}
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideZeroRowsOnPrint ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        title={hideZeroRowsOnPrint ? 'Khi in sẽ ẩn tổ đội có giá trị kỳ này bằng 0' : 'Khi in sẽ hiện cả tổ đội có giá trị kỳ này bằng 0'}
+                    >
+                        <EyeOff size={18} />
+                        <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
+                    </button>
+                )}
+                <div className="flex items-center justify-end gap-2 md:w-40">
+                    <button
+                        type="button"
+                        onClick={() => changeTableZoom(-0.1)}
+                        className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition"
+                        title="Thu nhỏ bảng"
+                    >
+                        <ZoomOut size={18} />
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => setTableZoom(1)}
+                        className="min-w-12 px-2 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-600 tabular-nums"
+                        title="Đưa bảng về 100%"
+                    >
+                        {Math.round(tableZoom * 100)}%
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => changeTableZoom(0.1)}
+                        className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition"
+                        title="Phóng to bảng"
+                    >
+                        <ZoomIn size={18} />
+                    </button>
                 </div>
             </div>
 
@@ -1306,7 +1442,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
                 <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)]">
-                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1400px] [&_td]:align-middle [&_th]:align-middle">
+                    <div style={{ zoom: tableZoom }}>
+                    <table id="expected-invoices-table" className="w-full text-left border-collapse min-w-[1500px] sm:min-w-[1400px] [&_td]:align-middle [&_th]:align-middle max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px]">
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-20">
                                 <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
@@ -1335,6 +1472,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ngân hàng</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider">Ghi chú</th>
                                         {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-xs tracking-wider text-center w-36">Trạng thái duyệt</th>}
+                                        <th className="p-4 font-black uppercase text-xs tracking-wider w-24 text-center print:hidden">PDF</th>
                                         <th className="p-4 font-black uppercase text-xs tracking-wider w-32 text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : (
@@ -1386,7 +1524,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 filteredInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeSubTab === 'invoice' ? 8 : 13} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={activeSubTab === 'invoice' ? 8 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     Object.entries(
@@ -1400,6 +1538,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         }, {})
                                     ).map(([period, projectGroups]) => {
                                         const periodInvoices = Object.values(projectGroups).flat();
+                                        const hasPrintablePeriodRows = periodInvoices.some(inv => (parseFloat(inv.teamValue) || 0) > 0);
                                         const isQsApproved = periodInvoices[0]?.qs_approved;
                                         const isKtApproved = periodInvoices[0]?.accountant_approved;
                                         const role = currentUser?.role?.toUpperCase();
@@ -1410,8 +1549,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
                                         return (
                                         <React.Fragment key={period}>
-                                            <tr className="bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10" onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
-                                                <td colSpan="14" className="p-4 py-5">
+                                            <tr className={`bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10 ${hideZeroRowsOnPrint && !hasPrintablePeriodRows ? 'print:hidden' : ''}`} onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
+                                                <td colSpan={activeSubTab === 'history_team' ? 15 : 14} className="p-4 py-5">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
                                                             <div className="p-1 bg-slate-800 rounded-md">
@@ -1517,9 +1656,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     if (aVal !== 0 && bVal === 0) return -1;
                                                     return 0;
                                                 });
+                                                const hasPrintableGroupRows = sortedGroupInvoices.some(inv => (parseFloat(inv.teamValue) || 0) > 0);
                                                 return (
                                                 <React.Fragment key={projName}>
-                                                    <tr className={`${color.bg} border-y ${color.border}`}>
+                                                    <tr className={`${color.bg} border-y ${color.border} ${hideZeroRowsOnPrint && !hasPrintableGroupRows ? 'print:hidden' : ''}`}>
                                                         <td colSpan="2"></td>
                                                         <td 
                                                             className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
@@ -1533,15 +1673,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0)), 0))}</td>
-                                                        <td colSpan="6"></td>
+                                                        <td colSpan={activeSubTab === 'history_team' ? 7 : 6}></td>
                                                     </tr>
                                                     {sortedGroupInvoices.map((inv, idx) => {
-                                                        const isAcctUser = currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN');
+                                                        const role = currentUser?.role?.toUpperCase();
+                                                        const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
+                                                        const canDeleteTeamRow = role === 'ADMIN' || role === 'QS';
                                                         const isZero = !parseFloat(inv.teamValue);
+                                                        const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
+                                                        const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
 
                                                         return (
-                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
+                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.phase || '-'}</td>
                                                             <td className={`p-4 text-sm font-bold ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
@@ -1556,6 +1700,32 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className={`p-4 text-sm max-w-[150px] truncate ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
                                                             {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
                                                             <td className="p-4 text-center print:hidden">
+                                                                {teamPdfUrl ? (
+                                                                    <div className="flex items-center justify-center gap-1.5">
+                                                                        <a href={teamPdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF">
+                                                                            <Eye size={16} />
+                                                                        </a>
+                                                                        <button onClick={() => setConfirmDeletePdf(inv)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="Xóa PDF">
+                                                                            <Trash2 size={16} />
+                                                                        </button>
+                                                                    </div>
+                                                                ) : (
+                                                                    <div className="relative group/upload flex items-center justify-center">
+                                                                        <input
+                                                                            type="file"
+                                                                            accept=".pdf,application/pdf"
+                                                                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                                            onChange={(e) => handleUploadTeamPdf(e, inv)}
+                                                                            disabled={uploadingPdfId === inv.id}
+                                                                            title="Tải lên PDF"
+                                                                        />
+                                                                        <button className={`p-1.5 rounded-lg transition border ${uploadingPdfId === inv.id ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Tải lên PDF">
+                                                                            <Upload size={16} className={uploadingPdfId === inv.id ? 'animate-bounce' : ''} />
+                                                                        </button>
+                                                                    </div>
+                                                                )}
+                                                            </td>
+                                                            <td className="p-4 text-center print:hidden">
                                                                 <div className="flex items-center justify-center gap-2">
                                                                     <button 
                                                                         onClick={() => !disableEdit && handleEdit(inv)} 
@@ -1565,7 +1735,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     >
                                                                         <Edit2 size={16} />
                                                                     </button>
-                                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                                    {canDeleteTeamRow && (
                                                                         <button onClick={() => setConfirmDeleteId(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" title="Xóa"><Trash2 size={16} /></button>
                                                                     )}
                                                                     {activeSubTab === 'history_team' && (
@@ -1655,6 +1825,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                         </tbody>
                     </table>
+                    </div>
                 </div>
             </div>
             
@@ -1665,6 +1836,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 type="danger"
                 onConfirm={confirmDelete}
                 onCancel={() => setConfirmDeleteId(null)}
+            />
+
+            <ConfirmModal
+                isOpen={!!confirmDeletePdf}
+                title="Xóa PDF"
+                message="Bạn có chắc chắn muốn xóa file PDF này khỏi dòng tổ đội không?"
+                confirmText="Xóa PDF"
+                type="danger"
+                onConfirm={() => confirmDeletePdf && handleDeleteTeamPdf(confirmDeletePdf)}
+                onCancel={() => setConfirmDeletePdf(null)}
             />
 
             <ConfirmModal

@@ -313,6 +313,8 @@ export default function Home() {
 
     const fetchData = async (showLoading = true) => {
         if (showLoading) setIsLoading(true);
+        const currentRole = currentUser?.role?.toUpperCase?.() || '';
+        const isAdminUser = currentRole === 'ADMIN';
         try {
             const { data: projData } = await supabase.from('projects').select('*').order('name');
             setProjects(projData || []);
@@ -395,13 +397,17 @@ export default function Home() {
                 console.warn('Expected invoices table might not exist yet', e);
             }
 
-            try {
-                const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
-                if (!logsError) {
-                    setActivityLogs(logsData || []);
+            if (isAdminUser) {
+                try {
+                    const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
+                    if (!logsError) {
+                        setActivityLogs(logsData || []);
+                    }
+                } catch (e) {
+                    console.warn('Activity logs table might not exist yet', e);
                 }
-            } catch (e) {
-                console.warn('Activity logs table might not exist yet', e);
+            } else {
+                setActivityLogs([]);
             }
         } catch (error) {
             showToast('Lỗi kết nối Database!', 'error');
@@ -446,11 +452,35 @@ export default function Home() {
         if (!currentUser) return;
 
         let debounceTimer = null;
+        let isRefreshing = false;
+        let hasPendingRefresh = false;
+        const currentRole = currentUser?.role?.toUpperCase?.() || '';
+        const refreshDelay = currentRole === 'ACCOUNTANT' || currentRole.includes('TOÁN') ? 2500 : 1200;
+
+        const runRefresh = async () => {
+            if (typeof document !== 'undefined' && document.hidden) return;
+            if (isRefreshing) {
+                hasPendingRefresh = true;
+                return;
+            }
+
+            isRefreshing = true;
+            try {
+                await fetchData(false);
+            } finally {
+                isRefreshing = false;
+                if (hasPendingRefresh) {
+                    hasPendingRefresh = false;
+                    debouncedFetch();
+                }
+            }
+        };
+
         const debouncedFetch = () => {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
-                fetchData(false);
-            }, 500);
+                runRefresh();
+            }, refreshDelay);
         };
 
         // Supabase Realtime: lắng nghe thay đổi trên các bảng quan trọng
