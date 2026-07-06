@@ -43,9 +43,15 @@ export const matchesWarehouseInventoryItem = (t, criteria, excludeId = null) => 
     return true;
 };
 
-export default function MaterialWarehouse({ currentUser, projects, showToast }) {
+export default function MaterialWarehouse({ currentUser, projects, showToast, realtimeVersion }) {
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
+
+    useEffect(() => {
+        if (realtimeVersion > 0) {
+            fetchTransactions();
+        }
+    }, [realtimeVersion]);
     const [view, setView] = useState('inventory'); // 'inventory', 'history'
     const [showModal, setShowModal] = useState(false);
     const [modalType, setModalType] = useState('NHẬP'); // 'NHẬP' hoặc 'XUẤT'

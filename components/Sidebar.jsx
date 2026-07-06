@@ -7,6 +7,7 @@ import {
     ChevronRight, Building2, Menu, X, Trash2,
     ClipboardList, Package, Download, FileSpreadsheet, Settings, Lock, Search, Bell, CheckCheck
 } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 const normalizeRoleName = (value = '') =>
     value
@@ -52,6 +53,7 @@ export default function Sidebar({
     const [deleteProjectConfirmName, setDeleteProjectConfirmName] = useState(null);
     const [deletePassword, setDeletePassword] = useState('');
     const [isNotificationsOpen, setIsNotificationsOpen] = useState(false);
+    const [isClearNotificationsModalOpen, setIsClearNotificationsModalOpen] = useState(false);
 
     const isThuKy = currentUser?.role?.toUpperCase() === 'THƯ KÝ';
     const isKeToanThue = currentUser?.role?.toUpperCase() === 'KẾ TOÁN THUẾ';
@@ -207,11 +209,7 @@ export default function Sidebar({
                                         {notifications.length > 0 && (
                                             <button
                                                 type="button"
-                                                onClick={() => {
-                                                    if (window.confirm('Bạn muốn xóa toàn bộ thông báo hiện có?')) {
-                                                        onClearNotifications?.();
-                                                    }
-                                                }}
+                                                onClick={() => setIsClearNotificationsModalOpen(true)}
                                                 className="text-[10px] text-red-300 hover:text-red-100 font-bold flex items-center gap-1"
                                             >
                                                 <Trash2 size={12} /> Xóa hết
@@ -426,6 +424,18 @@ export default function Sidebar({
                     </div>
                 </nav>
             </aside>
+
+            <ConfirmModal
+                isOpen={isClearNotificationsModalOpen}
+                title="Xóa thông báo"
+                message="Bạn có chắc chắn muốn xóa toàn bộ thông báo hiện có? Hành động này không thể hoàn tác."
+                confirmText="Xóa tất cả"
+                onConfirm={() => {
+                    onClearNotifications?.();
+                    setIsClearNotificationsModalOpen(false);
+                }}
+                onCancel={() => setIsClearNotificationsModalOpen(false)}
+            />
         </>
     );
 }

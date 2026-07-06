@@ -193,6 +193,8 @@ export default function Home() {
     const [activityLogs, setActivityLogs] = useState([]);
     const [notifications, setNotifications] = useState([]);
     const [notificationsAvailable, setNotificationsAvailable] = useState(false);
+    const [realtimeVersion, setRealtimeVersion] = useState(0);
+    const [lastToastNotificationId, setLastToastNotificationId] = useState(null);
     const [highlightId, setHighlightId] = useState(null);
     
     const showToast = (msg, type = 'success') => {
@@ -433,7 +435,7 @@ export default function Home() {
     };
 
     const getCostAccountingRecipients = () =>
-        getNotificationRecipients(roleName => roleName.includes('KE TOAN CHI PHI'), 'KẾ TOÁN CHI PHÍ');
+        getNotificationRecipients(roleName => roleName.includes('KE TOAN') && !roleName.includes('THUE'), 'KẾ TOÁN');
 
     const getAdminRecipients = () =>
         getNotificationRecipients(roleName => roleName === 'ADMIN', 'ADMIN');
@@ -597,11 +599,34 @@ export default function Home() {
             }
 
             try {
-                const { data: notificationData, error: notificationError } = await supabase
+                const notificationFilters = [
+                    currentUser?.username ? `recipient_username.eq.${currentUser.username}` : null,
+                    currentUser?.role ? `recipient_role.eq.${currentUser.role}` : null,
+                    'recipient_role.eq.ALL',
+                    currentUser?.username ? `created_by.eq.${currentUser.username}` : null
+                ].filter(Boolean).join(',');
+
+                let notificationQuery = supabase
                     .from('notifications')
                     .select('*')
                     .order('created_at', { ascending: false })
                     .limit(100);
+
+                if (notificationFilters) {
+                    notificationQuery = notificationQuery.or(notificationFilters);
+                }
+
+                let { data: notificationData, error: notificationError } = await notificationQuery;
+
+                if (notificationError) {
+                    const fallback = await supabase
+                        .from('notifications')
+                        .select('*')
+                        .order('created_at', { ascending: false })
+                        .limit(500);
+                    notificationData = fallback.data;
+                    notificationError = fallback.error;
+                }
 
                 if (!notificationError) {
                     setNotificationsAvailable(true);
@@ -709,7 +734,6 @@ export default function Home() {
         const refreshDelay = currentRole === 'ACCOUNTANT' || currentRole.includes('TOÁN') ? 2500 : 1200;
 
         const runRefresh = async () => {
-            if (typeof document !== 'undefined' && document.hidden) return;
             if (isRefreshing) {
                 hasPendingRefresh = true;
                 return;
@@ -731,6 +755,7 @@ export default function Home() {
             if (debounceTimer) clearTimeout(debounceTimer);
             debounceTimer = setTimeout(() => {
                 runRefresh();
+                setRealtimeVersion(v => v + 1);
             }, refreshDelay);
         };
 
@@ -744,8 +769,13 @@ export default function Home() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, debouncedFetch)
             .subscribe();
 
+        const pollingInterval = setInterval(() => {
+            debouncedFetch();
+        }, 15000);
+
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
+            clearInterval(pollingInterval);
             supabase.removeChannel(channel);
         };
     }, [currentUser]);
@@ -758,6 +788,7 @@ export default function Home() {
             if (notificationTimer) clearTimeout(notificationTimer);
             notificationTimer = setTimeout(() => {
                 fetchData(false);
+                setRealtimeVersion(v => v + 1);
             }, 500);
         };
 
@@ -775,6 +806,23 @@ export default function Home() {
             supabase.removeChannel(notificationChannel);
         };
     }, [currentUser, notificationsAvailable]);
+
+    useEffect(() => {
+        if (!currentUser || notifications.length === 0) return;
+
+        const latestUnread = notifications.find(item => {
+            const currentRoleName = normalizeRoleName(currentUser?.role);
+            const isRecipient = item.recipient_username === currentUser?.username ||
+                                normalizeRoleName(item.recipient_role) === currentRoleName ||
+                                normalizeRoleName(item.recipient_role) === 'ALL';
+            return isRecipient && !item.is_read;
+        });
+
+        if (!latestUnread || latestUnread.id === lastToastNotificationId) return;
+
+        setLastToastNotificationId(latestUnread.id);
+        showToast(latestUnread.title || 'Có thông báo mới', 'success');
+    }, [notifications, currentUser, lastToastNotificationId]);
 
     const [editTransaction, setEditTransaction] = useState(null);
     const [incomeTableCols, setIncomeTableCols] = useState({
@@ -1414,6 +1462,17 @@ export default function Home() {
                 status: STATUSES.WAITING_QS
             }).eq('id', id);
             if (error) throw error;
+            if (isFieldDnttCreatorRole(currentUser?.role)) {
+                await createNotifications({
+                    recipients: getCostAccountingRecipients(),
+                    title: 'ĐNTT được cập nhật',
+                    message: `${currentUser?.name || currentUser?.username} vừa cập nhật ${data.doc_type} cho công trình ${data.project_name} - ${data.recipient || 'chưa có đối tượng'} (${formatCurrency(data.total_amount || 0)}).`,
+                    type: 'dntt_updated',
+                    sourceTable: 'approval_requests',
+                    sourceId: id,
+                    projectName: data.project_name
+                });
+            }
             showToast('Đã cập nhật và gửi lại!');
             logActivity('Cập nhật', 'Đề nghị thanh toán', `Cập nhật yêu cầu: ${data.doc_type} - ${data.recipient}`, data.project_name);
             await fetchData();
@@ -1615,6 +1674,17 @@ export default function Home() {
                     created_by: currentUser.username
                 }).eq('id', targetId);
                 if (error) throw error;
+                if (isFieldDnttCreatorRole(currentUser?.role)) {
+                    await createNotifications({
+                        recipients: getCostAccountingRecipients(),
+                        title: 'ĐNTT vật tư được cập nhật',
+                        message: `${currentUser?.name || currentUser?.username} vừa cập nhật ${dnttPayload.doc_type} cho công trình ${dnttPayload.project_name} - ${dnttPayload.recipient || 'chưa có đối tượng'} (${formatCurrency(dnttPayload.total_amount || 0)}).`,
+                        type: 'dntt_updated',
+                        sourceTable: 'approval_requests',
+                        sourceId: targetId,
+                        projectName: dnttPayload.project_name
+                    });
+                }
                 showToast('Đã cập nhật lại yêu cầu phê duyệt!');
                 logActivity('Sửa', 'Đề nghị thanh toán', `Sửa đơn đặt hàng vật tư: ${dnttPayload.doc_type}`, dnttPayload.project_name);
             } else {
@@ -2205,7 +2275,7 @@ export default function Home() {
 
                 {activeTab === 'materials' && (
                     <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
-                        <div className="flex gap-4 border-b sticky top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-0 px-2 rounded-t-xl mb-4 shadow-sm overflow-x-auto whitespace-nowrap scrollbar-none">
+                        <div className="flex gap-4 border-b sticky top-[56px] md:top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-2 px-2 rounded-t-xl mb-4 shadow-sm overflow-x-auto whitespace-nowrap custom-scrollbar">
                             <button onClick={() => setMaterialSubTab('catalog')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
@@ -2219,6 +2289,7 @@ export default function Home() {
                                 currentUser={currentUser} 
                                 projects={allowedProjects} 
                                 showToast={showToast} 
+                                realtimeVersion={realtimeVersion}
                             />
                         ) : materialSubTab === 'order' ? (
                                 <MaterialOrder 
@@ -2229,11 +2300,13 @@ export default function Home() {
                                     onCreateAccountingRequest={handleCreateAccountingRequest}
                                     dnttList={allowedDnttList}
                                     onUpdateAccountingRequest={handleUpdateAccountingRequest}
+                                    realtimeVersion={realtimeVersion}
                                 />
                         ) : materialSubTab === 'catalog' ? (
                                 <MaterialCatalog 
                                     projects={allowedProjects.filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ')} 
                                     showToast={showToast} 
+                                    realtimeVersion={realtimeVersion}
                                 />
                         ) : materialSubTab === 'manage-ho' ? (
                             <MaterialOrderManager 
@@ -2253,6 +2326,7 @@ export default function Home() {
                                 }}
                                 onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                                 refreshData={fetchData}
+                                realtimeVersion={realtimeVersion}
                             />
                         ) : (
                             <MaterialOrderManager 
@@ -2271,6 +2345,7 @@ export default function Home() {
                                 }}
                                 onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                                 refreshData={fetchData}
+                                realtimeVersion={realtimeVersion}
                             />
                         )}
                     </div>

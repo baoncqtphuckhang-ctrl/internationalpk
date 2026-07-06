@@ -38,9 +38,15 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false, realtimeVersion }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
+
+    useEffect(() => {
+        if (realtimeVersion > 0) {
+            fetchOrders();
+        }
+    }, [realtimeVersion]);
     const [isLoading, setIsLoading] = useState(false);
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [searchTerm, setSearchTerm] = useState('');

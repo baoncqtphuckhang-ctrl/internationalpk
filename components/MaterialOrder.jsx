@@ -86,9 +86,15 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest }) {
+export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion }) {
     const [view, setView] = useState('list'); // 'list', 'create', 'detail'
     const [orders, setOrders] = useState([]);
+
+    useEffect(() => {
+        if (realtimeVersion > 0) {
+            fetchOrders();
+        }
+    }, [realtimeVersion]);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [showSqlModal, setShowSqlModal] = useState(false);
@@ -375,6 +381,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         }
 
         try {
+            let savedOrderId = formData.id;
             if (isDbStorage) {
                 if (formData.id) {
                     const { error } = await supabase
@@ -384,10 +391,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     if (error) throw error;
                     showToast('Cập nhật đơn đặt hàng thành công!');
                 } else {
-                    const { error } = await supabase
+                    const { data: insertedOrder, error } = await supabase
                         .from('material_orders')
-                        .insert([payload]);
+                        .insert([payload])
+                        .select('id')
+                        .single();
                     if (error) throw error;
+                    savedOrderId = insertedOrder?.id || null;
                     showToast('Lưu đơn đặt hàng thành công!');
                 }
             } else {
@@ -413,7 +423,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             const selectedProj = projects.find(p => p.name === formData.project_name);
             const isMainContractor = selectedProj?.project_type === 'TỔNG THẦU MUA HỘ';
 
-            if ((onCreateAccountingRequest || onUpdateAccountingRequest) && !isMainContractor) {
+            if ((onCreateAccountingRequest || onUpdateAccountingRequest) && !isMainContractor && isDbStorage) {
                 const itemsList = [];
                 formData.categories.forEach(cat => {
                     cat.items.forEach(it => {
@@ -445,13 +455,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             paymentMethod: 'chuyen_khoan',
                             orderPhase: formData.order_phase,
                             priceBatch: formData.configVersionId,
-                            material_order_id: formData.id,
+                            material_order_id: savedOrderId,
                             items: itemsList
                         })
                     };
                     
-                    if (onUpdateAccountingRequest && formData.id) {
-                        await onUpdateAccountingRequest(formData.id, dnttPayload);
+                    if (onUpdateAccountingRequest && savedOrderId) {
+                        await onUpdateAccountingRequest(savedOrderId, dnttPayload);
                     } else if (onCreateAccountingRequest) {
                         await onCreateAccountingRequest(dnttPayload);
                     }
