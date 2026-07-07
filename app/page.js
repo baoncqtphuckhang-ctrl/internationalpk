@@ -2276,7 +2276,7 @@ export default function Home() {
 
 
                 {activeTab === 'materials' && (
-                    <div className="flex flex-col h-full space-y-4 animate-in fade-in duration-500">
+                    <div className="flex flex-col space-y-4 animate-in fade-in duration-500">
                         <div className="flex gap-4 border-b sticky top-[56px] md:top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-2 px-2 rounded-t-xl mb-4 shadow-sm overflow-x-auto whitespace-nowrap custom-scrollbar">
                             <button onClick={() => setMaterialSubTab('catalog')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>

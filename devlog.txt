@@ -1,0 +1,10 @@
+
+> misa-pro@0.1.0 dev
+> next dev -p 9999
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:9999
+- Network:       http://192.168.10.154:9999
+- Environments: .env.local
+✓ Ready in 629ms
+
