@@ -519,7 +519,9 @@ export default function Home() {
         try {
             const { data: projData } = await supabase.from('projects').select('*').order('name');
             setProjects(projData || []);
-            if (projData?.length > 0 && !selectedProject) setSelectedProject(projData[0].name);
+            if (projData?.length > 0) {
+                setSelectedProject(prev => prev ? prev : projData[0].name);
+            }
 
             const details = {};
             projData?.forEach(p => {
