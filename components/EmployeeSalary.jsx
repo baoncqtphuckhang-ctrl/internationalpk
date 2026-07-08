@@ -1070,7 +1070,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const overtimeDays = (overtimeHours * 2) / 8;
         actual += overtimeDays;
         
-        const total_actual_salary_8_raw = (total_income_5 / std) * actual;
+        const total_actual_salary_8_raw = (basic / std) * actual + phone + parking + makeup + gondola + laptop;
         const total_actual_salary_8 = Math.ceil(total_actual_salary_8_raw / 1000) * 1000;
         
         const ins_sal = Number(emp.insurance_salary) || 0;
