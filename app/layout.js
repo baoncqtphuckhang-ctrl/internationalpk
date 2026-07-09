@@ -13,8 +13,9 @@ export const metadata = {
 
 export const viewport = {
   width: "device-width",
-  initialScale: 1,
-  maximumScale: 5,
+  initialScale: 0.8,
+  minimumScale: 0.5,
+  maximumScale: 5.0,
   userScalable: true,
 };
 

@@ -184,7 +184,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
     };
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 font-sans">
+        <div className="w-full animate-in fade-in duration-500 font-sans">
             <header className="mb-8 flex justify-between items-center">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">

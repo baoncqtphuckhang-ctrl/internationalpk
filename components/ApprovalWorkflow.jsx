@@ -450,7 +450,7 @@ export default function ApprovalWorkflow({
     });
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+        <div className="w-full animate-in fade-in duration-500">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 print:hidden">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -507,7 +507,18 @@ export default function ApprovalWorkflow({
                         <div className="flex"><span className="whitespace-nowrap mr-2 font-bold">Công trình:</span>
                             <div className="flex-1 border-b border-dotted border-gray-400 relative group">
                                 <input type="text" value={dnttData.project} readOnly className="w-full outline-none bg-transparent cursor-pointer font-bold text-blue-700" placeholder="Chọn công trình..." />
-                                <select name="project" value={dnttData.project} onChange={handleDnttChange} className="absolute inset-0 opacity-0 cursor-pointer w-full"><option value="">-- Chọn công trình --</option>{projects.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}</select>
+                                <select name="project" value={dnttData.project} onChange={handleDnttChange} className="absolute inset-0 opacity-0 cursor-pointer w-full">
+                                    <option value="">-- Chọn công trình --</option>
+                                    {projects.map(p => {
+                                        const isCompleted = p.status === 'Finish';
+                                        const isCurrentProject = dnttData.project === p.name;
+                                        return (
+                                            <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                                {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                            </option>
+                                        );
+                                    })}
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -1443,7 +1454,7 @@ export default function ApprovalWorkflow({
                                     <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
                                         {(() => {
                                             const creatorUsername = printItem.created_by || currentUser?.username;
-                                            const creator = usersList?.find(u => u.username === creatorUsername) || (currentUser?.username === creatorUsername ? currentUser : null);
+                                            const creator = (currentUser?.username === creatorUsername ? currentUser : usersList?.find(u => u.username === creatorUsername)) || null;
                                             const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
                                             const roleLabel = printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 

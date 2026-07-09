@@ -109,7 +109,7 @@ export default function PartnerDebts({
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'KẾ TOÁN TRƯỞNG', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase());
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500">
+        <div className="w-full animate-in fade-in duration-500">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -207,7 +207,15 @@ export default function PartnerDebts({
                             <div>
                                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Công Trình</label>
                                 <select name="project_name" value={formData.project_name} onChange={handleFormChange} className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold focus:border-blue-500 outline-none">
-                                    {projects.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
+                                    {projects.map(p => {
+                                        const isCompleted = p.status === 'Finish';
+                                        const isCurrentProject = formData.project_name === p.name;
+                                        return (
+                                            <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                                {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                             </div>
                             <div>

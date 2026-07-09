@@ -53,13 +53,15 @@ const STATUSES = {
     APPROVED: 'Approved', REJECTED: 'Rejected', PAID: 'Paid', ACCOUNTED: 'Accounted'
 };
 
-const normalizeRoleName = (value = '') =>
-    value
+const normalizeRoleName = (value) => {
+    if (value === null || value === undefined) return '';
+    return value
         .toString()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase()
         .trim();
+};
 
 const MOCK_USERS = [
     { id: 'u1', username: 'admin', password: '0000', role: ROLES.ADMIN, name: 'Quản trị hệ thống', isLocked: false },
@@ -120,7 +122,22 @@ export default function Home() {
         }
     }, [usersList, isUsersLoaded]);
 
-    const [currentUser, setCurrentUser] = useState(null);
+    const [currentUser, setCurrentUser] = useState(() => {
+        if (typeof window !== 'undefined') {
+            const saved = localStorage.getItem('currentUser');
+            if (saved) {
+                try {
+                    return JSON.parse(saved);
+                } catch (e) {}
+            }
+        }
+        return null;
+    });
+    const [isClient, setIsClient] = useState(false);
+
+    useEffect(() => {
+        setIsClient(true);
+    }, []);
 
 
 
@@ -390,6 +407,7 @@ export default function Home() {
             await handleSaveSystemConfig(newConfig);
         }
         setCurrentUser(user);
+        localStorage.setItem('currentUser', JSON.stringify(user));
         setActiveTab('home');
     };
 
@@ -518,9 +536,16 @@ export default function Home() {
         const isAdminUser = currentRole === 'ADMIN';
         try {
             const { data: projData } = await supabase.from('projects').select('*').order('name');
-            setProjects(projData || []);
-            if (projData?.length > 0) {
-                setSelectedProject(prev => prev ? prev : projData[0].name);
+            const sortedProjData = (projData || []).sort((a, b) => {
+                const isCompletedA = a.status === 'Finish';
+                const isCompletedB = b.status === 'Finish';
+                if (isCompletedA && !isCompletedB) return 1;
+                if (!isCompletedA && isCompletedB) return -1;
+                return (a.name || '').localeCompare(b.name || '');
+            });
+            setProjects(sortedProjData);
+            if (sortedProjData.length > 0) {
+                setSelectedProject(prev => prev ? prev : sortedProjData[0].name);
             }
 
             const details = {};
@@ -540,7 +565,8 @@ export default function Home() {
                     chtName: p.cht_name || '',
                     chtPhone: p.cht_phone || '',
                     projectType: p.project_type || 'TRỰC TIẾP ORDER',
-                    plhds: plhdArray
+                    plhds: plhdArray,
+                    status: p.status || 'Doing'
                 };
             });
             setProjectDetails(details);
@@ -1014,7 +1040,8 @@ export default function Home() {
                         address: data.address,
                         cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
                         cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                        project_type: data.project_type || 'TRỰC TIẾP ORDER'
+                        project_type: data.project_type || 'TRỰC TIẾP ORDER',
+                        status: data.status || 'Doing'
                     }]);
                     if (insertError) {
                         console.error('Insert error during rename:', insertError);
@@ -1045,7 +1072,8 @@ export default function Home() {
                         address: data.address,
                         cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
                         cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                        project_type: data.project_type || 'TRỰC TIẾP ORDER'
+                        project_type: data.project_type || 'TRỰC TIẾP ORDER',
+                        status: data.status || 'Doing'
                     }).eq('name', data.original_name || data.name);
                     if (error) throw error;
                 }
@@ -1060,7 +1088,8 @@ export default function Home() {
                     address: data.address,
                     cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
                     cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                    project_type: data.project_type || 'TRỰC TIẾP ORDER'
+                    project_type: data.project_type || 'TRỰC TIẾP ORDER',
+                    status: data.status || 'Doing'
                 }]);
                 if (error) throw error;
             }
@@ -2155,6 +2184,14 @@ export default function Home() {
         };
     };
 
+    if (!isClient) {
+        return (
+            <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-500"></div>
+            </div>
+        );
+    }
+
     if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} systemConfig={systemConfig} />;
 
     return (
@@ -2173,7 +2210,10 @@ export default function Home() {
                 projects={allowedProjects}
                 selectedProject={selectedProject}
                 setSelectedProject={setSelectedProject}
-                handleLogout={() => setCurrentUser(null)}
+                handleLogout={() => {
+                    setCurrentUser(null);
+                    localStorage.removeItem('currentUser');
+                }}
                 canViewDashboard={canViewDashboard}
                 canViewReports={canViewReports}
                 canInputData={canInputData}

@@ -9,13 +9,15 @@ import {
 } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
-const normalizeRoleName = (value = '') =>
-    value
+const normalizeRoleName = (value) => {
+    if (value === null || value === undefined) return '';
+    return value
         .toString()
         .normalize('NFD')
         .replace(/[\u0300-\u036f]/g, '')
         .toUpperCase()
         .trim();
+};
 
 export default function Sidebar({ 
     currentUser, 

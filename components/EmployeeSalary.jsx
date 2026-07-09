@@ -387,9 +387,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
 
     useEffect(() => {
         if (!initialLoaded) return;
-        try {
-            localStorage.setItem('misa_draft_records', JSON.stringify(draftRecords));
-        } catch (e) {}
+        const timer = setTimeout(() => {
+            try {
+                localStorage.setItem('misa_draft_records', JSON.stringify(draftRecords));
+            } catch (e) {}
+        }, 500);
+        return () => clearTimeout(timer);
     }, [draftRecords, initialLoaded]);
 
     useEffect(() => {
@@ -1920,9 +1923,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
                         >
                             <option value="">-- Chọn công trình --</option>
-                            {projects.map(p => (
-                                <option key={p.name} value={p.name}>{p.name}</option>
-                            ))}
+                            {projects.map(p => {
+                                 const isCompleted = p.status === 'Finish';
+                                 const isCurrentProject = salaryTxModal.selectedProject === p.name;
+                                 return (
+                                     <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                         {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                     </option>
+                                );
+                            })}
                         </select>
                     </div>
                     <div className="p-4 bg-slate-50 flex justify-end gap-3">
@@ -2099,7 +2108,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     {activeTab !== 'history' && !viewingHistoryId ? (
                         <div className="flex items-center gap-2 border border-slate-200 rounded-xl p-1 bg-white shadow-sm">
                             <button 
-                                onClick={() => setCreatePeriodModal({ isOpen: true, periodName: '' })}
+                                onClick={() => {
+                                    const draftKeys = Object.keys(draftRecords).sort().reverse();
+                                    const historyKeys = Object.keys(historyRecords).sort().reverse();
+                                    const defaultCopy = viewingHistoryId || draftKeys[0] || historyKeys[0] || '';
+                                    setCreatePeriodModal({ isOpen: true, periodName: '', copyFrom: defaultCopy });
+                                }}
                                 className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg text-sm font-bold transition flex items-center gap-1 shadow-sm"
                                 title="Tạo kỳ lương mới"
                             >
@@ -2470,9 +2484,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                         className="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 transition"
                                     >
                                         <option value="">-- Chọn công trình --</option>
-                                        {projects.map(p => (
-                                            <option key={p.name} value={p.name}>{p.name}</option>
-                                        ))}
+                                        {projects.map(p => {
+                                            const isCompleted = p.status === 'Finish';
+                                            const isCurrentProject = (paymentModal.allocations[0]?.project_name || '') === p.name;
+                                            return (
+                                                <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                                    {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                                </option>
+                                            );
+                                        })}
                                     </select>
                                 </div>
                             ) : (
@@ -2490,9 +2510,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                     className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500 transition"
                                                 >
                                                     <option value="">-- Chọn công trình --</option>
-                                                    {projects.map(p => (
-                                                        <option key={p.name} value={p.name}>{p.name}</option>
-                                                    ))}
+                                                    {projects.map(p => {
+                                                        const isCompleted = p.status === 'Finish';
+                                                        const isCurrentProject = alloc.project_name === p.name;
+                                                        return (
+                                                            <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                                                {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                                            </option>
+                                                        );
+                                                    })}
                                                 </select>
                                             </div>
                                             <div className="w-32">

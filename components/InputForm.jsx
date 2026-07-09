@@ -556,7 +556,15 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 onChange={(e) => handleChange('project_name', e.target.value)}
                                 className={inputCls('project_name')}
                             >
-                                {projects.map(p => <option key={p.id} value={p.name}>{p.name}</option>)}
+                                {projects.map(p => {
+                                    const isCompleted = p.status === 'Finish';
+                                    const isCurrentProject = formData.project_name === p.name;
+                                    return (
+                                        <option key={p.id} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                            {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                        </option>
+                                    );
+                                })}
                             </select>
                             {errorMsg('project_name')}
                         </div>

@@ -825,7 +825,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     });
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 pb-16">
+        <div className="w-full animate-in fade-in duration-500 pb-16">
             
             {/* SQL Banner for Local Storage */}
             {!isDbStorage && !isLoading && (
@@ -1069,9 +1069,15 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                     required
                                 >
-                                    {projects.map(p => (
-                                        <option key={p.name} value={p.name}>{p.name}</option>
-                                    ))}
+                                    {projects.map(p => {
+                                        const isCompleted = p.status === 'Finish';
+                                        const isCurrentProject = formData.project_name === p.name;
+                                        return (
+                                            <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
+                                                {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                            </option>
+                                        );
+                                    })}
                                 </select>
                             </div>
                             

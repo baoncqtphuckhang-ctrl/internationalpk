@@ -97,12 +97,18 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
                             <div 
                                 key={idx}
                                 className="px-4 py-3 hover:bg-slate-50 cursor-pointer flex items-center justify-between group border-b border-slate-50 last:border-0"
-                                onClick={() => handleSelect(item)}
+                                onMouseDown={(e) => {
+                                    e.preventDefault();
+                                    handleSelect(item);
+                                }}
                             >
                                 <span className="text-sm font-semibold text-slate-700">{item}</span>
                                 {history.includes(item) && (
                                     <button 
-                                        onClick={(e) => handleDelete(e, item)}
+                                        onMouseDown={(e) => {
+                                            e.preventDefault();
+                                            handleDelete(e, item);
+                                        }}
                                         className="text-slate-300 hover:text-red-500 hover:bg-red-50 p-1 rounded transition opacity-0 group-hover:opacity-100"
                                         title="Xóa khỏi lịch sử"
                                     >

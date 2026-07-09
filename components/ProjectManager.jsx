@@ -9,6 +9,12 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     const [isAdding, setIsAdding] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [viewMode, setViewMode] = useState(() => {
+        if (typeof window !== 'undefined') {
+            return localStorage.getItem('project_view_mode') || 'grid';
+        }
+        return 'grid';
+    });
     const [formData, setFormData] = useState({
         original_name: '',
         name: '',
@@ -19,16 +25,12 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         cht_list: [{ name: '', phone: '' }],
         project_type: 'TRỰC TIẾP ORDER',
         debt_to_collect: 0,
-        plhd_list: []
+        plhd_list: [],
+        status: 'Doing'
     });
 
-    const [currentPage, setCurrentPage] = useState(1);
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectName: '', password: '' });
-    const itemsPerPage = 6;
 
-    useEffect(() => {
-        setCurrentPage(1);
-    }, [searchTerm]);
 
     const handleOpenEdit = (p) => {
         const details = projectDetails[p.name] || {};
@@ -48,7 +50,8 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 : [{ name: '', phone: '' }],
             project_type: details.projectType || 'TRỰC TIẾP ORDER',
             debt_to_collect: details.debtToCollect || 0,
-            plhd_list: p.plhds || []
+            plhd_list: p.plhds || [],
+            status: p.status || 'Doing'
         });
         setIsAdding(true);
     };
@@ -58,7 +61,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         onUpsertProject(formData, !!editingProject);
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [] });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing' });
     };
 
     const handleDelete = (projectName) => {
@@ -80,8 +83,14 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     };
 
 
-    // Sắp xếp theo thời gian từ gần tới xa (Mới nhất xếp đầu)
+    // Sắp xếp: Đang thi công trước (mới nhất đầu), Đã hoàn thành xếp ở cuối
     const sortedProjects = [...projects].sort((a, b) => {
+        const isCompletedA = a.status === 'Finish';
+        const isCompletedB = b.status === 'Finish';
+        
+        if (isCompletedA && !isCompletedB) return 1;
+        if (!isCompletedA && isCompletedB) return -1;
+
         const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
         const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
         if (dateB !== dateA) return dateB - dateA;
@@ -100,12 +109,9 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     });
 
     const totalItems = filteredProjects.length;
-    const totalPages = Math.ceil(totalItems / itemsPerPage);
-    const startIndex = (currentPage - 1) * itemsPerPage;
-    const paginatedProjects = filteredProjects.slice(startIndex, startIndex + itemsPerPage);
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 relative">
+        <div className="w-full animate-in fade-in duration-500 relative">
             <header className="mb-8 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
@@ -116,7 +122,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [] });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing' });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -163,6 +169,17 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                 >
                                     <option value="TRỰC TIẾP ORDER">TRỰC TIẾP ORDER</option>
                                     <option value="TỔNG THẦU MUA HỘ">TỔNG THẦU MUA HỘ</option>
+                                </select>
+                            </div>
+                            <div className="space-y-2 md:col-span-2">
+                                <label className="block text-sm font-black text-slate-900">Trạng thái thi công</label>
+                                <select 
+                                    value={formData.status || 'Doing'}
+                                    onChange={(e) => setFormData({...formData, status: e.target.value})}
+                                    className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800 font-bold"
+                                >
+                                    <option value="Doing">⚙️ Doing (HOẠT ĐỘNG)</option>
+                                    <option value="Finish">🔒 Finish (KHÓA SỔ)</option>
                                 </select>
                             </div>
                             <div className="space-y-2 md:col-span-2">
@@ -332,8 +349,8 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             )}
 
             {!isAdding && (
-                <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
-                    <div className="flex-1 relative">
+                <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row items-center gap-4 justify-between">
+                    <div className="flex-1 w-full relative">
                         <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                         <input 
                             type="text"
@@ -343,129 +360,203 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition"
                         />
                     </div>
+                    <div className="flex items-center gap-2 border border-slate-200 rounded-2xl p-1 bg-slate-50">
+                        <button 
+                            onClick={() => { setViewMode('grid'); localStorage.setItem('project_view_mode', 'grid'); }}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${viewMode === 'grid' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Dạng Thẻ
+                        </button>
+                        <button 
+                            onClick={() => { setViewMode('table'); localStorage.setItem('project_view_mode', 'table'); }}
+                            className={`px-4 py-2 text-xs font-bold rounded-xl transition ${viewMode === 'table' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                            Dạng Bảng
+                        </button>
+                    </div>
                 </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredProjects.length === 0 ? (
-                    <div className="md:col-span-2 bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 font-bold">
-                        Không tìm thấy công trình nào khớp với từ khóa.
-                    </div>
-                ) : (
-                    paginatedProjects.map(p => {
-                        const details = projectDetails[p.name] || {};
-                        return (
-                            <div key={p.id} className="bg-white rounded-2xl border border-slate-200 p-6 hover:border-indigo-300 hover:shadow-md transition group">
-                                <div className="flex justify-between items-start mb-4">
-                                    <div className="bg-indigo-50 p-3 rounded-xl text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white transition">
-                                        <Building2 size={24} />
-                                    </div>
-                                    <div className="flex gap-1">
-                                        <button onClick={() => handleOpenEdit(p)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-indigo-50 transition" title="Sửa công trình">
-                                            <Edit3 size={18} />
-                                        </button>
-                                        {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                            <button onClick={() => handleDelete(p.name)} className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition" title="Xóa công trình">
-                                                <Trash2 size={18} />
-                                            </button>
-                                        )}
-                                    </div>
-                                </div>
-                                <h3 className="text-lg font-black text-slate-900 mb-1 flex items-center gap-2">
-                                    {p.name}
-                                </h3>
-                                <div className="mb-3">
-                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${details.projectType === 'TỔNG THẦU MUA HỘ' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
-                                        {details.projectType || 'TRỰC TIẾP ORDER'}
-                                    </span>
-                                </div>
-                                <div className="space-y-2 text-sm">
-                                    {details.address && (
-                                        <div className="flex justify-between border-b border-slate-50 pb-2">
-                                            <span className="text-slate-400 flex items-center gap-1">📍 Địa chỉ:</span>
-                                            <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.address}>{details.address}</span>
-                                        </div>
-                                    )}
-                                    {(details.chtName || details.chtPhone) && (
-                                        <div className="flex justify-between border-b border-slate-50 pb-2">
-                                            <span className="text-slate-400 flex items-center gap-1 whitespace-nowrap min-w-[140px]">👷 Chỉ Huy Trưởng:</span>
-                                            <div className="flex flex-col items-end gap-1 text-right max-w-full">
-                                                {(details.chtName || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
-                                                    const phone = (details.chtPhone || '').split(',').map(s => s.trim())[i] || '';
-                                                    return (
-                                                        <span key={i} className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md break-words whitespace-normal text-right inline-block w-full text-xs">
-                                                            {name} {phone ? `(${phone})` : ''}
+            {viewMode === 'table' ? (
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto custom-scrollbar">
+                        <table className="w-full border-collapse text-left text-sm text-slate-700">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200 text-slate-400 uppercase font-black text-[11px] tracking-wider">
+                                    <th className="p-4 pl-6">Công trình</th>
+                                    <th className="p-4">Địa chỉ</th>
+                                    <th className="p-4">Số HĐ</th>
+                                    <th className="p-4">Chỉ Huy Trưởng</th>
+                                    <th className="p-4 text-right">Giá trị HĐ</th>
+                                    <th className="p-4 text-right">Phụ Lục HĐ</th>
+                                    <th className="p-4 text-right">Tạm ứng</th>
+                                    <th className="p-4 text-center">Trạng thái</th>
+                                    <th className="p-4 text-center pr-6">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {filteredProjects.map(p => {
+                                    const details = projectDetails[p.name] || {};
+                                    const isCompleted = p.status === 'Finish';
+                                    const canEdit = currentUser?.role?.toUpperCase() === 'ADMIN' || !isCompleted;
+                                    
+                                    return (
+                                        <tr key={p.id} className={`hover:bg-slate-50/50 transition-colors ${isCompleted ? 'bg-slate-50/30' : ''}`}>
+                                            <td className="p-4 pl-6 font-bold text-slate-800">
+                                                <div className="flex flex-col">
+                                                    <span className="text-sm">{p.name}</span>
+                                                    <span className="text-xs text-slate-400 mt-1 font-bold">{details.projectType || 'TRỰC TIẾP ORDER'}</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-sm text-slate-500 max-w-[200px] truncate" title={details.address}>{details.address || '---'}</td>
+                                            <td className="p-4 font-mono text-sm text-slate-500">{details.contractNo || '---'}</td>
+                                            <td className="p-4 text-sm font-semibold text-slate-600">
+                                                {details.chtName ? (
+                                                    <div className="flex flex-col gap-1">
+                                                        {(details.chtName || '').split(',').map((name, i) => (
+                                                            <span key={i} className="inline-block bg-slate-100 text-slate-700 px-2 py-0.5 rounded text-sm w-fit font-bold">
+                                                                {name.trim()}
+                                                            </span>
+                                                        ))}
+                                                    </div>
+                                                ) : '---'}
+                                            </td>
+                                            <td className="p-4 text-right text-sm font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</td>
+                                            <td className="p-4 text-right text-sm font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0))} VNĐ</td>
+                                            <td className="p-4 text-right text-sm font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</td>
+                                            <td className="p-4 text-center">
+                                                <span className={`text-sm px-2 py-1 rounded-full font-black ${isCompleted ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
+                                                    {isCompleted ? '🔒 Finish' : '⚙️ Doing'}
+                                                </span>
+                                            </td>
+                                            <td className="p-4 text-center pr-6">
+                                                <div className="flex justify-center gap-1">
+                                                    {canEdit ? (
+                                                        <button 
+                                                            onClick={() => handleOpenEdit(p)} 
+                                                            className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-indigo-50 transition" 
+                                                            title="Sửa công trình"
+                                                        >
+                                                            <Edit3 size={16} />
+                                                        </button>
+                                                    ) : (
+                                                        <span className="p-2 text-red-500 cursor-not-allowed" title="Công trình đã hoàn thành (Khóa sổ) - Chỉ ADMIN mới có thể sửa">
+                                                            🔒
                                                         </span>
-                                                    );
-                                                })}
-                                                {!(details.chtName || '').trim() && <span className="font-bold text-slate-700">---</span>}
-                                            </div>
-                                        </div>
-                                    )}
-                                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                                        <span className="text-slate-400 flex items-center gap-1"><FileText size={14}/> Số HĐ:</span>
-                                        <span className="font-bold text-slate-700">{details.contractNo || '---'}</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                                        <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị HĐ:</span>
-                                        <span className="font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</span>
-                                    </div>
-                                    <div className="flex justify-between border-b border-slate-50 pb-2">
-                                        <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
-                                        <span className="font-bold text-orange-600">{formatCurrency(details.debtToCollect)} VNĐ</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>
-                                        <span className="font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</span>
-                                    </div>
-                                </div>
-                            </div>
-                        );
-                    })
-                )}
-            </div>
-
-            {/* Pagination Controls */}
-            {totalPages > 1 && (
-                <div className="mt-8 flex flex-col sm:flex-row items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200">
-                    <p className="text-sm font-bold text-slate-500">
-                        Hiển thị <span className="text-slate-800">{startIndex + 1}</span> - <span className="text-slate-800">{Math.min(startIndex + itemsPerPage, totalItems)}</span> trên tổng số <span className="text-slate-800">{totalItems}</span> công trình
-                    </p>
-                    <div className="flex items-center gap-2">
-                        <button
-                            onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
-                            disabled={currentPage === 1}
-                            className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center"
-                            title="Trang trước"
-                        >
-                            <ChevronLeft size={18} />
-                        </button>
-                        
-                        {Array.from({ length: totalPages }, (_, idx) => idx + 1).map(pageNumber => (
-                            <button
-                                key={pageNumber}
-                                onClick={() => setCurrentPage(pageNumber)}
-                                className={`px-4 py-2 rounded-lg font-bold text-sm transition ${
-                                    currentPage === pageNumber
-                                        ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                                        : 'border border-slate-200 text-slate-600 hover:bg-slate-50'
-                                }`}
-                            >
-                                {pageNumber}
-                            </button>
-                        ))}
-
-                        <button
-                            onClick={() => setCurrentPage(prev => Math.min(prev + 1, totalPages))}
-                            disabled={currentPage === totalPages}
-                            className="p-2 rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center justify-center"
-                            title="Trang sau"
-                        >
-                            <ChevronRight size={18} />
-                        </button>
+                                                    )}
+                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                        <button 
+                                                            onClick={() => handleDelete(p.name)} 
+                                                            className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition" 
+                                                            title="Xóa công trình"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })}
+                            </tbody>
+                        </table>
                     </div>
                 </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {filteredProjects.length === 0 ? (
+                        <div className="md:col-span-2 bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 font-bold">
+                            Không tìm thấy công trình nào khớp với từ khóa.
+                        </div>
+                    ) : (
+                        filteredProjects.map(p => {
+                            const details = projectDetails[p.name] || {};
+                            const isCompleted = p.status === 'Finish';
+                            const canEdit = currentUser?.role?.toUpperCase() === 'ADMIN' || !isCompleted;
+                            return (
+                                <div key={p.id} className={`bg-white rounded-2xl border p-6 hover:border-indigo-300 hover:shadow-md transition group ${isCompleted ? 'border-slate-200 bg-slate-50/50' : 'border-slate-200'}`}>
+                                    <div className="flex justify-between items-start mb-4">
+                                        <div className={`p-3 rounded-xl transition ${isCompleted ? 'bg-red-50 text-red-600' : 'bg-indigo-50 text-indigo-600 group-hover:bg-indigo-600 group-hover:text-white'}`}>
+                                            <Building2 size={24} />
+                                        </div>
+                                        <div className="flex gap-1">
+                                            {canEdit ? (
+                                                <button onClick={() => handleOpenEdit(p)} className="text-slate-400 hover:text-indigo-600 p-2 rounded-lg hover:bg-indigo-50 transition" title="Sửa công trình">
+                                                    <Edit3 size={18} />
+                                                </button>
+                                            ) : (
+                                                <span className="p-2 text-red-500" title="Công trình đã hoàn thành (Khóa sổ) - Chỉ ADMIN mới có thể sửa">
+                                                    🔒
+                                                </span>
+                                            )}
+                                            {currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                                                <button onClick={() => handleDelete(p.name)} className="text-slate-400 hover:text-red-500 p-2 rounded-lg hover:bg-red-50 transition" title="Xóa công trình">
+                                                    <Trash2 size={18} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                    <h3 className="text-lg font-black text-slate-900 mb-1 flex items-center gap-2">
+                                        {p.name}
+                                    </h3>
+                                    <div className="mb-3 flex items-center gap-2">
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${details.projectType === 'TỔNG THẦU MUA HỘ' ? 'bg-amber-100 text-amber-700 border-amber-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                                            {details.projectType || 'TRỰC TIẾP ORDER'}
+                                        </span>
+                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${isCompleted ? 'bg-red-100 text-red-700 border-red-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
+                                            {isCompleted ? '🔒 Finish' : '⚙️ Doing'}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2 text-sm">
+                                        {details.address && (
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">📍 Địa chỉ:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.address}>{details.address}</span>
+                                            </div>
+                                        )}
+                                        {(details.chtName || details.chtPhone) && (
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1 whitespace-nowrap min-w-[140px]">👷 Chỉ Huy Trưởng:</span>
+                                                <div className="flex flex-col items-end gap-1 text-right max-w-full">
+                                                    {(details.chtName || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
+                                                        const phone = (details.chtPhone || '').split(',').map(s => s.trim())[i] || '';
+                                                        return (
+                                                            <span key={i} className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md break-words whitespace-normal text-right inline-block w-full text-xs">
+                                                                {name} {phone ? `(${phone})` : ''}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                    {!(details.chtName || '').trim() && <span className="font-bold text-slate-700">---</span>}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><FileText size={14}/> Số HĐ:</span>
+                                            <span className="font-bold text-slate-700">{details.contractNo || '---'}</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị HĐ:</span>
+                                            <span className="font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
+                                            <span className="font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0))} VNĐ</span>
+                                        </div>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>
+                                            <span className="font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            );
+                        })
+                    )}
+                </div>
             )}
+
+            <div className="mt-8 text-sm font-bold text-slate-500 bg-white p-4 rounded-2xl border border-slate-200 text-center">
+                Tổng số: <span className="text-slate-800 font-extrabold">{totalItems}</span> công trình
+            </div>
         </div>
     );
 }

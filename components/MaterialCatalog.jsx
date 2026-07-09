@@ -75,7 +75,10 @@ export default function MaterialCatalog({ projects, showToast }) {
             
             if (projects && projects.length > 0) {
                 const projName = configProjectName || projects[0].name;
-                handleProjectChange(projName, templatesMap);
+                // Only change project context if not actively editing to prevent losing progress
+                if (!editingVersionId || projName !== configProjectName) {
+                    handleProjectChange(projName, templatesMap);
+                }
             }
         } catch (err) {
             console.error(err);
@@ -83,11 +86,13 @@ export default function MaterialCatalog({ projects, showToast }) {
             setIsLoading(false);
         }
     };
+    
+    const projectsKey = (projects || []).map(p => p.name).join(',');
 
     // Initialize with first project
     useEffect(() => {
         loadTemplatesFromDb();
-    }, [projects]);
+    }, [projectsKey]);
 
     const handleProjectChange = (proj, tMap = allTemplates) => {
         setConfigProjectName(proj);
@@ -360,7 +365,7 @@ export default function MaterialCatalog({ projects, showToast }) {
     };
 
     return (
-        <div className="max-w-6xl mx-auto animate-in fade-in duration-500 pb-16">
+        <div className="w-full animate-in fade-in duration-500 pb-16">
             <header className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
                 <div>
                     <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
