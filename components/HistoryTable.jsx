@@ -115,7 +115,8 @@ export default function HistoryTable({
     initialSearchNote = '',
     highlightedReqId,
     setHighlightedReqId,
-    onRequestDelete
+    onRequestDelete,
+    deleteRequests = []
 }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false, type: 'danger', confirmText: null });
 
@@ -458,49 +459,63 @@ export default function HistoryTable({
                                     </td>
                                     <td className="p-3 text-center align-middle">
                                         <div className="flex justify-center gap-2">
-                                            <button
-                                                onClick={() => {
-                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
-                                                    handleEdit(t);
-                                                }}
-                                                title="Sửa dòng này"
-                                                className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-amber-500 hover:bg-amber-50'}`}
-                                            >
-                                                <Edit size={14} />
-                                            </button>
-                                            {isAdmin && (
-                                                <button
-                                                    onClick={() => {
-                                                        if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
-                                                        openConfirm(
-                                                            `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
-                                                            () => handleDelete(t.id)
-                                                        );
-                                                    }}
-                                                    title="Xóa dòng này"
-                                                    className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
-                                                >
-                                                    <Trash2 size={14} />
-                                                </button>
-                                            )}
-                                            {!isAdmin && onRequestDelete && (
-                                                <button
-                                                    onClick={() => {
-                                                        openConfirm(
-                                                            `Gửi đề nghị admin xóa giao dịch ngày ${formatDateVN(t.accounting_date)} - ${t.note || 'không có diễn giải'}?`,
-                                                            () => onRequestDelete(t),
-                                                            'Đề nghị xóa giao dịch',
-                                                            false,
-                                                            'info',
-                                                            'Gửi đề nghị'
-                                                        );
-                                                    }}
-                                                    title="Đề nghị admin xóa dòng này"
-                                                    className="p-1.5 rounded-lg transition text-sky-600 hover:bg-sky-50"
-                                                >
-                                                    <Send size={14} />
-                                                </button>
-                                            )}
+                                            {(() => {
+                                                const isPendingDelete = deleteRequests.some(r => r.original_table === 'transactions' && r.record_id === t.id);
+                                                if (isPendingDelete) {
+                                                    return (
+                                                        <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
+                                                            Chờ xóa
+                                                        </span>
+                                                    );
+                                                }
+                                                return (
+                                                    <>
+                                                        <button
+                                                            onClick={() => {
+                                                                if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
+                                                                handleEdit(t);
+                                                            }}
+                                                            title="Sửa dòng này"
+                                                            className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-amber-500 hover:bg-amber-50'}`}
+                                                        >
+                                                            <Edit size={14} />
+                                                        </button>
+                                                        {isAdmin && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    if (systemConfig?.edit_transaction && !isAdmin) return alert('Thử lại sau');
+                                                                    openConfirm(
+                                                                        `Xóa giao dịch ngày ${formatDateVN(t.accounting_date)} — ${t.note || 'không có diễn giải'}?`,
+                                                                        () => handleDelete(t.id)
+                                                                    );
+                                                                }}
+                                                                title="Xóa dòng này"
+                                                                className={`p-1.5 rounded-lg transition ${systemConfig?.edit_transaction && !isAdmin ? 'text-slate-300 cursor-not-allowed' : 'text-red-500 hover:bg-red-50'}`}
+                                                            >
+                                                                <Trash2 size={14} />
+                                                            </button>
+                                                        )}
+                                                        {!isAdmin && onRequestDelete && (
+                                                            <button
+                                                                onClick={() => {
+                                                                    openConfirm(
+                                                                        `Gửi đề nghị admin xóa giao dịch ngày ${formatDateVN(t.accounting_date)} - ${t.note || 'không có diễn giải'}?`,
+                                                                        () => onRequestDelete(t),
+                                                                        'Đề nghị xóa giao dịch',
+                                                                        false,
+                                                                        'info',
+                                                                        'Gửi đề nghị'
+                                                                    );
+                                                                }}
+                                                                title="Đề nghị admin xóa dòng này"
+                                                                className="p-1.5 rounded-lg transition text-sky-600 hover:bg-sky-50"
+                                                            >
+                                                                <Send size={14} />
+                                                            </button>
+                                                        )}
+                                                    </>
+                                                );
+                                            })()}
                                         </div>
                                     </td>
                                 </tr>

@@ -59,9 +59,10 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     first_income_id: inc.id,
                     project_name: inc.project_name,
                     phase: inc.phase,
-                    amount: 0,
+                    beforeTaxAmount: 0,
                     vatAmount: 0,
                     invoiceAmount: 0,
+                    hsttAmount: 0,
                     receivedAmount: 0,
                     invoiceNo: '',
                     voucherNo: '',
@@ -81,56 +82,85 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 }
             }
             
-            grouped[key].amount += (inc.amount || 0);
-            grouped[key].vatAmount += (inc.vat_amount || 0);
-            grouped[key].invoiceAmount += (inc.post_tax_amount || 0);
-            
-            let actual = 0;
-            if (inc.note) {
-                try {
-                    const parsed = JSON.parse(inc.note);
-                    if (parsed && typeof parsed === 'object') {
-                        const act = parseFloat(parsed.actual_received_amount) || 0;
-                        const ded = parseFloat(parsed.deduction_amount) || 0;
-                        actual = act + ded;
-                        if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
-                            grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
+            if (isInvoice) {
+                grouped[key].beforeTaxAmount += (inc.amount || 0);
+                grouped[key].vatAmount += (inc.vat_amount || 0);
+                grouped[key].invoiceAmount += (inc.post_tax_amount || 0);
+                
+                if (inc.note) {
+                    try {
+                        const parsed = JSON.parse(inc.note);
+                        if (parsed && typeof parsed === 'object') {
+                            grouped[key].hsttAmount += parseFloat(parsed.actual_received_amount) || inc.post_tax_amount || 0;
+                            if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
+                                grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
+                            }
+                            if (parsed.voucher_no && !grouped[key].voucherNo.split(', ').includes(parsed.voucher_no)) {
+                                grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
+                            }
+                            
+                            let invDate = parsed.invoice_date || '';
+                            if (!invDate && inc.date) {
+                                invDate = inc.date;
+                            }
+                            
+                            if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
+                                grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
+                            }
+                            
+                            if (parsed.invoice_pdf) grouped[key].invoicePdf = parsed.invoice_pdf;
+                            if (parsed.hstt_pdf) grouped[key].hsttPdf = parsed.hstt_pdf;
                         }
-                        if (parsed.voucher_no && !grouped[key].voucherNo.split(', ').includes(parsed.voucher_no)) {
-                            grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
+                    } catch(e) {}
+                } else {
+                    grouped[key].hsttAmount += inc.post_tax_amount || 0;
+                }
+            } else {
+                // Real receipt (type INCOME_REAL)
+                if (inc.note) {
+                    try {
+                        const parsed = JSON.parse(inc.note);
+                        if (parsed && typeof parsed === 'object') {
+                            const act = parseFloat(parsed.actual_received_amount) || 0;
+                            const ded = parseFloat(parsed.deduction_amount) || 0;
+                            grouped[key].receivedAmount += (act + ded);
+                            
+                            if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
+                                grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
+                            }
+                            if (parsed.voucher_no && !grouped[key].voucherNo.split(', ').includes(parsed.voucher_no)) {
+                                grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
+                            }
+                            
+                            let invDate = parsed.invoice_date || '';
+                            if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
+                                grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
+                            }
+                            
+                            if (parsed.invoice_pdf) grouped[key].invoicePdf = parsed.invoice_pdf;
+                            if (parsed.hstt_pdf) grouped[key].hsttPdf = parsed.hstt_pdf;
                         }
-                        
-                        let invDate = parsed.invoice_date || '';
-                        if (!invDate && inc.date && (inc.post_tax_amount > 0 || inc.amount > 0)) {
-                            invDate = inc.date;
-                        }
-                        
-                        if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
-                            grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
-                        }
-                        
-                        if (parsed.invoice_pdf) grouped[key].invoicePdf = parsed.invoice_pdf;
-                        if (parsed.hstt_pdf) grouped[key].hsttPdf = parsed.hstt_pdf;
-                    }
-                } catch(e) {}
+                    } catch(e) {}
+                }
             }
-            grouped[key].receivedAmount += actual;
         });
         
         return Object.values(grouped).map(g => ({
             ...g,
-            remainingAmount: g.invoiceAmount - g.receivedAmount
+            amount: g.beforeTaxAmount, // For compatibility
+            remainingAmount: g.hsttAmount - g.receivedAmount
         })).sort((a, b) => {
             if (a.project_name !== b.project_name) return a.project_name.localeCompare(b.project_name);
-            const numA = parseInt(a.phase.match(/\d+/) || [0], 10);
-            const numB = parseInt(b.phase.match(/\d+/) || [0], 10);
+            
+            const numA = parseInt((a.phase || '').match(/\d+/) || [0], 10);
+            const numB = parseInt((b.phase || '').match(/\d+/) || [0], 10);
             return numA - numB;
         });
     }, [incomes]);
 
 
     const filteredDebtData = useMemo(() => {
-        return debtData.filter(d => {
+        const filtered = debtData.filter(d => {
             const matchProject = projectFilter === '' || d.project_name === projectFilter;
             const matchSearch = d.project_name.toLowerCase().includes(searchTerm.toLowerCase()) || 
              d.phase.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -144,6 +174,24 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             
             return matchProject && matchSearch && matchMonth;
         });
+
+        if (monthFilter) {
+            return [...filtered].sort((a, b) => {
+                const hasInvoiceA = a.invoiceNo && a.invoiceNo !== '-' ? 1 : 0;
+                const hasInvoiceB = b.invoiceNo && b.invoiceNo !== '-' ? 1 : 0;
+                
+                if (hasInvoiceA !== hasInvoiceB) {
+                    return hasInvoiceB - hasInvoiceA; // 1 (has invoice) comes first, 0 (no invoice) goes to bottom
+                }
+                
+                if (a.project_name !== b.project_name) return a.project_name.localeCompare(b.project_name);
+                
+                const numA = parseInt((a.phase || '').match(/\d+/) || [0], 10);
+                const numB = parseInt((b.phase || '').match(/\d+/) || [0], 10);
+                return numA - numB;
+            });
+        }
+        return filtered;
     }, [debtData, searchTerm, projectFilter, monthFilter]);
 
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
@@ -437,6 +485,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 <th className="py-3.5 px-3 font-bold text-right">Thuế VAT</th>
                                 <th className="py-3.5 px-3 font-bold text-right">Sau Thuế</th>
                                 <th className="py-3.5 px-3 font-bold text-right">Giá Trị HSTT</th>
+                                <th className="py-3.5 px-3 font-bold text-right text-emerald-600">Thực Nhận</th>
                                 <th className="py-3.5 px-3 font-bold text-right text-red-600">Công Nợ</th>
                                 <th className="py-3.5 px-3 font-bold text-center">HĐ PDF</th>
                                 <th className="py-3.5 px-3 font-bold text-center">HSTT PDF</th>
@@ -446,7 +495,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         <tbody className="divide-y divide-slate-100">
                             {filteredDebtData.length === 0 ? (
                                 <tr>
-                                    <td colSpan="11" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
+                                    <td colSpan="12" className="p-8 text-center text-slate-400 font-bold">Không có hóa đơn nào phù hợp với tìm kiếm.</td>
                                 </tr>
                             ) : (
                                 filteredDebtData.map(debt => (
@@ -473,6 +522,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                         <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-slate-700 tabular-nums">{formatCurrency(debt.amount)}</td>
                                         <td className="py-3.5 px-3 align-middle text-right text-sm font-medium text-slate-500 tabular-nums">{formatCurrency(debt.vatAmount)}</td>
                                         <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-blue-600 tabular-nums">{formatCurrency(debt.invoiceAmount)}</td>
+                                        <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-slate-700 tabular-nums">{formatCurrency(debt.hsttAmount)}</td>
                                         <td className="py-3.5 px-3 align-middle text-right text-sm font-semibold text-emerald-600 tabular-nums">{formatCurrency(debt.receivedAmount)}</td>
                                         <td className="py-3.5 px-3 align-middle text-right text-sm font-bold tabular-nums">
                                             {debt.remainingAmount <= 0 ? (
@@ -546,6 +596,18 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                         </td>
                                     </tr>
                                 ))
+                            )}
+                            {filteredDebtData.length > 0 && (
+                                <tr className="bg-slate-100 font-black border-t-2 border-slate-300 text-slate-800 text-xs sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
+                                    <td colSpan="5" className="py-4 px-4 align-middle text-left uppercase tracking-wider">Tổng cộng:</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-slate-900">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.amount || 0), 0))}</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-slate-500">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.vatAmount || 0), 0))}</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-blue-700">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.invoiceAmount || 0), 0))}</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-slate-700">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.hsttAmount || 0), 0))}</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-emerald-700">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.receivedAmount || 0), 0))}</td>
+                                    <td className="py-4 px-3 align-middle text-right tabular-nums text-red-700">{formatCurrency(filteredDebtData.reduce((sum, d) => sum + (d.remainingAmount || 0), 0))}</td>
+                                    <td colSpan="3" className="py-4 px-4 align-middle"></td>
+                                </tr>
                             )}
                         </tbody>
                     </table>

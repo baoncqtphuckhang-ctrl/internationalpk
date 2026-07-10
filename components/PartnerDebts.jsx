@@ -11,7 +11,8 @@ export default function PartnerDebts({
     onDeleteDebt,
     isLoading,
     currentUser,
-    dnttList
+    dnttList,
+    deleteRequests = []
 }) {
     const [confirmDebtModal, setConfirmDebtModal] = useState({ isOpen: false, debt: null });
     const [debtAccount, setDebtAccount] = useState('131 - Công nợ phải thu');
@@ -362,24 +363,39 @@ export default function PartnerDebts({
                                                         <Clock size={16} />
                                                     </button>
                                                 )}
-                                                {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                                    <button 
-                                                        onClick={() => {
-                                                            setConfirmModal({
-                                                                isOpen: true,
-                                                                message: `Bạn có chắc chắn muốn chuyển khoản công nợ của [${debt.partner_name}] vào thùng rác?`,
-                                                                onConfirm: () => {
+                                                {(() => {
+                                                    const isPendingDelete = deleteRequests.some(r => r.original_table === 'partner_debts' && r.record_id === debt.id);
+                                                    if (isPendingDelete) {
+                                                        return (
+                                                            <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
+                                                                Chờ xóa
+                                                            </span>
+                                                        );
+                                                    }
+                                                    const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                    return (
+                                                        <button 
+                                                            onClick={() => {
+                                                                if (isAuthorizer) {
+                                                                    setConfirmModal({
+                                                                        isOpen: true,
+                                                                        message: `Bạn có chắc chắn muốn chuyển khoản công nợ của [${debt.partner_name}] vào thùng rác?`,
+                                                                        onConfirm: () => {
+                                                                            onDeleteDebt(debt.id);
+                                                                            setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                                                                        }
+                                                                    });
+                                                                } else {
                                                                     onDeleteDebt(debt.id);
-                                                                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                                                                 }
-                                                            });
-                                                        }}
-                                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
-                                                        title="Xóa công nợ"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                )}
+                                                            }}
+                                                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition"
+                                                            title={isAuthorizer ? "Xóa công nợ" : "Đề nghị xóa công nợ"}
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    );
+                                                })()}
                                             </div>
                                         </td>
                                     </tr>

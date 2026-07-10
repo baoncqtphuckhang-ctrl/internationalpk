@@ -27,6 +27,7 @@ import SystemConfigModal from '@/components/SystemConfigModal';
 import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
 import Trash from '@/components/Trash';
 import SignatureScannerModal from '@/components/SignatureScannerModal';
+import DeleteApprovals from '@/components/DeleteApprovals';
 import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPENSE_CATEGORIES } from '@/lib/utils';
 import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
@@ -44,7 +45,7 @@ const getIncomeType = (i) => {
 
 const ROLES = {
     ADMIN: 'ADMIN', GIAMDOC: 'GIÁM ĐỐC', THUKY: 'THƯ KÝ',
-    QS: 'QS', GS: 'GS', KETOAN: 'KẾ TOÁN'
+    QS: 'QS', QSTRUONG: 'QS TRƯỞNG', GS: 'GS', KETOAN: 'KẾ TOÁN'
 };
 
 const STATUSES = {
@@ -201,6 +202,7 @@ export default function Home() {
     const [notifications, setNotifications] = useState([]);
     const [notificationsAvailable, setNotificationsAvailable] = useState(false);
     const [realtimeVersion, setRealtimeVersion] = useState(0);
+    const [deleteRequests, setDeleteRequests] = useState([]);
     const [lastToastNotificationId, setLastToastNotificationId] = useState(null);
     const [highlightId, setHighlightId] = useState(null);
     
@@ -692,6 +694,15 @@ export default function Home() {
                 setNotifications([]);
             }
 
+            try {
+                const { data: delData, error: delError } = await supabase.from('delete_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+                if (!delError) {
+                    setDeleteRequests(delData || []);
+                }
+            } catch (e) {
+                console.warn('delete_requests table might not exist yet', e);
+            }
+
             if (isAdminUser) {
                 try {
                     const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
@@ -785,6 +796,7 @@ export default function Home() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, debouncedFetch)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'material_orders' }, debouncedFetch)
             .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'delete_requests' }, debouncedFetch)
             .subscribe();
 
         const pollingInterval = setInterval(() => {
@@ -1246,6 +1258,36 @@ export default function Home() {
     };
 
     const handleDeleteTransaction = async (id) => {
+        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        if (!isAuthorizer) {
+            const tx = transactions.find(t => t.id === id);
+            const amount = tx ? (tx.debit || tx.credit || 0) : 0;
+            const recordName = `Giao dịch ngày ${formatDateVN(tx?.accounting_date)} — ${tx?.note || ''} (${formatCurrency(amount)} VNĐ)`;
+            const reason = window.prompt(`Nhập lý do đề nghị xóa giao dịch: ${tx?.note || ''}`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            setIsLoading(true);
+            try {
+                const { error } = await supabase.from('delete_requests').insert([{
+                    original_table: 'transactions',
+                    record_id: id,
+                    record_name: recordName,
+                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    reason: reason.trim(),
+                    status: 'pending'
+                }]);
+                if (error) throw error;
+                showToast('Đã gửi đề nghị xóa giao dịch!');
+                fetchData();
+            } catch (err) {
+                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
         setIsLoading(true);
         try {
             const { data: txData } = await supabase.from('transactions').select('*').eq('id', id).single();
@@ -1347,6 +1389,36 @@ export default function Home() {
     };
 
     const handleDeleteIncome = async (id) => {
+        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        if (!isAuthorizer) {
+            const inc = incomes.find(i => i.id === id);
+            const amount = inc ? (inc.post_tax_amount || inc.amount || 0) : 0;
+            const recordName = `Khoản thu đợt ${inc?.phase || ''} công trình ${inc?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
+            const reason = window.prompt(`Nhập lý do đề nghị xóa khoản thu đợt ${inc?.phase || ''} công trình ${inc?.project_name || ''}:`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            setIsLoading(true);
+            try {
+                const { error } = await supabase.from('delete_requests').insert([{
+                    original_table: 'incomes',
+                    record_id: id,
+                    record_name: recordName,
+                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    reason: reason.trim(),
+                    status: 'pending'
+                }]);
+                if (error) throw error;
+                showToast('Đã gửi đề nghị xóa khoản thu!');
+                fetchData();
+            } catch (err) {
+                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
         setIsLoading(true);
         try {
             const incomeToTrash = incomes.find(i => i.id === id);
@@ -1505,6 +1577,36 @@ export default function Home() {
     };
 
     const handleDeleteApproval = async (id) => {
+        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        if (!isAuthorizer) {
+            const appReq = dnttList.find(a => a.id === id);
+            const amount = appReq ? (appReq.total_amount || 0) : 0;
+            const recordName = `Phiếu DNTT số ${appReq?.code || ''} công trình ${appReq?.project || ''} (${formatCurrency(amount)} VNĐ)`;
+            const reason = window.prompt(`Nhập lý do đề nghị xóa phiếu DNTT ${appReq?.code || ''}:`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            setIsLoading(true);
+            try {
+                const { error } = await supabase.from('delete_requests').insert([{
+                    original_table: 'approval_requests',
+                    record_id: id,
+                    record_name: recordName,
+                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    reason: reason.trim(),
+                    status: 'pending'
+                }]);
+                if (error) throw error;
+                showToast('Đã gửi đề nghị xóa phiếu DNTT!');
+                fetchData();
+            } catch (err) {
+                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
         setConfirmModal({
             isOpen: true,
             message: 'Bạn có chắc chắn muốn chuyển phiếu này và toàn bộ dữ liệu (giao dịch, đơn hàng) liên quan vào thùng rác?',
@@ -1795,6 +1897,36 @@ export default function Home() {
     };
 
     const handleDeleteDebt = async (id) => {
+        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        if (!isAuthorizer) {
+            const debt = partnerDebts.find(d => d.id === id);
+            const amount = debt ? (debt.amount || 0) : 0;
+            const recordName = `Công nợ NCC ${debt?.partner_name || ''} công trình ${debt?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
+            const reason = window.prompt(`Nhập lý do đề nghị xóa công nợ NCC ${debt?.partner_name || ''}:`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            setIsLoading(true);
+            try {
+                const { error } = await supabase.from('delete_requests').insert([{
+                    original_table: 'partner_debts',
+                    record_id: id,
+                    record_name: recordName,
+                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    reason: reason.trim(),
+                    status: 'pending'
+                }]);
+                if (error) throw error;
+                showToast('Đã gửi đề nghị xóa công nợ!');
+                fetchData();
+            } catch (err) {
+                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+            } finally {
+                setIsLoading(false);
+            }
+            return;
+        }
+
         setIsLoading(true);
         try {
             await moveToTrash('partner_debts', 'id', id);
@@ -1804,6 +1936,90 @@ export default function Home() {
             fetchData();
         } catch (error) {
             showToast('Lỗi khi xóa công nợ!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleApproveDeleteRequest = async (request) => {
+        setIsLoading(true);
+        try {
+            // Special cascading for approval_requests
+            if (request.original_table === 'approval_requests') {
+                // 1. Move related transactions and delete them
+                await moveToTrash('transactions', 'note', `%[ID:${request.record_id}]%`, true);
+                await supabase.from('transactions').delete().ilike('note', `%[ID:${request.record_id}]%`);
+                
+                // 2. Move related material orders and delete them
+                const { data: dntt } = await supabase.from('approval_requests').select('*').eq('id', request.record_id).single();
+                if (dntt && dntt.note) {
+                    try {
+                        const parsed = JSON.parse(dntt.note);
+                        if (parsed && parsed.materials) {
+                            for (const r of parsed.materials) {
+                                const { data: moData } = await supabase
+                                    .from('material_orders')
+                                    .select('*')
+                                    .eq('project_name', r.project)
+                                    .eq('order_date', r.date);
+                                if (moData && moData.length > 0) {
+                                    for (const m of moData) {
+                                        const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === dntt.recipient || m.recipient === dntt.recipient;
+                                        const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
+                                        if (matchRecipient && matchPhase) {
+                                            await moveToTrash('material_orders', 'id', m.id);
+                                            await supabase.from('material_orders').delete().eq('id', m.id);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    } catch(e) {}
+                }
+            }
+
+            // Normal flow: Move the record to trash
+            await moveToTrash(request.original_table, 'id', request.record_id);
+
+            // Delete the record from the original table
+            const { error: deleteError } = await supabase
+                .from(request.original_table)
+                .delete()
+                .eq('id', request.record_id);
+            if (deleteError) throw deleteError;
+
+            // Delete the request from delete_requests table
+            const { error: reqError } = await supabase
+                .from('delete_requests')
+                .delete()
+                .eq('id', request.id);
+            if (reqError) throw reqError;
+
+            showToast('Đã phê duyệt xóa dữ liệu!');
+            fetchData();
+        } catch (err) {
+            console.error('Error approving delete request:', err);
+            showToast('Lỗi khi phê duyệt xóa!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleRejectDeleteRequest = async (request) => {
+        setIsLoading(true);
+        try {
+            // Delete the request from delete_requests table (so it goes back to normal)
+            const { error: reqError } = await supabase
+                .from('delete_requests')
+                .delete()
+                .eq('id', request.id);
+            if (reqError) throw reqError;
+
+            showToast('Đã từ chối đề nghị xóa!');
+            fetchData();
+        } catch (err) {
+            console.error('Error rejecting delete request:', err);
+            showToast('Lỗi khi từ chối đề nghị xóa!', 'error');
         } finally {
             setIsLoading(false);
         }
@@ -1869,16 +2085,16 @@ export default function Home() {
 
     const role = currentUser?.role?.toUpperCase();
     const canManageUsers = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(role);
-    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS'].includes(role);
+    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(role);
     const canViewApprovals = canManageSystem || role === 'THƯ KÝ';
     const canInputData = canManageSystem || role === 'THƯ KÝ';
-    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'THƯ KÝ'].includes(role);
+    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG', 'THƯ KÝ'].includes(role);
     const canViewReports = currentUser?.canViewFinance !== false;
     const canCreateDNTT = true;
 
     const assignedProjectNames = useMemo(() => {
         if (!currentUser) return [];
-        if (['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'THƯ KÝ'].includes(role)) {
+        if (['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG', 'THƯ KÝ'].includes(role)) {
             return projects.map(p => p.name);
         }
         if (role === 'TESTER') {
@@ -2197,6 +2413,7 @@ export default function Home() {
                 currentUser={currentUser}
                 activeTab={activeTab}
                 setActiveTab={setActiveTab}
+                deleteRequests={deleteRequests}
                 projects={allowedProjects}
                 selectedProject={selectedProject}
                 setSelectedProject={setSelectedProject}
@@ -2253,11 +2470,11 @@ export default function Home() {
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
                 
-                {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} />}
+                {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
-                {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} />}
+                {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} deleteRequests={deleteRequests} />}
                 
                 {activeTab === 'customer-debts' && <CustomerDebts incomes={allowedIncomes} projects={allowedProjects} showToast={showToast} refreshData={fetchData} />}
                 
@@ -2287,6 +2504,7 @@ export default function Home() {
                             setActiveTab('project-detail');
                         }}
                         onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
+                        deleteRequests={deleteRequests}
                     />
                 )}
 
@@ -2358,6 +2576,7 @@ export default function Home() {
                                 onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                                 refreshData={fetchData}
                                 realtimeVersion={realtimeVersion}
+                                deleteRequests={deleteRequests}
                             />
                         ) : (
                             <MaterialOrderManager 
@@ -2377,6 +2596,7 @@ export default function Home() {
                                 onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                                 refreshData={fetchData}
                                 realtimeVersion={realtimeVersion}
+                                deleteRequests={deleteRequests}
                             />
                         )}
                     </div>
@@ -2394,6 +2614,7 @@ export default function Home() {
                         onAddTransaction={handleAddData}
                         showToast={showToast}
                         usersList={usersList}
+                        deleteRequests={deleteRequests}
                         onNavigateToProject={(projectName) => {
                             setSelectedProject(projectName);
                             setActiveTab('project-detail');
@@ -2847,7 +3068,7 @@ export default function Home() {
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} />
+                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (
@@ -3028,6 +3249,15 @@ export default function Home() {
                             </div>
                         </div>
                     </div>
+                )}
+
+                {activeTab === 'delete-approvals' && (role === 'ADMIN' || role === 'QS TRƯỞNG') && (
+                    <DeleteApprovals
+                        deleteRequests={deleteRequests}
+                        onApprove={handleApproveDeleteRequest}
+                        onReject={handleRejectDeleteRequest}
+                        isLoading={isLoading}
+                    />
                 )}
 
                 {activeTab === 'trash' && role === 'ADMIN' && (

@@ -49,7 +49,7 @@ const getCommonNotes = (type, phase, code) => {
     return [];
 };
 
-export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome }) {
+export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome, deleteRequests = [] }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
     const [isCustomAccount, setIsCustomAccount] = useState(false);
@@ -999,30 +999,46 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                     <td className="p-3 text-slate-600">
                                                                         <div className="line-clamp-2 break-all" title={text}>{text}</div>
                                                                     </td>
-                                                                    <td className="p-3 text-center">
-                                                                        <div className="flex items-center justify-center gap-2">
-                                                                            {onEditIncome && (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => onEditIncome(inc)}
-                                                                                    className="text-blue-500 hover:text-blue-700 p-1 font-bold text-[13px]"
-                                                                                    title="Sửa"
-                                                                                >
-                                                                                    Sửa
-                                                                                </button>
-                                                                            )}
-                                                                            {onDeleteIncome && (
-                                                                                <button
-                                                                                    type="button"
-                                                                                    onClick={() => onDeleteIncome(inc.id)}
-                                                                                    className="text-red-500 hover:text-red-700 p-1"
-                                                                                    title="Xóa"
-                                                                                >
-                                                                                    <Trash2 size={16} />
-                                                                                </button>
-                                                                            )}
+                                                                         <div className="flex items-center justify-center gap-2">
+                                                                            {(() => {
+                                                                                const isPendingDelete = deleteRequests.some(r => r.original_table === 'incomes' && r.record_id === inc.id);
+                                                                                if (isPendingDelete) {
+                                                                                    return (
+                                                                                        <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
+                                                                                            Chờ xóa
+                                                                                        </span>
+                                                                                    );
+                                                                                }
+                                                                                return (
+                                                                                    <>
+                                                                                        {onEditIncome && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => onEditIncome(inc)}
+                                                                                                className="text-blue-500 hover:text-blue-700 p-1 font-bold text-[13px]"
+                                                                                                title="Sửa"
+                                                                                            >
+                                                                                                Sửa
+                                                                                            </button>
+                                                                                        )}
+                                                                                        {onDeleteIncome && (
+                                                                                            <button
+                                                                                                type="button"
+                                                                                                onClick={() => {
+                                                                                                    if (window.confirm('Bạn có chắc chắn muốn xóa khoản thu này?')) {
+                                                                                                        onDeleteIncome(inc.id);
+                                                                                                    }
+                                                                                                }}
+                                                                                                className="text-red-500 hover:text-red-700 p-1"
+                                                                                                title="Xóa"
+                                                                                            >
+                                                                                                <Trash2 size={16} />
+                                                                                            </button>
+                                                                                        )}
+                                                                                    </>
+                                                                                );
+                                                                            })()}
                                                                         </div>
-                                                                    </td>
                                                                 </tr>
                                                             );
                                                         });

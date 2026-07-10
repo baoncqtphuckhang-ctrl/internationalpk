@@ -105,7 +105,8 @@ export default function ApprovalWorkflow({
     systemConfig,
     onNavigateToProject,
     onNavigateToHistoryWithId,
-    onUpdateDNTT
+    onUpdateDNTT,
+    deleteRequests = []
 }) {
     const [view, setView] = useState('list'); // 'list' hoặc 'create'
     const [editingId, setEditingId] = useState(null);
@@ -842,20 +843,39 @@ export default function ApprovalWorkflow({
                                             >
                                                 <Printer size={20}/>
                                             </button>
-                                            {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                                <button onClick={() => { 
-                                                    setConfirmModal({
-                                                        isOpen: true,
-                                                        message: 'Bạn có chắc chắn muốn chuyển phiếu này vào thùng rác?',
-                                                        onConfirm: () => {
-                                                            setConfirmModal({ isOpen: false, message: '', onConfirm: null });
-                                                            onDeleteApproval(item.id);
-                                                        }
-                                                    });
-                                                }} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" title="Chuyển vào thùng rác">
-                                                    <Trash2 size={20}/>
-                                                </button>
-                                            )}
+                                            {(() => {
+                                                const isPendingDelete = deleteRequests.some(r => r.original_table === 'approval_requests' && r.record_id === item.id);
+                                                if (isPendingDelete) {
+                                                    return (
+                                                        <span className="px-2 py-1 text-[11px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap self-center">
+                                                            Chờ xóa
+                                                        </span>
+                                                    );
+                                                }
+                                                const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                return (
+                                                    <button 
+                                                        onClick={() => { 
+                                                            if (isAuthorizer) {
+                                                                setConfirmModal({
+                                                                    isOpen: true,
+                                                                    message: 'Bạn có chắc chắn muốn chuyển phiếu này vào thùng rác?',
+                                                                    onConfirm: () => {
+                                                                        setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                                                                        onDeleteApproval(item.id);
+                                                                    }
+                                                                });
+                                                            } else {
+                                                                onDeleteApproval(item.id);
+                                                            }
+                                                        }} 
+                                                        className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-xl transition" 
+                                                        title={isAuthorizer ? "Chuyển vào thùng rác" : "Đề nghị xóa phiếu"}
+                                                    >
+                                                        <Trash2 size={20}/>
+                                                    </button>
+                                                );
+                                            })()}
                                         </div>
                                     </div>
                                 );

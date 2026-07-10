@@ -4,7 +4,7 @@ import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
 
-export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [] }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -533,18 +533,62 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
+    const handleDeleteClick = (inv) => {
+        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+        if (isAuthorizer) {
+            setConfirmDeleteId(inv.id);
+        } else {
+            const reason = window.prompt(`Nhập lý do đề nghị xóa dòng dự kiến này:`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            const recordName = `Dự kiến: ${inv.projectName || ''} - ${inv.teamName || 'HĐ'} - ${inv.phase || ''}`;
+            supabase.from('delete_requests').insert([{
+                original_table: 'expected_invoices',
+                record_id: inv.id,
+                record_name: recordName,
+                requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                reason: reason.trim(),
+                status: 'pending'
+            }]).then(({ error }) => {
+                if (error) {
+                    alert('Lỗi khi gửi đề nghị xóa: ' + error.message);
+                } else {
+                    alert('Đã gửi đề nghị xóa dự kiến tới Admin/QS Trưởng!');
+                }
+            });
+        }
+    };
+
     const confirmDelete = async () => {
         if (!confirmDeleteId) return;
         try {
+            const record = invoices.find(inv => inv.id === confirmDeleteId);
+            if (record) {
+                const trashRecord = {
+                    original_table: 'expected_invoices',
+                    record_data: JSON.stringify(record),
+                    deleted_by: currentUser?.username || 'unknown',
+                    deleted_at: new Date().toISOString()
+                };
+                const { error: trashError } = await supabase.from('trash_bin').insert([trashRecord]);
+                if (trashError) {
+                    console.error('Error inserting to trash_bin:', trashError);
+                }
+            }
+
             const { error } = await supabase
                 .from('expected_invoices')
                 .delete()
                 .eq('id', confirmDeleteId);
             
             if (error) {
-                console.warn('Supabase delete failed, deleting locally', error);
+                console.error('Supabase delete failed:', error);
+                alert('Xóa thất bại trên hệ thống: ' + error.message);
+            } else {
+                setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
+                if (showToast) showToast('Đã xóa hóa đơn dự kiến!', 'success');
             }
-            setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
         } catch (error) {
             console.error('Error in handleDelete:', error);
         }
@@ -555,23 +599,45 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsDeleteAllConfirmOpen(true);
     };
 
-    const confirmDeleteAll = async () => {
+    const confirmDeleteAll = async (password) => {
         if (filteredInvoices.length === 0) {
+            setIsDeleteAllConfirmOpen(false);
+            return;
+        }
+
+        if (!password || password !== adminPassword) {
+            alert('Mật khẩu xác nhận không chính xác!');
             setIsDeleteAllConfirmOpen(false);
             return;
         }
         
         try {
             const idsToDelete = filteredInvoices.map(inv => inv.id);
+            
+            // Move records to trash_bin
+            const trashRecords = filteredInvoices.map(record => ({
+                original_table: 'expected_invoices',
+                record_data: JSON.stringify(record),
+                deleted_by: currentUser?.username || 'unknown',
+                deleted_at: new Date().toISOString()
+            }));
+            const { error: trashError } = await supabase.from('trash_bin').insert(trashRecords);
+            if (trashError) {
+                console.error('Error inserting to trash_bin:', trashError);
+            }
+
             const { error } = await supabase
                 .from('expected_invoices')
                 .delete()
                 .in('id', idsToDelete);
             
             if (error) {
-                console.warn('Supabase delete all failed, deleting locally', error);
+                console.error('Supabase delete all failed:', error);
+                alert('Xóa thất bại trên hệ thống: ' + error.message);
+            } else {
+                setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
+                if (showToast) showToast('Đã xóa tất cả các hóa đơn dự kiến đang hiển thị!', 'success');
             }
-            setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
         } catch (error) {
             console.error('Error in confirmDeleteAll:', error);
         }
@@ -1058,7 +1124,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <span className="hidden sm:inline">Thêm kỳ mới</span>
                         </button>
                     )}
-                    {activeSubTab !== 'customer_debt' && currentUser?.role?.toUpperCase() === 'ADMIN' && (
+                    {activeSubTab !== 'customer_debt' && (currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG') && (
                         <button 
                             onClick={handleDeleteAll}
                             disabled={filteredInvoices.length === 0}
@@ -1681,8 +1747,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         const isQsApproved = periodInvoices[0]?.qs_approved;
                                         const isKtApproved = periodInvoices[0]?.accountant_approved;
                                         const role = currentUser?.role?.toUpperCase();
-                                        const canApproveQs = (role === 'QS' || role === 'ADMIN') && !isQsApproved;
-                                        const canRevertQs = (role === 'QS' || role === 'ADMIN') && isQsApproved && !isKtApproved;
+                                        const canApproveQs = (role === 'QS' || role === 'QS TRƯỞNG' || role === 'ADMIN') && !isQsApproved;
+                                        const canRevertQs = (role === 'QS' || role === 'QS TRƯỞNG' || role === 'ADMIN') && isQsApproved && !isKtApproved;
                                         const canApproveKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isQsApproved && !isKtApproved;
                                         const canRevertKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isKtApproved;
 
@@ -1818,7 +1884,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         const role = currentUser?.role?.toUpperCase();
                                                         const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
-                                                        const canDeleteTeamRow = role === 'ADMIN' || role === 'QS';
+                                                        const canDeleteTeamRow = role === 'ADMIN' || role === 'QS' || role === 'QS TRƯỞNG';
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
@@ -1866,17 +1932,37 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             </td>
                                                             <td className="p-4 text-center print:hidden">
                                                                 <div className="flex items-center justify-center gap-2">
-                                                                    <button 
-                                                                        onClick={() => !disableEdit && handleEdit(inv)} 
-                                                                        className={`p-1.5 rounded-lg transition border ${disableEdit ? 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed' : 'text-blue-500 hover:bg-blue-50 border-blue-200 bg-blue-50'}`} 
-                                                                        title={disableEdit ? 'Kế toán chỉ được sửa sau khi QS đã duyệt' : 'Sửa'}
-                                                                        disabled={disableEdit}
-                                                                    >
-                                                                        <Edit2 size={16} />
-                                                                    </button>
-                                                                    {canDeleteTeamRow && (
-                                                                        <button onClick={() => setConfirmDeleteId(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" title="Xóa"><Trash2 size={16} /></button>
-                                                                    )}
+                                                                    {(() => {
+                                                                        const isPendingDelete = deleteRequests.some(r => r.original_table === 'expected_invoices' && r.record_id === inv.id);
+                                                                        if (isPendingDelete) {
+                                                                            return (
+                                                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap self-center">
+                                                                                    Chờ xóa
+                                                                                </span>
+                                                                            );
+                                                                        }
+                                                                        return (
+                                                                            <>
+                                                                                <button 
+                                                                                    onClick={() => !disableEdit && handleEdit(inv)} 
+                                                                                    className={`p-1.5 rounded-lg transition border ${disableEdit ? 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed' : 'text-blue-500 hover:bg-blue-50 border-blue-200 bg-blue-50'}`} 
+                                                                                    title={disableEdit ? 'Kế toán chỉ được sửa sau khi QS đã duyệt' : 'Sửa'}
+                                                                                    disabled={disableEdit}
+                                                                                >
+                                                                                    <Edit2 size={16} />
+                                                                                </button>
+                                                                                {canDeleteTeamRow && (
+                                                                                    <button 
+                                                                                        onClick={() => handleDeleteClick(inv)} 
+                                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
+                                                                                        title={(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG') ? "Xóa" : "Đề nghị Xóa"}
+                                                                                    >
+                                                                                        <Trash2 size={16} />
+                                                                                    </button>
+                                                                                )}
+                                                                            </>
+                                                                        );
+                                                                    })()}
                                                                     {activeSubTab === 'history_team' && (
                                                                         transactions?.some(t => 
                                                                             t.project_name === inv.projectName && 
@@ -1972,10 +2058,31 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
                                             <td className="p-4 text-center print:hidden">
                                                 <div className="flex items-center justify-center gap-2">
-                                                    <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
-                                                    {currentUser?.role?.toUpperCase() === 'ADMIN' && (
-                                                        <button onClick={() => setConfirmDeleteId(inv.id)} className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" title="Xóa"><Trash2 size={16} /></button>
-                                                    )}
+                                                    {(() => {
+                                                        const isPendingDelete = deleteRequests.some(r => r.original_table === 'expected_invoices' && r.record_id === inv.id);
+                                                        if (isPendingDelete) {
+                                                            return (
+                                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
+                                                                    Chờ xóa
+                                                                </span>
+                                                            );
+                                                        }
+                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                        return (
+                                                            <>
+                                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
+                                                                {(isAuthorizer || true) && (
+                                                                    <button 
+                                                                        onClick={() => handleDeleteClick(inv)} 
+                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
+                                                                        title={isAuthorizer ? "Xóa" : "Đề nghị Xóa"}
+                                                                    >
+                                                                        <Trash2 size={16} />
+                                                                    </button>
+                                                                )}
+                                                            </>
+                                                        );
+                                                    })()}
                                                 </div>
                                             </td>
                                         </tr>

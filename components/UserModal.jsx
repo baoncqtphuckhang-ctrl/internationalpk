@@ -115,6 +115,7 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
                                 <option value="KẾ TOÁN VẬT TƯ">KẾ TOÁN VẬT TƯ</option>
                                 <option value="KẾ TOÁN CHI PHÍ">KẾ TOÁN CHI PHÍ</option>
                                 <option value="QS">QS</option>
+                                <option value="QS TRƯỞNG">QS TRƯỞNG</option>
                                 <option value="GS">GS</option>
                                 <option value="CHT">CHT</option>
                                 <option value="THƯ KÝ">THƯ KÝ</option>

@@ -38,7 +38,7 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false, realtimeVersion }) {
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false, realtimeVersion, deleteRequests = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
 
@@ -214,6 +214,35 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
 
     const handleDeleteOrder = (orderId, e, reqId) => {
         if (e) e.stopPropagation();
+        
+        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+        if (!isAuthorizer) {
+            const order = orders.find(o => o.id === orderId);
+            const recordName = `Đơn hàng vật tư ${order?.order_code || ''} công trình ${order?.project_name || ''}`;
+            const reason = window.prompt(`Nhập lý do đề nghị xóa đơn đặt hàng ${order?.order_code || ''}:`);
+            if (reason === null) return;
+            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            
+            setIsLoading(true);
+            supabase.from('delete_requests').insert([{
+                original_table: 'material_orders',
+                record_id: orderId,
+                record_name: recordName,
+                requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                reason: reason.trim(),
+                status: 'pending'
+            }]).then(({ error }) => {
+                setIsLoading(false);
+                if (error) {
+                    alert('Lỗi khi gửi đề nghị xóa: ' + error.message);
+                } else {
+                    alert('Đã gửi đề nghị xóa đơn đặt hàng tới Admin/QS Trưởng!');
+                    if (refreshData) refreshData();
+                    fetchOrders();
+                }
+            });
+            return;
+        }
         
         setConfirmModal({
             isOpen: true,
@@ -1341,15 +1370,28 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                             <RotateCcw size={15} />
                                                                         </button>
                                                                     )}
-                                                                    {(status === 'Draft' || status === 'Rejected' || currentUser?.role?.toUpperCase() === 'ADMIN') && (
-                                                                        <button 
-                                                                            onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
-                                                                            className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"
-                                                                            title="Xóa Đơn Đặt Hàng"
-                                                                        >
-                                                                            <Trash2 size={15} />
-                                                                        </button>
-                                                                    )}
+                                                                    {(() => {
+                                                                        const isPendingDelete = deleteRequests.some(r => r.original_table === 'material_orders' && r.record_id === order.id);
+                                                                        if (isPendingDelete) {
+                                                                            return (
+                                                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap self-center">
+                                                                                    Chờ xóa
+                                                                                </span>
+                                                                            );
+                                                                        }
+                                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                                        const canDelete = status === 'Draft' || status === 'Rejected' || isAuthorizer;
+                                                                        if (!canDelete) return null;
+                                                                        return (
+                                                                            <button 
+                                                                                onClick={(e) => handleDeleteOrder(order.id, e, req?.id)}
+                                                                                className="bg-red-50 text-red-500 hover:bg-red-100 p-1.5 rounded-xl transition"
+                                                                                title={isAuthorizer ? "Xóa Đơn Đặt Hàng" : "Đề nghị xóa Đơn Hàng"}
+                                                                            >
+                                                                                <Trash2 size={15} />
+                                                                            </button>
+                                                                        );
+                                                                    })()}
                                                                 </div>
                                                             </td>
                                                         </tr>
