@@ -531,6 +531,7 @@ export default function Home() {
     };
 
     const fetchData = async (showLoading = true) => {
+        console.log("fetchData called, showLoading:", showLoading);
         if (showLoading) setIsLoading(true);
         const currentRole = currentUser?.role?.toUpperCase?.() || '';
         const isAdminUser = currentRole === 'ADMIN';
