@@ -91,6 +91,27 @@ export default function Sidebar({
     }) || [];
     const unreadNotificationsCount = unreadNotifications.length;
     const recentNotifications = notifications?.slice(0, 8) || [];
+    const getNotificationTone = (notification) => {
+        if (notification?.type === 'delete_request') {
+            return {
+                dot: 'bg-rose-500',
+                badge: 'bg-rose-500/10 text-rose-200 border-rose-500/20',
+                label: 'Duyệt xóa'
+            };
+        }
+        if (notification?.type?.includes('dntt')) {
+            return {
+                dot: 'bg-blue-400',
+                badge: 'bg-blue-500/10 text-blue-200 border-blue-500/20',
+                label: 'DNTT'
+            };
+        }
+        return {
+            dot: 'bg-amber-400',
+            badge: 'bg-amber-500/10 text-amber-200 border-amber-500/20',
+            label: 'Thông báo'
+        };
+    };
 
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
@@ -197,9 +218,12 @@ export default function Sidebar({
                         </button>
 
                         {isNotificationsOpen && (
-                            <div className="absolute left-0 right-0 top-full mt-2 z-[130] bg-slate-950 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
-                                <div className="px-3 py-2 border-b border-slate-800 flex items-center justify-between">
-                                    <span className="text-[11px] font-black text-white uppercase tracking-wide">Thông báo</span>
+                            <div className="absolute left-0 top-full mt-2 z-[130] w-[720px] max-w-[calc(100vw-2rem)] bg-slate-950 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden">
+                                <div className="px-4 py-3 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between">
+                                    <div>
+                                        <span className="text-[12px] font-black text-white uppercase tracking-wide">Bảng thông báo</span>
+                                        <p className="text-[11px] text-slate-500 font-semibold mt-0.5">{unreadNotificationsCount} chưa đọc</p>
+                                    </div>
                                     <div className="flex items-center gap-2">
                                         {unreadNotificationsCount > 0 && (
                                             <button
@@ -221,43 +245,55 @@ export default function Sidebar({
                                         )}
                                     </div>
                                 </div>
-                                <div className="max-h-72 overflow-y-auto custom-scrollbar">
+                                <div className="max-h-[720px] overflow-y-auto custom-scrollbar p-3 space-y-3">
                                     {recentNotifications.length === 0 ? (
-                                        <div className="px-4 py-6 text-center text-xs text-slate-500 font-bold">Chưa có thông báo.</div>
-                                    ) : recentNotifications.map(notification => (
-                                        <button
-                                            key={notification.id}
-                                            type="button"
-                                            onClick={() => {
-                                                onNotificationOpen?.(notification);
-                                                setIsNotificationsOpen(false);
-                                                setIsMobileMenuOpen(false);
-                                            }}
-                                            className={`w-full text-left px-3 py-3 border-b border-slate-800 last:border-b-0 transition hover:bg-slate-800 ${notification.is_read ? 'opacity-70' : 'bg-slate-900/70'}`}
-                                        >
-                                            <div className="flex items-start gap-2">
-                                                <span className={`mt-1 w-2 h-2 rounded-full shrink-0 ${notification.is_read ? 'bg-slate-600' : 'bg-red-500'}`} />
-                                                <div className="min-w-0">
-                                                    <p className="text-xs font-black text-slate-100 leading-tight">{notification.title}</p>
-                                                    <p className="text-[11px] text-slate-400 leading-snug mt-1 line-clamp-3">{notification.message}</p>
-                                                    <p className="text-[10px] text-slate-600 mt-1 flex items-center justify-between">
-                                                        <span>{notification.created_at ? new Date(notification.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
-                                                        {notification.created_by === currentUser?.username &&
-                                                         (normalizeRoleName(notification.recipient_role) === 'ADMIN' || notification.recipient_username === 'admin') &&
-                                                         !(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username?.toLowerCase() === 'admin') && (
-                                                            notification.recipient_deleted ? (
-                                                                <span className="text-red-400 font-bold ml-1">Admin đã xóa</span>
-                                                            ) : notification.is_read ? (
-                                                                <span className="text-emerald-400 font-bold ml-1">Admin đã xem</span>
-                                                            ) : (
-                                                                <span className="text-amber-400 font-bold ml-1">Admin chưa xem</span>
-                                                            )
-                                                        )}
-                                                    </p>
+                                        <div className="px-4 py-12 text-center text-sm text-slate-500 font-bold">Chưa có thông báo.</div>
+                                    ) : recentNotifications.map(notification => {
+                                        const tone = getNotificationTone(notification);
+                                        return (
+                                            <button
+                                                key={notification.id}
+                                                type="button"
+                                                onClick={() => {
+                                                    onNotificationOpen?.(notification);
+                                                    setIsNotificationsOpen(false);
+                                                    setIsMobileMenuOpen(false);
+                                                }}
+                                                className={`w-full text-left p-4 rounded-2xl border transition hover:bg-slate-800/80 hover:border-slate-600 ${
+                                                    notification.is_read
+                                                        ? 'bg-slate-900/50 border-slate-800 opacity-75'
+                                                        : 'bg-slate-900 border-slate-700 shadow-lg shadow-black/10'
+                                                }`}
+                                            >
+                                                <div className="flex items-start gap-4">
+                                                    <span className={`mt-2 w-3 h-3 rounded-full shrink-0 ${notification.is_read ? 'bg-slate-600' : tone.dot}`} />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-start justify-between gap-2">
+                                                            <p className="text-sm font-black text-slate-100 leading-snug break-words">{notification.title}</p>
+                                                            <span className={`shrink-0 rounded-full border px-2.5 py-1 text-[10px] font-black uppercase ${tone.badge}`}>
+                                                                {tone.label}
+                                                            </span>
+                                                        </div>
+                                                        <p className="text-[12px] text-slate-400 leading-relaxed mt-2 line-clamp-4">{notification.message}</p>
+                                                        <div className="mt-3 flex items-center justify-between gap-2 text-[11px] text-slate-600">
+                                                            <span>{notification.created_at ? new Date(notification.created_at).toLocaleString('vi-VN', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+                                                            {notification.created_by === currentUser?.username &&
+                                                             (normalizeRoleName(notification.recipient_role) === 'ADMIN' || notification.recipient_username === 'admin') &&
+                                                             !(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username?.toLowerCase() === 'admin') && (
+                                                                notification.recipient_deleted ? (
+                                                                    <span className="text-red-400 font-bold">Admin đã xóa</span>
+                                                                ) : notification.is_read ? (
+                                                                    <span className="text-emerald-400 font-bold">Admin đã xem</span>
+                                                                ) : (
+                                                                    <span className="text-amber-400 font-bold">Admin chưa xem</span>
+                                                                )
+                                                            )}
+                                                        </div>
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        </button>
-                                    ))}
+                                            </button>
+                                        );
+                                    })}
                                 </div>
                             </div>
                         )}

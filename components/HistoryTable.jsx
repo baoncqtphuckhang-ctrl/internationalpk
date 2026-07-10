@@ -118,12 +118,45 @@ export default function HistoryTable({
     onRequestDelete,
     deleteRequests = []
 }) {
-    const [confirmState, setConfirmState] = useState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false, type: 'danger', confirmText: null });
+    const [confirmState, setConfirmState] = useState({
+        isOpen: false,
+        message: '',
+        onConfirm: null,
+        title: 'Xác nhận xóa',
+        requirePassword: false,
+        requireReason: false,
+        reasonLabel: 'Lý do',
+        reasonPlaceholder: 'Nhập lý do...',
+        type: 'danger',
+        confirmText: null
+    });
 
-    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa', requirePassword = false, type = 'danger', confirmText = null) => {
-        setConfirmState({ isOpen: true, message, onConfirm, title, requirePassword, type, confirmText });
+    const openConfirm = (message, onConfirm, title = 'Xác nhận xóa', requirePassword = false, type = 'danger', confirmText = null, options = {}) => {
+        setConfirmState({
+            isOpen: true,
+            message,
+            onConfirm,
+            title,
+            requirePassword,
+            requireReason: options.requireReason || false,
+            reasonLabel: options.reasonLabel || 'Lý do',
+            reasonPlaceholder: options.reasonPlaceholder || 'Nhập lý do...',
+            type,
+            confirmText
+        });
     };
-    const closeConfirm = () => setConfirmState({ isOpen: false, message: '', onConfirm: null, title: 'Xác nhận xóa', requirePassword: false, type: 'danger', confirmText: null });
+    const closeConfirm = () => setConfirmState({
+        isOpen: false,
+        message: '',
+        onConfirm: null,
+        title: 'Xác nhận xóa',
+        requirePassword: false,
+        requireReason: false,
+        reasonLabel: 'Lý do',
+        reasonPlaceholder: 'Nhập lý do...',
+        type: 'danger',
+        confirmText: null
+    });
     const [sortConfig, setSortConfig] = useState({ key: 'created_at', direction: 'desc' });
 
     const getUnique = (key) => {
@@ -326,7 +359,10 @@ export default function HistoryTable({
                 title={confirmState.title}
                 message={confirmState.message}
                 requirePassword={confirmState.requirePassword}
-                onConfirm={(pwd) => { confirmState.onConfirm?.(pwd); closeConfirm(); }}
+                requireReason={confirmState.requireReason}
+                reasonLabel={confirmState.reasonLabel}
+                reasonPlaceholder={confirmState.reasonPlaceholder}
+                onConfirm={(value) => { confirmState.onConfirm?.(value); closeConfirm(); }}
                 onCancel={closeConfirm}
                 type={confirmState.type}
                 confirmText={confirmState.confirmText}
@@ -500,11 +536,16 @@ export default function HistoryTable({
                                                                 onClick={() => {
                                                                     openConfirm(
                                                                         `Gửi đề nghị admin xóa giao dịch ngày ${formatDateVN(t.accounting_date)} - ${t.note || 'không có diễn giải'}?`,
-                                                                        () => onRequestDelete(t),
+                                                                        (reason) => onRequestDelete(t, reason),
                                                                         'Đề nghị xóa giao dịch',
                                                                         false,
                                                                         'info',
-                                                                        'Gửi đề nghị'
+                                                                        'Gửi đề nghị',
+                                                                        {
+                                                                            requireReason: true,
+                                                                            reasonLabel: 'Lý do đề nghị xóa',
+                                                                            reasonPlaceholder: 'Ví dụ: Nhập sai số tiền, trùng giao dịch, sai công trình...'
+                                                                        }
                                                                     );
                                                                 }}
                                                                 title="Đề nghị admin xóa dòng này"

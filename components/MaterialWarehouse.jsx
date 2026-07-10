@@ -64,6 +64,27 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
     const [isCustomMaterial, setIsCustomMaterial] = useState(false);
     const [editingId, setEditingId] = useState(null);
 
+    const moveWarehouseRecordsToTrash = async (records = []) => {
+        const validRecords = records.filter(Boolean);
+        if (validRecords.length === 0) return;
+        const trashRecords = validRecords.map(record => ({
+            original_table: 'material_warehouse',
+            record_data: JSON.stringify(record),
+            deleted_by: currentUser?.username || 'unknown',
+            deleted_at: new Date().toISOString()
+        }));
+
+        try {
+            const { error } = await supabase.from('trash_bin').insert(trashRecords);
+            if (error) throw error;
+        } catch(e) {
+            const saved = localStorage.getItem('system_trash_bin');
+            const parsed = saved ? JSON.parse(saved) : [];
+            trashRecords.forEach((tr, idx) => parsed.unshift({ ...tr, id: `local_${Date.now()}_${idx}` }));
+            localStorage.setItem('system_trash_bin', JSON.stringify(parsed));
+        }
+    };
+
     const [formData, setFormData] = useState({
         project_name: '',
         material_name: '',
@@ -286,6 +307,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
+                    const recordToDelete = transactions.find(t => t.id === id);
+                    await moveWarehouseRecordsToTrash(recordToDelete ? [recordToDelete] : []);
+
                     const { error } = await supabase
                         .from('material_warehouse')
                         .delete()
@@ -351,6 +375,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                         setIsLoading(false);
                         return;
                     }
+
+                    await moveWarehouseRecordsToTrash(relatedTx);
 
                     const { error } = await supabase
                         .from('material_warehouse')
@@ -974,18 +1000,19 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                                                                             try {
                                                                                                 const normalize = (s) => (s || '').trim().toLowerCase();
                                                                                                 const phaseNorm = normalize(phase);
-                                                                                                const relatedIds = transactions
+                                                                                                const relatedRecords = transactions
                                                                                                     .filter(t => {
                                                                                                         const info = extractInfoFromNote(t.note);
                                                                                                         return normalize(t.project_name) === normalize(projectName) &&
                                                                                                                normalize(info.o) === phaseNorm;
-                                                                                                    })
-                                                                                                    .map(t => t.id);
+                                                                                                    });
+                                                                                                const relatedIds = relatedRecords.map(t => t.id);
                                                                                                 if (relatedIds.length === 0) {
                                                                                                     showToast('Không tìm thấy bản ghi nào để xóa!', 'error');
                                                                                                     setIsLoading(false);
                                                                                                     return;
                                                                                                 }
+                                                                                                await moveWarehouseRecordsToTrash(relatedRecords);
                                                                                                 const { error } = await supabase
                                                                                                     .from('material_warehouse')
                                                                                                     .delete()

@@ -25,6 +25,7 @@ import UserModal from '@/components/UserModal';
 import ChangePasswordModal from '@/components/ChangePasswordModal';
 import SystemConfigModal from '@/components/SystemConfigModal';
 import UserWorkHistoryModal from '@/components/UserWorkHistoryModal';
+import UserActivityTimeline from '@/components/UserActivityTimeline';
 import Trash from '@/components/Trash';
 import SignatureScannerModal from '@/components/SignatureScannerModal';
 import DeleteApprovals from '@/components/DeleteApprovals';
@@ -197,6 +198,7 @@ export default function Home() {
     const [userModal, setUserModal] = useState({ isOpen: false, user: null });
     const [passwordModal, setPasswordModal] = useState({ isOpen: false, user: null });
     const [historyModal, setHistoryModal] = useState({ isOpen: false, user: null });
+    const [userManagementSubTab, setUserManagementSubTab] = useState('list');
     const [isSignatureScannerOpen, setIsSignatureScannerOpen] = useState(false);
     const [activityLogs, setActivityLogs] = useState([]);
     const [notifications, setNotifications] = useState([]);
@@ -351,6 +353,11 @@ export default function Home() {
             setSelectedProject(notification.project_name);
         }
 
+        if (notification.type === 'delete_request') {
+            setActiveTab('delete-approvals');
+            return;
+        }
+
         if (notification.source_table === 'approval_requests') {
             setActiveTab('dntt-approvals');
             return;
@@ -448,6 +455,57 @@ export default function Home() {
 
     const getAdminRecipients = () =>
         getNotificationRecipients(roleName => roleName === 'ADMIN', 'ADMIN');
+
+    const getDeleteApprovalRecipients = () =>
+        getNotificationRecipients(roleName => roleName === 'ADMIN' || roleName === 'QS TRUONG', 'ADMIN');
+
+    const getDeleteRequestRequester = (request) => {
+        if (!request) return null;
+        const lookupValue = (request.requested_by || '').trim();
+        if (!lookupValue) return null;
+        const directMatch = usersList.find(user => user.username === lookupValue);
+        if (directMatch) return directMatch;
+        return usersList.find(user =>
+            (user.name || '').trim() === lookupValue ||
+            (user.username || '').trim() === lookupValue
+        ) || null;
+    };
+
+    const syncDeleteRequestNotifications = async (deleteRequestRows = []) => {
+        const pendingRequests = (deleteRequestRows || []).filter(req => req?.status === 'pending');
+        if (pendingRequests.length === 0) return;
+
+        for (const request of pendingRequests) {
+            const requester = getDeleteRequestRequester(request);
+            const requestLabel = request.record_name || request.original_table || 'dữ liệu';
+
+            await createNotifications({
+                recipients: getDeleteApprovalRecipients(),
+                title: 'Đề nghị xóa dữ liệu',
+                message: `${requester?.name || request.requested_by || 'Một người dùng'} vừa gửi đề nghị xóa: ${requestLabel}.`,
+                type: 'delete_request',
+                sourceTable: 'delete_requests',
+                sourceId: request.id || `${request.original_table}:${request.record_id}`,
+                projectName: request.project_name || null
+            });
+        }
+    };
+
+    const notifyDeleteRequestRequester = async (request, status, originalLabel) => {
+        const requester = getDeleteRequestRequester(request);
+        if (!requester?.username) return false;
+        return createNotifications({
+            recipients: [{ username: requester.username, role: requester.role }],
+            title: status === 'approved' ? 'Yêu cầu xóa đã được duyệt' : 'Yêu cầu xóa đã bị từ chối',
+            message: status === 'approved'
+                ? `Yêu cầu xóa ${originalLabel || 'dữ liệu'} của bạn đã được phê duyệt.`
+                : `Yêu cầu xóa ${originalLabel || 'dữ liệu'} của bạn đã bị từ chối.`,
+            type: status === 'approved' ? 'delete_request_approved' : 'delete_request_rejected',
+            sourceTable: 'delete_requests',
+            sourceId: request.id || `${request.original_table}:${request.record_id}:${status}`,
+            projectName: request.project_name || null
+        });
+    };
 
     const createNotifications = async ({
         recipients = [],
@@ -698,6 +756,7 @@ export default function Home() {
                 const { data: delData, error: delError } = await supabase.from('delete_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
                 if (!delError) {
                     setDeleteRequests(delData || []);
+                    await syncDeleteRequestNotifications(delData || []);
                 }
             } catch (e) {
                 console.warn('delete_requests table might not exist yet', e);
@@ -1273,7 +1332,7 @@ export default function Home() {
                     original_table: 'transactions',
                     record_id: id,
                     record_name: recordName,
-                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    requested_by: currentUser?.username || 'unknown',
                     reason: reason.trim(),
                     status: 'pending'
                 }]);
@@ -1356,30 +1415,54 @@ export default function Home() {
         }
     };
 
-    const handleRequestDeleteTransaction = async (transaction) => {
+    const handleRequestDeleteTransaction = async (transaction, reason = '') => {
         if (!transaction) return;
+        const cleanReason = reason.trim();
+        if (!cleanReason) {
+            showToast('Vui lòng nhập lý do đề nghị xóa!', 'error');
+            return;
+        }
+
+        if (deleteRequests.some(req => req.original_table === 'transactions' && req.record_id === transaction.id)) {
+            showToast('Giao dịch này đã có đề nghị xóa đang chờ duyệt.', 'error');
+            return;
+        }
 
         setIsLoading(true);
         try {
             const cleanNote = (transaction.note || 'không có diễn giải').replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '');
             const amount = Number(transaction.debit) || Math.abs((Number(transaction.credit) || 0) - (Number(transaction.debit) || 0));
+            const recordName = `Công trình ${transaction.project_name || 'không rõ'} - Giao dịch ngày ${formatDateVN(transaction.accounting_date)} - ${cleanNote} (${formatCurrency(amount)} VNĐ)`;
+
+            const { error: requestError } = await supabase.from('delete_requests').insert([{
+                original_table: 'transactions',
+                record_id: transaction.id,
+                record_name: recordName,
+                requested_by: currentUser?.username || 'unknown',
+                reason: cleanReason,
+                status: 'pending'
+            }]);
+            if (requestError) throw requestError;
+
             const sent = await createNotifications({
                 recipients: getAdminRecipients(),
                 title: 'Đề nghị xóa giao dịch chi',
-                message: `${currentUser?.name || currentUser?.username} đề nghị admin xóa giao dịch chi của công trình ${transaction.project_name}, ngày ${formatDateVN(transaction.accounting_date)}, số tiền ${formatCurrency(amount)}: ${cleanNote}.`,
+                message: `${currentUser?.name || currentUser?.username} đề nghị admin xóa giao dịch chi của công trình ${transaction.project_name}, ngày ${formatDateVN(transaction.accounting_date)}, số tiền ${formatCurrency(amount)}. Lý do: ${cleanReason}.`,
                 type: 'delete_request',
                 sourceTable: 'transactions',
                 sourceId: transaction.id,
                 projectName: transaction.project_name
             });
 
-            logActivity('Đề nghị xóa', 'Chi phí', `Đề nghị admin xóa giao dịch (ID: ${transaction.id}) - Số tiền: ${new Intl.NumberFormat('vi-VN').format(amount)}`, transaction.project_name);
+            logActivity('Đề nghị xóa', 'Chi phí', `Đề nghị admin xóa giao dịch (ID: ${transaction.id}) - Lý do: ${cleanReason} - Số tiền: ${new Intl.NumberFormat('vi-VN').format(amount)}`, transaction.project_name);
             showToast(
                 sent
                     ? 'Đã gửi đề nghị xóa tới Admin!'
-                    : 'Chưa gửi được thông báo. Vui lòng chạy setup_notifications.sql rồi thử lại.',
-                sent ? 'success' : 'error'
+                    : 'Đã lưu đề nghị xóa!',
+                'success'
             );
+            if (!sent) console.warn('Delete request notification was not sent, but the request was saved.');
+            fetchData();
         } catch (error) {
             console.error('Error requesting transaction delete:', error);
             showToast('Lỗi khi gửi đề nghị xóa!', 'error');
@@ -1404,7 +1487,7 @@ export default function Home() {
                     original_table: 'incomes',
                     record_id: id,
                     record_name: recordName,
-                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    requested_by: currentUser?.username || 'unknown',
                     reason: reason.trim(),
                     status: 'pending'
                 }]);
@@ -1592,7 +1675,7 @@ export default function Home() {
                     original_table: 'approval_requests',
                     record_id: id,
                     record_name: recordName,
-                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    requested_by: currentUser?.username || 'unknown',
                     reason: reason.trim(),
                     status: 'pending'
                 }]);
@@ -1912,7 +1995,7 @@ export default function Home() {
                     original_table: 'partner_debts',
                     record_id: id,
                     record_name: recordName,
-                    requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                    requested_by: currentUser?.username || 'unknown',
                     reason: reason.trim(),
                     status: 'pending'
                 }]);
@@ -1995,6 +2078,8 @@ export default function Home() {
                 .eq('id', request.id);
             if (reqError) throw reqError;
 
+            await notifyDeleteRequestRequester(request, 'approved', request.record_name);
+
             showToast('Đã phê duyệt xóa dữ liệu!');
             fetchData();
         } catch (err) {
@@ -2014,6 +2099,8 @@ export default function Home() {
                 .delete()
                 .eq('id', request.id);
             if (reqError) throw reqError;
+
+            await notifyDeleteRequestRequester(request, 'rejected', request.record_name);
 
             showToast('Đã từ chối đề nghị xóa!');
             fetchData();
@@ -3087,11 +3174,33 @@ export default function Home() {
                                 <h2 className="text-2xl font-bold text-slate-800">Quản lý Nhân viên</h2>
                                 <p className="text-slate-500 text-sm mt-1">Thêm hoặc xóa tài khoản truy cập hệ thống.</p>
                             </div>
-                            <button onClick={() => setUserModal({ isOpen: true, user: null })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2">
-                                <Plus size={18} /> Thêm nhân viên
-                            </button>
+                            {userManagementSubTab === 'list' && (
+                                <button onClick={() => setUserModal({ isOpen: true, user: null })} className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2">
+                                    <Plus size={18} /> Thêm nhân viên
+                                </button>
+                            )}
                         </header>
+                        <div className="mb-6 flex flex-wrap gap-3 rounded-3xl border border-slate-200 bg-white p-2 shadow-sm">
+                            <button
+                                type="button"
+                                onClick={() => setUserManagementSubTab('list')}
+                                className={`rounded-2xl px-4 py-2 text-sm font-black transition ${userManagementSubTab === 'list' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/20' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                                Danh sách nhân viên
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setUserManagementSubTab('activity')}
+                                className={`rounded-2xl px-4 py-2 text-sm font-black transition ${userManagementSubTab === 'activity' ? 'bg-slate-900 text-white shadow-lg shadow-slate-900/20' : 'text-slate-600 hover:bg-slate-100'}`}
+                            >
+                                Lịch sử hoạt động
+                            </button>
+                        </div>
                         
+                        {userManagementSubTab === 'activity' ? (
+                            <UserActivityTimeline activityLogs={activityLogs} usersList={usersList} />
+                        ) : (
+                            <>
                         <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4">
                             <div className="flex-1 relative">
                                 <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
@@ -3248,6 +3357,8 @@ export default function Home() {
                                 </table>
                             </div>
                         </div>
+                            </>
+                        )}
                     </div>
                 )}
 

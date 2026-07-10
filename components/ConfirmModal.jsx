@@ -3,12 +3,26 @@
 import React from 'react';
 import { AlertTriangle, Trash2, Info } from 'lucide-react';
 
-export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, type = 'danger', title = 'Xác nhận', requirePassword = false, confirmText }) {
+export default function ConfirmModal({
+    isOpen,
+    message,
+    onConfirm,
+    onCancel,
+    type = 'danger',
+    title = 'Xác nhận',
+    requirePassword = false,
+    requireReason = false,
+    reasonLabel = 'Lý do',
+    reasonPlaceholder = 'Nhập lý do...',
+    confirmText
+}) {
     const [password, setPassword] = React.useState('');
+    const [reason, setReason] = React.useState('');
 
     React.useEffect(() => {
         if (isOpen) {
             setPassword('');
+            setReason('');
         }
     }, [isOpen]);
 
@@ -48,11 +62,30 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, typ
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Mật khẩu xác nhận</label>
                             <input 
                                 type="password" 
+                                name="cbpro-confirm-password"
+                                autoComplete="new-password"
+                                autoCorrect="off"
+                                spellCheck={false}
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                                 placeholder="Nhập mật khẩu của bạn..."
                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 focus:border-red-500 focus:bg-white outline-none transition-colors"
                             />
+                        </div>
+                    )}
+
+                    {requireReason && (
+                        <div className="mt-5 text-left">
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{reasonLabel}</label>
+                            <textarea
+                                value={reason}
+                                onChange={(e) => setReason(e.target.value)}
+                                placeholder={reasonPlaceholder}
+                                rows={4}
+                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:border-blue-500 focus:bg-white outline-none transition-colors resize-none"
+                                autoFocus
+                            />
+                            <p className="mt-2 text-[11px] font-semibold text-slate-400">Bắt buộc nhập để admin/QS trưởng biết lý do xử lý.</p>
                         </div>
                     )}
                 </div>
@@ -67,9 +100,9 @@ export default function ConfirmModal({ isOpen, message, onConfirm, onCancel, typ
                     </button>
                     <button
                         type="button"
-                        onClick={() => onConfirm(requirePassword ? password : null)}
-                        disabled={requirePassword && !password}
-                        className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm ${requirePassword && !password ? 'opacity-50 cursor-not-allowed' : ''}`}
+                        onClick={() => onConfirm(requireReason ? reason.trim() : (requirePassword ? password : null))}
+                        disabled={(requirePassword && !password) || (requireReason && !reason.trim())}
+                        className={`flex-1 py-3 rounded-xl font-bold text-white shadow-lg ${confirmBg} transition text-sm ${(requirePassword && !password) || (requireReason && !reason.trim()) ? 'opacity-50 cursor-not-allowed' : ''}`}
                     >
                         {confirmText || (isDanger ? 'Chuyển vào thùng rác' : 'Đồng ý')}
                     </button>

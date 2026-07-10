@@ -104,6 +104,27 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [isCustomCompany, setIsCustomCompany] = useState(false);
 
+    const moveRecordsToTrash = async (tableName, records = []) => {
+        const validRecords = records.filter(Boolean);
+        if (validRecords.length === 0) return;
+        const trashRecords = validRecords.map(record => ({
+            original_table: tableName,
+            record_data: JSON.stringify(record),
+            deleted_by: currentUser?.username || 'unknown',
+            deleted_at: new Date().toISOString()
+        }));
+
+        try {
+            const { error } = await supabase.from('trash_bin').insert(trashRecords);
+            if (error) throw error;
+        } catch(e) {
+            const saved = localStorage.getItem('system_trash_bin');
+            const parsed = saved ? JSON.parse(saved) : [];
+            trashRecords.forEach((tr, idx) => parsed.unshift({ ...tr, id: `local_${Date.now()}_${idx}` }));
+            localStorage.setItem('system_trash_bin', JSON.stringify(parsed));
+        }
+    };
+
     const [allTemplates, setAllTemplates] = useState({});
 
     // Form state
@@ -503,25 +524,32 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     const orderToDelete = orders.find(o => o.id === id);
                     
                     if (isDbStorage && !id.toString().startsWith('local_')) {
+                        await moveRecordsToTrash('material_orders', orderToDelete ? [orderToDelete] : []);
                         const { error } = await supabase
                             .from('material_orders')
                             .delete()
                             .eq('id', id);
                         if (error) throw error;
                         
-                        if (orderToDelete) {
-                             const { data: dntts } = await supabase.from('approval_requests')
-                                 .select('id, reason')
-                                 .eq('project_name', orderToDelete.project_name)
-                                 .eq('doc_type', 'Đơn Vật Tư')
-                                 .eq('recipient', orderToDelete.recipient);
+                         if (orderToDelete) {
+                              const { data: dntts } = await supabase.from('approval_requests')
+                                  .select('*')
+                                  .eq('project_name', orderToDelete.project_name)
+                                  .eq('doc_type', 'Đơn Vật Tư')
+                                  .eq('recipient', orderToDelete.recipient);
                              
                              if (dntts) {
-                                 for (const dntt of dntts) {
-                                     if (dntt.reason && dntt.reason.includes(orderToDelete.order_date)) {
-                                          await supabase.from('approval_requests').delete().eq('id', dntt.id);
-                                          await supabase.from('transactions').delete().ilike('note', `%[ID:${dntt.id}]%`);
-                                     }
+                                  for (const dntt of dntts) {
+                                      if (dntt.reason && dntt.reason.includes(orderToDelete.order_date)) {
+                                           const { data: relatedTransactions } = await supabase
+                                               .from('transactions')
+                                               .select('*')
+                                               .ilike('note', `%[ID:${dntt.id}]%`);
+                                           await moveRecordsToTrash('approval_requests', [dntt]);
+                                           await moveRecordsToTrash('transactions', relatedTransactions || []);
+                                           await supabase.from('approval_requests').delete().eq('id', dntt.id);
+                                           await supabase.from('transactions').delete().ilike('note', `%[ID:${dntt.id}]%`);
+                                      }
                                  }
                              }
                         }

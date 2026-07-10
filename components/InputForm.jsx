@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Save, Trash2, AlertCircle } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
 import RecipientInput from './RecipientInput';
@@ -82,6 +82,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, mode: 'PAY_ONLY', thuStatus: 'CHƯA XONG', chiStatus: 'CHƯA XONG' });
     const [confirmReset, setConfirmReset] = useState(false);
     const [isCustomNote, setIsCustomNote] = useState(false);
+    const lastAutoPhaseRef = useRef('Đợt 1');
 
     useEffect(() => {
         setIsCustomNote(false);
@@ -295,7 +296,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     if (num > maxPhase) maxPhase = num;
                 }
             });
-            setFormData(prev => ({ ...prev, phase: `Đợt ${maxPhase + 1}` }));
+            const nextAutoPhase = `Đợt ${maxPhase + 1}`;
+            setFormData(prev => {
+                const userTypedPhase = prev.phase?.trim() && prev.phase !== lastAutoPhaseRef.current;
+                lastAutoPhaseRef.current = nextAutoPhase;
+                return userTypedPhase ? prev : { ...prev, phase: nextAutoPhase };
+            });
         }
     }, [type, formData.project_name, incomes, editData]);
 

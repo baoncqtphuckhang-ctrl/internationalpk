@@ -228,7 +228,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 original_table: 'material_orders',
                 record_id: orderId,
                 record_name: recordName,
-                requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                requested_by: currentUser?.username || 'unknown',
                 reason: reason.trim(),
                 status: 'pending'
             }]).then(({ error }) => {

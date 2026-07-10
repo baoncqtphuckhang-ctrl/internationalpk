@@ -4,6 +4,21 @@ import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
 
+const CUSTOMER_DEBT_COLUMN_STORAGE_KEY = 'cbpro_expected_customer_debt_visible_columns_v2';
+const DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS = {
+    stt: true,
+    name: true,
+    expected: true,
+    actual: true,
+    remaining: true,
+    dueDate: true,
+    status: true,
+    invoiceNo: true,
+    invoiceDate: true,
+    contractNo: true,
+    voucherNo: true
+};
+
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [invoices, setInvoices] = useState([]);
@@ -12,6 +27,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [editingId, setEditingId] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+    const [requestDeleteInvoice, setRequestDeleteInvoice] = useState(null);
     const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
     const [deletePeriodState, setDeletePeriodState] = useState({ isOpen: false, periodName: '', periodInvoices: [], password: '', error: '' });
     const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
@@ -23,6 +39,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [confirmDeleteProjectPdf, setConfirmDeleteProjectPdf] = useState(null);
     const [tableZoom, setTableZoom] = useState(1);
     const [hideZeroRowsOnPrint, setHideZeroRowsOnPrint] = useState(true);
+    const [customerDebtVisibleColumns, setCustomerDebtVisibleColumns] = useState(() => {
+        if (typeof window === 'undefined') return DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
+        try {
+            const saved = localStorage.getItem(CUSTOMER_DEBT_COLUMN_STORAGE_KEY);
+            return saved ? { ...DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS, ...JSON.parse(saved) } : DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
+        } catch(e) {
+            return DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
+        }
+    });
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -59,6 +84,29 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [isCustomTeamName, setIsCustomTeamName] = useState(false);
     const [isCustomPeriod, setIsCustomPeriod] = useState(false);
 
+    const isSupabaseUuid = (id) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(id || ''));
+
+    const moveExpectedInvoicesToTrash = async (records = []) => {
+        const validRecords = records.filter(Boolean);
+        if (validRecords.length === 0) return;
+        const trashRecords = validRecords.map(record => ({
+            original_table: 'expected_invoices',
+            record_data: JSON.stringify(record),
+            deleted_by: currentUser?.username || 'unknown',
+            deleted_at: new Date().toISOString()
+        }));
+
+        try {
+            const { error } = await supabase.from('trash_bin').insert(trashRecords);
+            if (error) throw error;
+        } catch(e) {
+            const saved = localStorage.getItem('system_trash_bin');
+            const parsed = saved ? JSON.parse(saved) : [];
+            trashRecords.forEach((tr, idx) => parsed.unshift({ ...tr, id: `local_${Date.now()}_${idx}` }));
+            localStorage.setItem('system_trash_bin', JSON.stringify(parsed));
+        }
+    };
+
     const availableTeamNames = useMemo(() => {
         if (!formData.projectName || !transactions || transactions.length === 0) return [];
         const recipients = transactions
@@ -86,6 +134,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     useEffect(() => {
         fetchInvoices();
     }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(CUSTOMER_DEBT_COLUMN_STORAGE_KEY, JSON.stringify(customerDebtVisibleColumns));
+        } catch(e) {}
+    }, [customerDebtVisibleColumns]);
 
     const fetchInvoices = async () => {
         try {
@@ -538,25 +592,29 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (isAuthorizer) {
             setConfirmDeleteId(inv.id);
         } else {
-            const reason = window.prompt(`Nhập lý do đề nghị xóa dòng dự kiến này:`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
-            
+            setRequestDeleteInvoice(inv);
+        }
+    };
+
+    const submitDeleteRequest = async (reason) => {
+        if (!requestDeleteInvoice) return;
+        try {
+            const inv = requestDeleteInvoice;
             const recordName = `Dự kiến: ${inv.projectName || ''} - ${inv.teamName || 'HĐ'} - ${inv.phase || ''}`;
-            supabase.from('delete_requests').insert([{
+            const { error } = await supabase.from('delete_requests').insert([{
                 original_table: 'expected_invoices',
                 record_id: inv.id,
                 record_name: recordName,
-                requested_by: currentUser?.name || currentUser?.username || 'unknown',
+                requested_by: currentUser?.username || 'unknown',
                 reason: reason.trim(),
                 status: 'pending'
-            }]).then(({ error }) => {
-                if (error) {
-                    alert('Lỗi khi gửi đề nghị xóa: ' + error.message);
-                } else {
-                    alert('Đã gửi đề nghị xóa dự kiến tới Admin/QS Trưởng!');
-                }
-            });
+            }]);
+            if (error) throw error;
+            if (showToast) showToast('Đã gửi đề nghị xóa dự kiến tới Admin/QS Trưởng!', 'success');
+        } catch (error) {
+            if (showToast) showToast('Lỗi khi gửi đề nghị xóa: ' + (error.message || 'không rõ lỗi'), 'error');
+        } finally {
+            setRequestDeleteInvoice(null);
         }
     };
 
@@ -564,33 +622,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (!confirmDeleteId) return;
         try {
             const record = invoices.find(inv => inv.id === confirmDeleteId);
-            if (record) {
-                const trashRecord = {
-                    original_table: 'expected_invoices',
-                    record_data: JSON.stringify(record),
-                    deleted_by: currentUser?.username || 'unknown',
-                    deleted_at: new Date().toISOString()
-                };
-                const { error: trashError } = await supabase.from('trash_bin').insert([trashRecord]);
-                if (trashError) {
-                    console.error('Error inserting to trash_bin:', trashError);
-                }
+            await moveExpectedInvoicesToTrash(record ? [record] : []);
+
+            if (isSupabaseUuid(confirmDeleteId)) {
+                const { error } = await supabase
+                    .from('expected_invoices')
+                    .delete()
+                    .eq('id', confirmDeleteId);
+                if (error) throw error;
             }
 
-            const { error } = await supabase
-                .from('expected_invoices')
-                .delete()
-                .eq('id', confirmDeleteId);
-            
-            if (error) {
-                console.error('Supabase delete failed:', error);
-                alert('Xóa thất bại trên hệ thống: ' + error.message);
-            } else {
-                setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
-                if (showToast) showToast('Đã xóa hóa đơn dự kiến!', 'success');
-            }
+            setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
+            if (showToast) showToast('Đã xóa hóa đơn dự kiến!', 'success');
         } catch (error) {
             console.error('Error in handleDelete:', error);
+            if (showToast) showToast('Xóa thất bại: ' + (error.message || 'không rõ lỗi'), 'error');
         }
         setConfirmDeleteId(null);
     };
@@ -600,7 +646,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     };
 
     const confirmDeleteAll = async (password) => {
-        if (filteredInvoices.length === 0) {
+        if (deleteAllTargetInvoices.length === 0) {
             setIsDeleteAllConfirmOpen(false);
             return;
         }
@@ -612,34 +658,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
         
         try {
-            const idsToDelete = filteredInvoices.map(inv => inv.id);
-            
-            // Move records to trash_bin
-            const trashRecords = filteredInvoices.map(record => ({
-                original_table: 'expected_invoices',
-                record_data: JSON.stringify(record),
-                deleted_by: currentUser?.username || 'unknown',
-                deleted_at: new Date().toISOString()
-            }));
-            const { error: trashError } = await supabase.from('trash_bin').insert(trashRecords);
-            if (trashError) {
-                console.error('Error inserting to trash_bin:', trashError);
-            }
+            const idsToDelete = deleteAllTargetInvoices.map(inv => inv.id);
+            const dbIdsToDelete = idsToDelete.filter(isSupabaseUuid);
+            await moveExpectedInvoicesToTrash(deleteAllTargetInvoices);
 
-            const { error } = await supabase
-                .from('expected_invoices')
-                .delete()
-                .in('id', idsToDelete);
-            
-            if (error) {
-                console.error('Supabase delete all failed:', error);
-                alert('Xóa thất bại trên hệ thống: ' + error.message);
-            } else {
-                setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
-                if (showToast) showToast('Đã xóa tất cả các hóa đơn dự kiến đang hiển thị!', 'success');
+            if (dbIdsToDelete.length > 0) {
+                const { error } = await supabase
+                    .from('expected_invoices')
+                    .delete()
+                    .in('id', dbIdsToDelete);
+                if (error) throw error;
             }
+            
+            setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
+            if (showToast) showToast('Đã xóa tất cả các hóa đơn dự kiến đang hiển thị!', 'success');
         } catch (error) {
             console.error('Error in confirmDeleteAll:', error);
+            if (showToast) showToast('Xóa thất bại: ' + (error.message || 'không rõ lỗi'), 'error');
         }
         setIsDeleteAllConfirmOpen(false);
     };
@@ -848,7 +883,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setTableZoom(prev => Math.min(1.25, Math.max(0.45, Number((prev + delta).toFixed(2)))));
     };
 
-    let filteredInvoices = invoices.filter(inv => {
+    const invoiceMatchesCurrentScope = (inv) => {
         if (activeSubTab === 'invoice') {
             if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
         } else if (activeSubTab === 'team') {
@@ -860,13 +895,27 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (!inv.accountant_approved) return false;
         }
 
-        const term = searchTerm.toLowerCase();
         if (filterProject && inv.projectName !== filterProject) return false;
         if (filterPhase && inv.phase !== filterPhase) return false;
+        return true;
+    };
+
+    const deleteAllTargetInvoices = invoices.filter(invoiceMatchesCurrentScope);
+
+    let filteredInvoices = invoices.filter(inv => {
+        if (!invoiceMatchesCurrentScope(inv)) return false;
+
+        const term = searchTerm.trim().toLowerCase();
+        if (!term) return true;
 
         return (
             (inv.projectName || '').toLowerCase().includes(term) ||
             (inv.phase || '').toLowerCase().includes(term) ||
+            (inv.teamName || '').toLowerCase().includes(term) ||
+            (inv.account_name || '').toLowerCase().includes(term) ||
+            (inv.account_number || '').toLowerCase().includes(term) ||
+            (inv.bank_name || '').toLowerCase().includes(term) ||
+            (inv.created_by || '').toLowerCase().includes(term) ||
             (inv.note || '').toLowerCase().includes(term) ||
             (projectDetails?.[inv.projectName]?.contractNo || '').toLowerCase().includes(term)
         );
@@ -1071,6 +1120,72 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         });
     }, [customerDebts, searchTerm, filterProject, filterPhase]);
 
+    const customerDebtColumns = [
+        { key: 'stt', label: 'STT', className: 'w-16 text-center', cellClassName: 'text-center text-slate-500 font-medium' },
+        { key: 'name', label: 'Tên', className: 'min-w-[220px]', cellClassName: 'font-bold text-slate-900' },
+        { key: 'expected', label: 'Cần thu', className: 'w-44 text-right', cellClassName: 'text-right font-black text-slate-800' },
+        { key: 'actual', label: 'Đã thu', className: 'w-40 text-right', cellClassName: 'text-right font-black text-emerald-600' },
+        { key: 'remaining', label: 'Còn lại', className: 'w-40 text-right', cellClassName: 'text-right font-black text-rose-600' },
+        { key: 'dueDate', label: 'Ngày tới hạn', className: 'w-40', cellClassName: 'font-medium text-slate-700' },
+        { key: 'status', label: 'Hạn', className: 'w-32 text-center', cellClassName: 'text-center font-black' },
+        { key: 'invoiceNo', label: 'Số HĐ', className: 'w-44', cellClassName: 'font-bold text-slate-700' },
+        { key: 'invoiceDate', label: 'Ngày HĐ', className: 'w-32', cellClassName: 'font-medium text-slate-700' },
+        { key: 'contractNo', label: 'Số hợp đồng', className: 'w-52', cellClassName: 'font-medium text-slate-700' },
+        { key: 'voucherNo', label: 'Số CT', className: 'w-36', cellClassName: 'font-medium text-slate-700' }
+    ];
+
+    const visibleCustomerDebtColumns = customerDebtColumns.filter(col => customerDebtVisibleColumns[col.key] !== false);
+
+    const customerDebtLayout = useMemo(() => {
+        const count = visibleCustomerDebtColumns.length || 1;
+        if (count <= 6) {
+            return { minWidth: 980, fontSize: '14px', headerFontSize: '13px', cellPaddingX: '20px', cellPaddingY: '14px' };
+        }
+        if (count <= 8) {
+            return { minWidth: 1180, fontSize: '13px', headerFontSize: '12px', cellPaddingX: '16px', cellPaddingY: '13px' };
+        }
+        return { minWidth: 1450, fontSize: '12px', headerFontSize: '11px', cellPaddingX: '12px', cellPaddingY: '12px' };
+    }, [visibleCustomerDebtColumns.length]);
+
+    const toggleCustomerDebtColumn = (key) => {
+        setCustomerDebtVisibleColumns(prev => ({ ...prev, [key]: prev[key] === false }));
+    };
+
+    const renderCustomerDebtCell = (debt, idx, key) => {
+        switch (key) {
+            case 'stt':
+                return idx + 1;
+            case 'name':
+                return debt.projectName;
+            case 'expected':
+                return `${formatCurrency(debt.expected)} VNĐ`;
+            case 'actual':
+                return `${formatCurrency(debt.actual)} VNĐ`;
+            case 'remaining':
+                return `${formatCurrency(debt.remaining)} VNĐ`;
+            case 'dueDate':
+                return debt.due_date || '-';
+            case 'status':
+                return (
+                    debt.overdue_days > 0 ? (
+                        <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-black text-red-700">Trễ {debt.overdue_days} ngày</span>
+                    ) : debt.due_date ? (
+                        <span className="text-xs font-black text-emerald-600">Trong hạn</span>
+                    ) : '-'
+                );
+            case 'invoiceNo':
+                return debt.invoice_no || <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>;
+            case 'invoiceDate':
+                return debt.invoice_date || '-';
+            case 'contractNo':
+                return debt.contractNo || '-';
+            case 'voucherNo':
+                return debt.voucher_no || '-';
+            default:
+                return '-';
+        }
+    };
+
     const availablePhases = useMemo(() => {
         if (activeSubTab === 'customer_debt') {
             return [...new Set(customerDebts.filter(i => !filterProject || i.projectName === filterProject).map(i => i.phase).filter(Boolean))].sort();
@@ -1127,8 +1242,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     {activeSubTab !== 'customer_debt' && (currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG') && (
                         <button 
                             onClick={handleDeleteAll}
-                            disabled={filteredInvoices.length === 0}
-                            className={`px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 ${filteredInvoices.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600'}`}
+                            disabled={deleteAllTargetInvoices.length === 0}
+                            className={`px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 ${deleteAllTargetInvoices.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600'}`}
                         >
                             <Trash2 size={20} />
                             Xóa tất cả
@@ -1187,6 +1302,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     <Search className="absolute left-4 top-3.5 text-slate-400" size={18} />
                     <input 
                         type="text"
+                        id="cbpro-expected-invoice-search"
+                        name="cbpro-expected-invoice-search"
+                        autoComplete="new-password"
+                        autoCorrect="off"
+                        autoCapitalize="off"
+                        spellCheck={false}
                         placeholder="Tìm kiếm..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
@@ -1258,6 +1379,27 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     </button>
                 </div>
             </div>
+
+            {activeSubTab === 'customer_debt' && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm print:hidden">
+                    <span className="mr-1 text-xs font-black uppercase tracking-wide text-slate-500">Ẩn/hiện cột:</span>
+                    {customerDebtColumns.map(col => {
+                        const isVisible = customerDebtVisibleColumns[col.key] !== false;
+                        return (
+                            <button
+                                key={col.key}
+                                type="button"
+                                onClick={() => toggleCustomerDebtColumn(col.key)}
+                                className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black transition ${isVisible ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                title={`${isVisible ? 'Ẩn' : 'Hiện'} cột ${col.label}`}
+                            >
+                                {isVisible ? <Eye size={14} /> : <EyeOff size={14} />}
+                                {col.label}
+                            </button>
+                        );
+                    })}
+                </div>
+            )}
 
             {isFormOpen && (
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
@@ -1621,6 +1763,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         id="expected-invoices-table" 
                         className={`w-full text-left border-collapse table-fixed min-w-[1580px] sm:min-w-[1500px] [&_td]:align-middle [&_th]:align-middle [&_th]:h-14 [&_th]:leading-tight [&_td]:leading-tight max-sm:[&_td]:!p-2 max-sm:[&_th]:!p-2 max-sm:[&_td]:!text-[11px] max-sm:[&_th]:!text-[10px] ${activeSubTab === 'team' || activeSubTab === 'history_team' ? 'expected-team-print-table' : ''} ${activeSubTab === 'customer_debt' ? 'expected-customer-debt-print-table' : ''}`}
                         style={{
+                            minWidth: activeSubTab === 'customer_debt' ? `${customerDebtLayout.minWidth}px` : undefined,
                             '--row-count': teamPrintLayout.rowCount,
                             '--print-font-size': `${teamPrintLayout.fontSize}pt`,
                             '--print-header-font-size': `${teamPrintLayout.headerFontSize}pt`,
@@ -1630,6 +1773,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             '--print-note-width': hasLongPrintNotes ? '10%' : '7%',
                         }}
                     >
+                        {activeSubTab === 'customer_debt' && (
+                            <colgroup>
+                                {visibleCustomerDebtColumns.map(col => (
+                                    <col key={col.key} />
+                                ))}
+                            </colgroup>
+                        )}
                         {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                             <colgroup>
                                 <col className="w-12" />
@@ -1651,10 +1801,37 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         )}
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-20">
-                                <th className="p-4 font-black uppercase text-sm w-16 text-center">STT</th>
+                                {activeSubTab === 'customer_debt' ? (
+                                    visibleCustomerDebtColumns.map(col => (
+                                        <th
+                                            key={col.key}
+                                            className={`font-black uppercase ${col.className || ''}`}
+                                            style={{
+                                                padding: `${customerDebtLayout.cellPaddingY} ${customerDebtLayout.cellPaddingX}`,
+                                                fontSize: customerDebtLayout.headerFontSize
+                                            }}
+                                        >
+                                            <div className={`flex items-center gap-2 ${col.className?.includes('text-right') ? 'justify-end' : col.className?.includes('text-center') ? 'justify-center' : ''}`}>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleCustomerDebtColumn(col.key)}
+                                                    className="print:hidden rounded-lg border border-white/15 bg-white/10 p-1 text-white/80 hover:bg-white/20 hover:text-white"
+                                                    title={`Ẩn cột ${col.label}`}
+                                                >
+                                                    <Eye size={14} />
+                                                </button>
+                                                <span>{col.label}</span>
+                                            </div>
+                                        </th>
+                                    ))
+                                ) : activeSubTab === 'customer_debt' ? null : (
+                                    <>
+                                        <th className="p-4 font-black uppercase text-sm w-16 text-center">STT</th>
                                 <th className="p-4 font-black uppercase text-sm">
                                     {activeSubTab === 'customer_debt' ? 'Tên' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'Tên tổ đội' : 'Tên công trình')}
                                 </th>
+                                    </>
+                                )}
                                 {activeSubTab === 'invoice' ? (
                                     <>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
@@ -1680,7 +1857,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">PDF</th>
                                         <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tác</th>
                                     </>
-                                ) : (
+                                ) : activeSubTab === 'customer_debt' ? null : (
                                     <>
                                         <th className="p-4 font-black uppercase text-sm">Số hợp đồng</th>
                                         <th className="p-4 font-black uppercase text-sm">Số HĐ</th>
@@ -1700,29 +1877,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             {activeSubTab === 'customer_debt' ? (
                                 filteredCustomerDebts.length === 0 ? (
                                     <tr>
-                                        <td colSpan="6" className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={visibleCustomerDebtColumns.length || 1} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
                                 ) : (
                                     filteredCustomerDebts.map((debt, idx) => (
                                         <tr key={debt.id} className="hover:bg-slate-50 transition group">
-                                            <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
-                                            <td className="p-4 text-sm font-bold text-slate-800">{debt.projectName}</td>
-                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.contractNo || '-'}</td>
-                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_no || '-'}</td>
-                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.invoice_date || '-'}</td>
-                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.due_date || '-'}</td>
-                                            <td className="p-4 text-sm font-medium text-center">
-                                                {debt.overdue_days > 0 ? (
-                                                    <span className="bg-red-100 text-red-700 px-2 py-1 rounded-full font-bold text-xs">{debt.overdue_days} ngày</span>
-                                                ) : debt.due_date ? (
-                                                    <span className="text-emerald-600 font-bold text-xs">Trong hạn</span>
-                                                ) : '-'}
-                                            </td>
-                                            <td className="p-4 text-sm font-medium text-slate-700">{debt.voucher_no || '-'}</td>
-                                            <td className="p-4 text-sm font-bold text-slate-800">{debt.phase}</td>
-                                            <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(debt.expected)} VNĐ</td>
-                                            <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(debt.actual)} VNĐ</td>
-                                            <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(debt.remaining)} VNĐ</td>
+                                            {visibleCustomerDebtColumns.map(col => (
+                                                <td
+                                                    key={col.key}
+                                                    className={`${col.cellClassName || ''}`}
+                                                    style={{
+                                                        padding: `${customerDebtLayout.cellPaddingY} ${customerDebtLayout.cellPaddingX}`,
+                                                        fontSize: customerDebtLayout.fontSize
+                                                    }}
+                                                >
+                                                    {renderCustomerDebtCell(debt, idx, col.key)}
+                                                </td>
+                                            ))}
                                         </tr>
                                     ))
                                 )
@@ -2091,10 +2262,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="9" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
-                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>
-                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>
-                                    <td className="p-4 text-sm font-black text-rose-600 text-right">{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>
+                                    {visibleCustomerDebtColumns.map(col => {
+                                        const totalClass = `p-4 text-sm ${col.cellClassName || ''}`;
+                                        if (col.key === 'name') {
+                                            return <td key={col.key} className="p-4 text-sm font-black text-slate-800 uppercase">Tổng cộng:</td>;
+                                        }
+                                        if (col.key === 'expected') {
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>;
+                                        }
+                                        if (col.key === 'actual') {
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>;
+                                        }
+                                        if (col.key === 'remaining') {
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>;
+                                        }
+                                        return <td key={col.key} className="p-4"></td>;
+                                    })}
                                 </tr>
                             )}
                             {activeSubTab === 'invoice' && filteredInvoices.length > 0 && (
@@ -2136,6 +2319,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             />
 
             <ConfirmModal
+                isOpen={!!requestDeleteInvoice}
+                title="Đề nghị xóa hóa đơn dự kiến"
+                message={`Gửi đề nghị admin/QS trưởng xóa dòng dự kiến ${requestDeleteInvoice?.projectName || ''} - ${requestDeleteInvoice?.phase || ''}.`}
+                type="info"
+                confirmText="Gửi đề nghị"
+                requireReason={true}
+                reasonLabel="Lý do đề nghị xóa"
+                reasonPlaceholder="Ví dụ: nhập sai kỳ, sai tổ đội, trùng dòng..."
+                onConfirm={submitDeleteRequest}
+                onCancel={() => setRequestDeleteInvoice(null)}
+            />
+
+            <ConfirmModal
                 isOpen={!!confirmDeletePdf}
                 title="Xóa PDF"
                 message="Bạn có chắc chắn muốn xóa file PDF này khỏi dòng tổ đội không?"
@@ -2158,7 +2354,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             <ConfirmModal
                 isOpen={isDeleteAllConfirmOpen}
                 title="Xóa toàn bộ dữ liệu"
-                message={`Bạn có chắc chắn muốn xóa tất cả ${filteredInvoices.length} dòng dữ liệu đang hiển thị? Hành động này cực kỳ nguy hiểm và không thể hoàn tác!`}
+                message={`Bạn có chắc chắn muốn xóa tất cả ${deleteAllTargetInvoices.length} dòng dữ liệu trong tab/bộ lọc hiện tại? Ô tìm kiếm sẽ không làm lệch phạm vi xóa. Hành động này cực kỳ nguy hiểm và không thể hoàn tác!`}
                 type="danger"
                 requirePassword={true}
                 onConfirm={confirmDeleteAll}
