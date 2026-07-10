@@ -122,17 +122,7 @@ export default function Home() {
         }
     }, [usersList, isUsersLoaded]);
 
-    const [currentUser, setCurrentUser] = useState(() => {
-        if (typeof window !== 'undefined') {
-            const saved = localStorage.getItem('currentUser');
-            if (saved) {
-                try {
-                    return JSON.parse(saved);
-                } catch (e) {}
-            }
-        }
-        return null;
-    });
+    const [currentUser, setCurrentUser] = useState(null);
     const [isClient, setIsClient] = useState(false);
 
     useEffect(() => {
@@ -407,7 +397,6 @@ export default function Home() {
             await handleSaveSystemConfig(newConfig);
         }
         setCurrentUser(user);
-        localStorage.setItem('currentUser', JSON.stringify(user));
         setActiveTab('home');
     };
 
@@ -800,7 +789,7 @@ export default function Home() {
 
         const pollingInterval = setInterval(() => {
             debouncedFetch();
-        }, 15000);
+        }, 300000);
 
         return () => {
             if (debounceTimer) clearTimeout(debounceTimer);
@@ -2213,7 +2202,6 @@ export default function Home() {
                 setSelectedProject={setSelectedProject}
                 handleLogout={() => {
                     setCurrentUser(null);
-                    localStorage.removeItem('currentUser');
                 }}
                 canViewDashboard={canViewDashboard}
                 canViewReports={canViewReports}

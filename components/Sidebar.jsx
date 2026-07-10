@@ -421,9 +421,9 @@ export default function Sidebar({
                         </div>
                     )}
                     
-                    <div className="mt-8 mb-4 px-4 flex justify-center opacity-70 hover:opacity-100 transition-opacity">
+                    {/* <div className="mt-8 mb-4 px-4 flex justify-center opacity-70 hover:opacity-100 transition-opacity">
                         <img src="https://visitor-badge.laobi.icu/badge?page_id=cbpro.misa.app&left_color=gray&right_color=blue&left_text=Lượt truy cập" alt="Visitor Count" className="rounded shadow" />
-                    </div>
+                    </div> */}
                 </nav>
             </aside>
 
