@@ -56,9 +56,10 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         setIsAdding(true);
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
-        onUpsertProject(formData, !!editingProject);
+        const saved = await onUpsertProject(formData, !!editingProject);
+        if (!saved) return;
         setIsAdding(false);
         setEditingProject(null);
         setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing' });

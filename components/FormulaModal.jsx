@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { X, Save, Calculator, RotateCcw, Edit2, Info } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 const DEFAULT_FORMULAS = [
     {
@@ -86,6 +87,7 @@ const DEFAULT_FORMULAS = [
 
 export default function FormulaModal({ isOpen, onClose, systemConfig, onSaveConfig, isAdmin }) {
     const [formulas, setFormulas] = useState([]);
+    const [confirmReset, setConfirmReset] = useState(false);
 
     useEffect(() => {
         if (systemConfig?.formulas && Array.isArray(systemConfig.formulas) && systemConfig.formulas.length > 0) {
@@ -114,9 +116,7 @@ export default function FormulaModal({ isOpen, onClose, systemConfig, onSaveConf
     };
 
     const handleReset = () => {
-        if (window.confirm('Bạn có chắc chắn muốn khôi phục toàn bộ công thức về mặc định?')) {
-            setFormulas(DEFAULT_FORMULAS);
-        }
+        setConfirmReset(true);
     };
 
     const handleSave = () => {
@@ -242,6 +242,18 @@ export default function FormulaModal({ isOpen, onClose, systemConfig, onSaveConf
                     )}
                 </div>
             </div>
+            <ConfirmModal
+                isOpen={confirmReset}
+                type="warning"
+                title="Khôi phục công thức"
+                message="Bạn có chắc chắn muốn khôi phục toàn bộ công thức về mặc định? Các thay đổi hiện tại sẽ bị thay thế."
+                confirmText="Khôi phục mặc định"
+                onConfirm={() => {
+                    setFormulas(DEFAULT_FORMULAS);
+                    setConfirmReset(false);
+                }}
+                onCancel={() => setConfirmReset(false)}
+            />
         </div>
     );
 }

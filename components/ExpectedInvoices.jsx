@@ -19,6 +19,32 @@ const DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS = {
     voucherNo: true
 };
 
+const getCurrentMonthValue = () => {
+    const now = new Date();
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+};
+
+const formatMonthLabel = (value) => {
+    if (!value) return '';
+    const normalized = String(value).trim();
+    if (/^\d{4}-\d{2}$/.test(normalized)) {
+        const [year, month] = normalized.split('-');
+        return `${month}/${year}`;
+    }
+    return normalized;
+};
+
+const normalizeMonthValue = (value) => {
+    if (!value) return '';
+    const normalized = String(value).trim();
+    if (/^\d{4}-\d{2}$/.test(normalized)) return normalized;
+    const slashMatch = normalized.match(/^(\d{1,2})\/(\d{4})$/);
+    if (slashMatch) {
+        return `${slashMatch[2]}-${String(slashMatch[1]).padStart(2, '0')}`;
+    }
+    return normalized;
+};
+
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [invoices, setInvoices] = useState([]);
@@ -33,6 +59,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
     const [bulkAddMonth, setBulkAddMonth] = useState('');
     const [activeSubTab, setActiveSubTab] = useState('customer_debt');
+    const [filterInvoiceMonth, setFilterInvoiceMonth] = useState('');
     const [uploadingPdfId, setUploadingPdfId] = useState(null);
     const [uploadingProjectPdfKey, setUploadingProjectPdfKey] = useState(null);
     const [confirmDeletePdf, setConfirmDeletePdf] = useState(null);
@@ -62,7 +89,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         account_name: '',
         account_number: '',
         bank_name: '',
-        deductionAmount: ''
+        deductionAmount: '',
+        invoice_month: getCurrentMonthValue()
     });
     const [confirmPeriodAction, setConfirmPeriodAction] = useState(null);
     const [editingPeriodName, setEditingPeriodName] = useState(null);
@@ -122,6 +150,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             .map(i => i.phase);
         return [...new Set(phases)].sort();
     }, [formData.projectName, incomes]);
+
+    const availableInvoiceMonths = useMemo(() => {
+        const months = new Set();
+        invoices.forEach(inv => {
+            const monthValue = normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '');
+            if (monthValue) months.add(monthValue);
+        });
+        return Array.from(months).sort().reverse();
+    }, [invoices]);
 
     const allPeriods = useMemo(() => {
         const periods = new Set();
@@ -232,7 +269,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         account_name: formData.account_name,
                         account_number: formData.account_number,
                         bank_name: formData.bank_name,
-                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0
+                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
+                        invoice_month: normalizeMonthValue(formData.invoice_month)
                     })
                     .eq('id', editingId)
                     .select();
@@ -257,7 +295,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         account_name: formData.account_name,
                         account_number: formData.account_number,
                         bank_name: formData.bank_name,
-                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0
+                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
+                        invoice_month: normalizeMonthValue(formData.invoice_month)
                     } : inv
                 ));
             } else {
@@ -275,7 +314,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     account_name: formData.account_name,
                     account_number: formData.account_number,
                     bank_name: formData.bank_name,
-                    deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0
+                    deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
+                    invoice_month: normalizeMonthValue(formData.invoice_month)
                 };
 
                 const { data, error } = await supabase
@@ -304,7 +344,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsCustomPhase(false);
         setIsCustomTeamName(false);
         setIsCustomPeriod(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '' });
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue() });
     };
 
     const handleEdit = (inv) => {
@@ -326,7 +366,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             account_name: inv.account_name || '',
             account_number: inv.account_number || '',
             bank_name: inv.bank_name || '',
-            deductionAmount: inv.deductionAmount ? inv.deductionAmount.toLocaleString('en-US') : ''
+            deductionAmount: inv.deductionAmount ? inv.deductionAmount.toLocaleString('en-US') : '',
+            invoice_month: normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '')
         });
         setEditingId(inv.id);
         setIsFormOpen(true);
@@ -897,6 +938,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
         if (filterProject && inv.projectName !== filterProject) return false;
         if (filterPhase && inv.phase !== filterPhase) return false;
+        if (activeSubTab === 'invoice' && filterInvoiceMonth && normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '') !== filterInvoiceMonth) return false;
         return true;
     };
 
@@ -917,6 +959,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             (inv.bank_name || '').toLowerCase().includes(term) ||
             (inv.created_by || '').toLowerCase().includes(term) ||
             (inv.note || '').toLowerCase().includes(term) ||
+            (formatMonthLabel(inv.invoice_month || inv.created_at?.slice(0, 7) || '')).toLowerCase().includes(term) ||
             (projectDetails?.[inv.projectName]?.contractNo || '').toLowerCase().includes(term)
         );
     });
@@ -1122,16 +1165,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const customerDebtColumns = [
         { key: 'stt', label: 'STT', className: 'w-16 text-center', cellClassName: 'text-center text-slate-500 font-medium' },
-        { key: 'name', label: 'Tên', className: 'min-w-[220px]', cellClassName: 'font-bold text-slate-900' },
-        { key: 'expected', label: 'Cần thu', className: 'w-44 text-right', cellClassName: 'text-right font-black text-slate-800' },
-        { key: 'actual', label: 'Đã thu', className: 'w-40 text-right', cellClassName: 'text-right font-black text-emerald-600' },
-        { key: 'remaining', label: 'Còn lại', className: 'w-40 text-right', cellClassName: 'text-right font-black text-rose-600' },
-        { key: 'dueDate', label: 'Ngày tới hạn', className: 'w-40', cellClassName: 'font-medium text-slate-700' },
+        { key: 'name', label: 'Tên', className: 'min-w-[220px] text-center', cellClassName: 'text-center font-bold text-slate-900' },
+        { key: 'expected', label: 'Cần thu', className: 'w-44 text-center', cellClassName: 'text-center font-black text-slate-800' },
+        { key: 'actual', label: 'Đã thu', className: 'w-40 text-center', cellClassName: 'text-center font-black text-emerald-600' },
+        { key: 'remaining', label: 'Còn lại', className: 'w-40 text-center', cellClassName: 'text-center font-black text-rose-600' },
+        { key: 'dueDate', label: 'Ngày tới hạn', className: 'w-40 text-center', cellClassName: 'text-center font-medium text-slate-700' },
         { key: 'status', label: 'Hạn', className: 'w-32 text-center', cellClassName: 'text-center font-black' },
-        { key: 'invoiceNo', label: 'Số HĐ', className: 'w-44', cellClassName: 'font-bold text-slate-700' },
-        { key: 'invoiceDate', label: 'Ngày HĐ', className: 'w-32', cellClassName: 'font-medium text-slate-700' },
-        { key: 'contractNo', label: 'Số hợp đồng', className: 'w-52', cellClassName: 'font-medium text-slate-700' },
-        { key: 'voucherNo', label: 'Số CT', className: 'w-36', cellClassName: 'font-medium text-slate-700' }
+        { key: 'invoiceNo', label: 'Số HĐ', className: 'w-44 text-center', cellClassName: 'text-center font-bold text-slate-700' },
+        { key: 'invoiceDate', label: 'Ngày HĐ', className: 'w-32 text-center', cellClassName: 'text-center font-medium text-slate-700' },
+        { key: 'contractNo', label: 'Số hợp đồng', className: 'w-52 text-center', cellClassName: 'text-center font-medium text-slate-700' },
+        { key: 'voucherNo', label: 'Số CT', className: 'w-36 text-center', cellClassName: 'text-center font-medium text-slate-700' }
     ];
 
     const visibleCustomerDebtColumns = customerDebtColumns.filter(col => customerDebtVisibleColumns[col.key] !== false);
@@ -1341,6 +1384,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         ))}
                     </select>
                 </div>
+                {activeSubTab === 'invoice' && (
+                    <div className="w-full md:w-52">
+                        <select
+                            value={filterInvoiceMonth}
+                            onChange={(e) => setFilterInvoiceMonth(e.target.value)}
+                            className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
+                        >
+                            <option value="">Tất cả tháng HĐ</option>
+                            {availableInvoiceMonths.map(month => (
+                                <option key={month} value={month}>{formatMonthLabel(month)}</option>
+                            ))}
+                        </select>
+                    </div>
+                )}
                 {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                     <button
                         type="button"
@@ -1409,7 +1466,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <button onClick={resetForm} className="text-slate-400 hover:text-white transition"><X /></button>
                     </div>
                     <form onSubmit={handleSave} className="p-6 flex flex-col gap-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div className={activeSubTab === 'invoice' ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
                             <div>
                                 <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên công trình *</label>
                                 <select 
@@ -1426,6 +1483,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 </select>
                             </div>
                             {activeSubTab === 'invoice' ? (
+                                <>
                                 <div>
                                     <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
                                     <select 
@@ -1469,6 +1527,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         />
                                     )}
                                 </div>
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tháng hóa đơn</label>
+                                    <input
+                                        type="month"
+                                        name="invoice_month"
+                                        value={formData.invoice_month || ''}
+                                        onChange={handleFormChange}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                    />
+                                </div>
+                                </>
                             ) : (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
@@ -1776,8 +1845,30 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         {activeSubTab === 'customer_debt' && (
                             <colgroup>
                                 {visibleCustomerDebtColumns.map(col => (
-                                    <col key={col.key} />
+                                    <col
+                                        key={col.key}
+                                        style={{
+                                            width: ({
+                                                stt: '4%', name: '20%', expected: '10%', actual: '10%', remaining: '10%',
+                                                dueDate: '9%', overdue: '8%', invoiceNumber: '9%', invoiceDate: '9%',
+                                                contractNumber: '14%', documentNumber: '8%'
+                                            })[col.key] || '9%'
+                                        }}
+                                    />
                                 ))}
+                            </colgroup>
+                        )}
+                        {activeSubTab === 'invoice' && (
+                            <colgroup>
+                                <col style={{ width: '4%' }} />
+                                <col style={{ width: '18%' }} />
+                                <col style={{ width: '9%' }} />
+                                <col style={{ width: '12%' }} />
+                                <col style={{ width: '10%' }} />
+                                <col style={{ width: '12%' }} />
+                                <col style={{ width: '10%' }} />
+                                <col style={{ width: '19%' }} />
+                                <col style={{ width: '6%' }} />
                             </colgroup>
                         )}
                         {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
@@ -1811,7 +1902,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 fontSize: customerDebtLayout.headerFontSize
                                             }}
                                         >
-                                            <div className={`flex items-center gap-2 ${col.className?.includes('text-right') ? 'justify-end' : col.className?.includes('text-center') ? 'justify-center' : ''}`}>
+                                                <div className="flex items-center justify-center gap-2">
                                                 <button
                                                     type="button"
                                                     onClick={() => toggleCustomerDebtColumn(col.key)}
@@ -1834,6 +1925,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 )}
                                 {activeSubTab === 'invoice' ? (
                                     <>
+                                        <th className="p-4 font-black uppercase text-sm">Tháng HĐ</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuế VAT</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Giá trị sau thuế</th>
@@ -1900,7 +1992,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 filteredInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeSubTab === 'invoice' ? 8 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={activeSubTab === 'invoice' ? 9 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     Object.entries(
@@ -2222,6 +2314,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             >
                                                 {inv.projectName}
                                             </td>
+                                            <td className="p-4 text-sm text-slate-600 font-bold">{formatMonthLabel(inv.invoice_month || inv.created_at?.slice(0, 7) || '') || '-'}</td>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
                                             <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
                                             <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
@@ -2265,7 +2358,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     {visibleCustomerDebtColumns.map(col => {
                                         const totalClass = `p-4 text-sm ${col.cellClassName || ''}`;
                                         if (col.key === 'name') {
-                                            return <td key={col.key} className="p-4 text-sm font-black text-slate-800 uppercase">Tổng cộng:</td>;
+                                            return <td key={col.key} className="p-4 text-center text-sm font-black text-slate-800 uppercase">Tổng cộng:</td>;
                                         }
                                         if (col.key === 'expected') {
                                             return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>;
@@ -2282,7 +2375,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {activeSubTab === 'invoice' && filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="2" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
                                     <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
                                     <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
                                     <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNĐ</td>

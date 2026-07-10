@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { X, Upload, CheckCircle2, RotateCcw, AlertCircle, Trash2, PenTool, Image as ImageIcon } from 'lucide-react';
+import ConfirmModal from './ConfirmModal';
 
 export default function SignatureScannerModal({ isOpen, onClose, onSave, currentSignature }) {
     const [activeTab, setActiveTab] = useState('draw'); // 'draw' or 'upload'
@@ -15,6 +16,7 @@ export default function SignatureScannerModal({ isOpen, onClose, onSave, current
     
     // Shared state
     const [signatureColor, setSignatureColor] = useState('blue'); // 'blue', 'black', 'original'
+    const [confirmRemove, setConfirmRemove] = useState(false);
 
     // Draw states
     const canvasRef = useRef(null);
@@ -309,10 +311,7 @@ export default function SignatureScannerModal({ isOpen, onClose, onSave, current
     };
 
     const handleRemoveSignature = () => {
-        if (window.confirm('Bạn có chắc chắn muốn xóa chữ ký hiện tại không?')) {
-            onSave(null);
-            onClose();
-        }
+        setConfirmRemove(true);
     };
 
     if (!isOpen) return null;
@@ -546,6 +545,18 @@ export default function SignatureScannerModal({ isOpen, onClose, onSave, current
                     </div>
                 </div>
             </div>
+            <ConfirmModal
+                isOpen={confirmRemove}
+                title="Xóa chữ ký"
+                message="Bạn có chắc chắn muốn xóa chữ ký hiện tại?"
+                confirmText="Xóa chữ ký"
+                onConfirm={() => {
+                    setConfirmRemove(false);
+                    onSave(null);
+                    onClose();
+                }}
+                onCancel={() => setConfirmRemove(false)}
+            />
         </div>
     );
 }

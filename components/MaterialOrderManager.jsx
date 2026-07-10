@@ -52,6 +52,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     const [searchTerm, setSearchTerm] = useState('');
     const [selectedProjectFilter, setSelectedProjectFilter] = useState('');
     const [selectedStatusFilter, setSelectedStatusFilter] = useState('');
+    const [deliveryView, setDeliveryView] = useState('all');
     
     // View state
     const [selectedOrder, setSelectedOrder] = useState(null);
@@ -157,6 +158,27 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         return list;
     }, [orders, dnttList]);
 
+    const getDeliveryProgress = (order) => {
+        let totalOrdered = 0;
+        let totalReceivedQty = 0;
+
+        (order.items || []).forEach(cat => {
+            (cat.items || []).forEach(item => {
+                totalOrdered += parseFloat(item.quantity) || 0;
+                totalReceivedQty += (item.received_history || []).reduce(
+                    (sum, historyItem) => sum + (parseFloat(historyItem.qty) || 0),
+                    0
+                );
+            });
+        });
+
+        return {
+            totalOrdered,
+            totalReceivedQty,
+            isFullyReceived: totalOrdered > 0 && totalReceivedQty >= totalOrdered
+        };
+    };
+
     // Filters logic
     const filteredOrders = allOrders.filter(order => {
         const matchesSearch = 
@@ -192,7 +214,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const allowedProjectNames = projects.map(p => p.name);
         if (!allowedProjectNames.includes(order.project_name)) return false;
         
-        return matchesSearch && matchesProject && matchesStatus;
+        const { isFullyReceived } = getDeliveryProgress(order);
+        const matchesDeliveryView = deliveryView === 'all'
+            || (deliveryView === 'delivering' && !isFullyReceived)
+            || (deliveryView === 'received' && isFullyReceived);
+
+        return matchesSearch && matchesProject && matchesStatus && matchesDeliveryView;
     });
 
     const formatDateVN = (dateStr) => {
@@ -521,9 +548,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }
     };
 
-    const handleDeleteReceiveHistory = async (order, catIdx, itemIdx, historyIdx, historyItem) => {
-        if (!window.confirm('Bạn có chắc muốn xóa lần nhận hàng này? Dữ liệu nhập kho tương ứng cũng sẽ bị xóa.')) return;
-        
+    const deleteReceiveHistory = async (order, catIdx, itemIdx, historyIdx, historyItem) => {
         setIsSavingReceive(true);
         try {
             const currentItem = order.items[catIdx].items[itemIdx];
@@ -564,6 +589,17 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         } finally {
             setIsSavingReceive(false);
         }
+    };
+
+    const handleDeleteReceiveHistory = (order, catIdx, itemIdx, historyIdx, historyItem) => {
+        setConfirmModal({
+            isOpen: true,
+            message: 'Bạn có chắc muốn xóa lần nhận hàng này? Dữ liệu nhập kho tương ứng cũng sẽ bị xóa.',
+            onConfirm: async () => {
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                await deleteReceiveHistory(order, catIdx, itemIdx, historyIdx, historyItem);
+            }
+        });
     };
 
     const handleSaveEditReceive = async () => {
@@ -1092,6 +1128,30 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         </div>
                     </header>
 
+                    {!isStatsView && (
+                        <div className="flex flex-wrap items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+                            {[
+                                { key: 'all', label: 'Tất cả đơn', icon: ClipboardList },
+                                { key: 'delivering', label: 'Lịch sử đơn đang giao', icon: Truck },
+                                { key: 'received', label: 'Lịch sử đơn đã giao', icon: CheckCircle }
+                            ].map(view => {
+                                const ViewIcon = view.icon;
+                                return (
+                                    <button
+                                        key={view.key}
+                                        type="button"
+                                        onClick={() => setDeliveryView(view.key)}
+                                        className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-black transition ${deliveryView === view.key
+                                            ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/20'
+                                            : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800'}`}
+                                    >
+                                        <ViewIcon size={16} /> {view.label}
+                                    </button>
+                                );
+                            })}
+                        </div>
+                    )}
+
                     {/* SEARCH & FILTERS */}
                     <div className="bg-white p-5 rounded-3xl shadow-sm border border-slate-200 flex flex-col lg:flex-row gap-4">
                         <div className="flex-1 relative">
@@ -1236,16 +1296,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 const proj = projects.find(p => p.name === order.project_name);
                                                 const isMuaHo = proj && proj.project_type === 'TỔNG THẦU MUA HỘ';
                                                 
-                                                let totalOrdered = 0;
-                                                let totalReceivedQty = 0;
-                                                (order.items || []).forEach(cat => {
-                                                    (cat.items || []).forEach(it => {
-                                                        totalOrdered += parseFloat(it.quantity) || 0;
-                                                        const receivedHistory = it.received_history || [];
-                                                        totalReceivedQty += receivedHistory.reduce((sum, h) => sum + parseFloat(h.qty), 0);
-                                                    });
-                                                });
-                                                const isFullyReceived = totalOrdered > 0 && totalReceivedQty >= totalOrdered;
+                                                const { totalOrdered, totalReceivedQty, isFullyReceived } = getDeliveryProgress(order);
                                                 
                                                 let statusConfig = STATUS_LABELS[status] || { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info };
                                                 let StatusIcon = statusConfig.icon;
@@ -1273,6 +1324,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         statusConfig = { ...statusConfig, label: `${statusConfig.label} (${deliveryLabel})` };
                                                         if (isFullyReceived && (status === 'Accounted' || status === 'Approved')) {
                                                             statusConfig.color = 'bg-teal-50 text-teal-700 border-teal-100 hover:bg-teal-100';
+                                                        } else if (!isFullyReceived && totalOrdered > 0 && (status === 'Accounted' || status === 'Approved')) {
+                                                            statusConfig.color = 'bg-pink-50 text-pink-700 border-pink-200 hover:bg-pink-100';
                                                         }
                                                     }
                                                 }

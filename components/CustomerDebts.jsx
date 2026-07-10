@@ -57,17 +57,17 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     }, [visibleColumns]);
 
     const customerInvoiceColumns = [
-        { key: 'project', label: 'Công trình', align: 'left', totalLabel: true },
+        { key: 'project', label: 'Công trình', align: 'center', totalLabel: true },
         { key: 'phase', label: 'Giai đoạn / Đợt thu', align: 'center' },
-        { key: 'invoiceNo', label: 'Số hóa đơn', align: 'left' },
-        { key: 'invoiceDate', label: 'Ngày hóa đơn', align: 'left' },
-        { key: 'voucherNo', label: 'Số chứng từ', align: 'left' },
-        { key: 'amount', label: 'Trước thuế', align: 'right', total: d => d.amount || 0 },
-        { key: 'vatAmount', label: 'Thuế VAT', align: 'right', total: d => d.vatAmount || 0 },
-        { key: 'invoiceAmount', label: 'Sau thuế', align: 'right', total: d => d.invoiceAmount || 0 },
-        { key: 'hsttAmount', label: 'Giá trị HSTT', align: 'right', total: d => d.hsttAmount || 0 },
-        { key: 'receivedAmount', label: 'Thực nhận', align: 'right', total: d => d.receivedAmount || 0 },
-        { key: 'remainingAmount', label: 'Công nợ', align: 'right', total: d => d.remainingAmount || 0 },
+        { key: 'invoiceNo', label: 'Số hóa đơn', align: 'center' },
+        { key: 'invoiceDate', label: 'Ngày hóa đơn', align: 'center' },
+        { key: 'voucherNo', label: 'Số chứng từ', align: 'center' },
+        { key: 'amount', label: 'Trước thuế', align: 'center', total: d => d.amount || 0 },
+        { key: 'vatAmount', label: 'Thuế VAT', align: 'center', total: d => d.vatAmount || 0 },
+        { key: 'invoiceAmount', label: 'Sau thuế', align: 'center', total: d => d.invoiceAmount || 0 },
+        { key: 'hsttAmount', label: 'Giá trị HSTT', align: 'center', total: d => d.hsttAmount || 0 },
+        { key: 'receivedAmount', label: 'Thực nhận', align: 'center', total: d => d.receivedAmount || 0 },
+        { key: 'remainingAmount', label: 'Công nợ', align: 'center', total: d => d.remainingAmount || 0 },
         { key: 'invoicePdf', label: 'HĐ PDF', align: 'center' },
         { key: 'hsttPdf', label: 'HSTT PDF', align: 'center' },
         { key: 'actions', label: 'Thao tác', align: 'center' }
@@ -712,7 +712,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 <tr className="bg-slate-100 font-black border-t-2 border-slate-300 text-slate-800 text-xs sticky bottom-0 z-10 shadow-[0_-2px_4px_rgba(0,0,0,0.05)]">
                                     {visibleInvoiceColumns.map((col, idx) => {
                                         if (idx === 0) {
-                                            return <td key={col.key} className="py-4 px-4 align-middle text-left uppercase tracking-wider">Tổng cộng:</td>;
+                                            return <td key={col.key} className="py-4 px-4 align-middle text-center uppercase tracking-wider">Tổng cộng:</td>;
                                         }
                                         if (col.total) {
                                             const total = filteredDebtData.reduce((sum, d) => sum + col.total(d), 0);
@@ -722,7 +722,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                                 col.key === 'remainingAmount' ? 'text-red-700' :
                                                 col.key === 'vatAmount' ? 'text-slate-500' : 'text-slate-900';
                                             return (
-                                                <td key={col.key} className={`py-4 align-middle text-right tabular-nums ${colorClass}`} style={{ paddingLeft: invoiceTableLayout.cellPaddingX, paddingRight: invoiceTableLayout.cellPaddingX }}>
+                                                <td key={col.key} className={`py-4 align-middle text-center tabular-nums ${colorClass}`} style={{ paddingLeft: invoiceTableLayout.cellPaddingX, paddingRight: invoiceTableLayout.cellPaddingX }}>
                                                     {formatCurrency(total)}
                                                 </td>
                                             );

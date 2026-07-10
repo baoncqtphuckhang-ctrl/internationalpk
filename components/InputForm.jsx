@@ -81,6 +81,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     const [thanhToanStatus, setThanhToanStatus] = useState('CHƯA XONG');
     const [debtConfirmModal, setDebtConfirmModal] = useState({ isOpen: false, data: null, mode: 'PAY_ONLY', thuStatus: 'CHƯA XONG', chiStatus: 'CHƯA XONG' });
     const [confirmReset, setConfirmReset] = useState(false);
+    const [incomeToDelete, setIncomeToDelete] = useState(null);
     const [isCustomNote, setIsCustomNote] = useState(false);
     const lastAutoPhaseRef = useRef('Đợt 1');
 
@@ -213,6 +214,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         return Array.from(phases);
     }, [formData.project_name, incomes]);
 
+    const isAdvancePhase = formData.phase === 'Tạm ứng' || formData.phase?.toLowerCase() === 'tạm ứng';
+
     const selectedPhaseStats = useMemo(() => {
         if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;
         
@@ -248,9 +251,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 try {
                     const parsed = JSON.parse(i.note);
                     if (parsed && typeof parsed === 'object') {
-                        const act = Number(parsed.actual_received_amount) || 0;
-                        const ded = Number(parsed.deduction_amount) || 0;
-                        actual = act + ded;
+                        actual = Number(parsed.actual_received_amount) || 0;
                     }
                 } catch(e) {}
             }
@@ -261,6 +262,22 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
         return { expected, received };
     }, [type, formData.project_name, formData.phase, incomes, projects]);
+
+    useEffect(() => {
+        if (editData || type !== 'INCOME_REAL') return;
+        if (!availablePhases.includes(formData.phase)) {
+            handleChange('phase', availablePhases.includes('Tạm ứng') ? 'Tạm ứng' : (availablePhases[0] || ''));
+        }
+    }, [type, formData.phase, availablePhases, editData]);
+
+    useEffect(() => {
+        if (editData || type !== 'INCOME_REAL') return;
+        if (!isAdvancePhase || !selectedPhaseStats) return;
+        const remainingAdvance = Math.max(0, (Number(selectedPhaseStats.expected) || 0) - (Number(selectedPhaseStats.received) || 0));
+        if (remainingAdvance > 0 && !formData.actual_received_amount && !formData.deduction_amount) {
+            setFormData(prev => ({ ...prev, actual_received_amount: remainingAdvance }));
+        }
+    }, [type, formData.phase, formData.actual_received_amount, formData.deduction_amount, selectedPhaseStats, editData]);
 
     const projectRecipients = useMemo(() => {
         if (!formData.project_name) return [];
@@ -340,11 +357,15 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             
             const valReal = Number(formData.actual_received_amount) || 0;
             const valDed = Number(formData.deduction_amount) || 0;
-            if (valReal <= 0 && valDed <= 0) {
+            if (isAdvancePhase) {
+                if (valReal <= 0) {
+                    newErrors.actual_received_amount = 'Vui lòng nhập giá trị tạm ứng';
+                }
+            } else if (valReal <= 0 && valDed <= 0) {
                 newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận hoặc cấn trừ';
             }
             
-            if (selectedPhaseStats && selectedPhaseStats.expected > 0) {
+            if (!isAdvancePhase && selectedPhaseStats && selectedPhaseStats.expected > 0) {
                 let originalRealAmount = 0;
                 if (editData && editData.type === 'INCOME_REAL') {
                     if (editData.note) {
@@ -902,7 +923,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         ))}
                                     </select>
                                     {errorMsg('phase')}
-                                    {selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
+                                    {!isAdvancePhase && selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
                                         <div className="mt-2 text-[13px] p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
                                             <span className="text-slate-600 font-medium">Tiến độ thu đợt này:</span>
                                             <div className="font-bold">
@@ -926,28 +947,29 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 </div>
                                 {/* Giá trị thực nhận/nhập */}
                                 <div>
-                                    <label className={labelCls}>Giá trị thực nhận/nhập <span className="text-red-500">*</span></label>
+                                    <label className={labelCls}>{isAdvancePhase ? 'Giá trị tạm ứng' : 'Giá trị thực nhận/nhập'} <span className="text-red-500">*</span></label>
                                     <input
                                         type="text"
                                         value={formData.actual_received_amount ? formatCurrency(formData.actual_received_amount) : ''}
                                         onChange={(e) => handleChange('actual_received_amount', parseVietnameseNumber(e.target.value))}
-                                        placeholder="Nhập giá trị thực nhận..."
+                                        placeholder={isAdvancePhase ? 'Nhập giá trị tạm ứng...' : 'Nhập giá trị thực nhận...'}
                                         className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
                                     />
                                     {errorMsg('actual_received_amount')}
                                 </div>
-                                {/* Cấn trừ trực tiếp */}
-                                <div>
-                                    <label className={labelCls}>Cấn trừ trực tiếp (Nếu có)</label>
-                                    <input
-                                        type="text"
-                                        value={formData.deduction_amount ? formatCurrency(formData.deduction_amount) : ''}
-                                        onChange={(e) => handleChange('deduction_amount', parseVietnameseNumber(e.target.value))}
-                                        placeholder="Nhập giá trị cấn trừ..."
-                                        className={`${inputCls('deduction_amount')} font-bold text-amber-600`}
-                                    />
-                                </div>
-                                {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && (
+                                {!isAdvancePhase && (
+                                    <div>
+                                        <label className={labelCls}>Cấn trừ trực tiếp (Nếu có)</label>
+                                        <input
+                                            type="text"
+                                            value={formData.deduction_amount ? formatCurrency(formData.deduction_amount) : ''}
+                                            onChange={(e) => handleChange('deduction_amount', parseVietnameseNumber(e.target.value))}
+                                            placeholder="Nhập giá trị cấn trừ..."
+                                            className={`${inputCls('deduction_amount')} font-bold text-amber-600`}
+                                        />
+                                    </div>
+                                )}
+                                {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && !isAdvancePhase && (
                                     <div className="md:col-span-2 mt-4">
                                         <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lịch sử các lần thu tiền (Thực tế) đợt này</label>
                                         <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -1030,11 +1052,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                                         {onDeleteIncome && (
                                                                                             <button
                                                                                                 type="button"
-                                                                                                onClick={() => {
-                                                                                                    if (window.confirm('Bạn có chắc chắn muốn xóa khoản thu này?')) {
-                                                                                                        onDeleteIncome(inc.id);
-                                                                                                    }
-                                                                                                }}
+                                                                                                onClick={() => setIncomeToDelete(inc)}
                                                                                                 className="text-red-500 hover:text-red-700 p-1"
                                                                                                 title="Xóa"
                                                                                             >
@@ -1242,6 +1260,18 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 </form>
             </div>
             
+            <ConfirmModal
+                isOpen={Boolean(incomeToDelete)}
+                title="Xóa khoản thu"
+                message={`Bạn có chắc chắn muốn xóa khoản thu ${incomeToDelete?.phase ? `đợt ${incomeToDelete.phase}` : 'này'}? Dữ liệu sẽ được chuyển vào thùng rác.`}
+                confirmText="Xóa khoản thu"
+                onConfirm={() => {
+                    onDeleteIncome?.(incomeToDelete.id);
+                    setIncomeToDelete(null);
+                }}
+                onCancel={() => setIncomeToDelete(null)}
+            />
+
             <ConfirmModal
                 isOpen={confirmReset}
                 title="Xóa trắng nhập liệu"

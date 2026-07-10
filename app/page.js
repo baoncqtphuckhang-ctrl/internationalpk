@@ -1088,33 +1088,39 @@ export default function Home() {
     const handleUpsertProject = async (data, isEdit) => {
         setIsLoading(true);
         try {
+            const projectPayload = {
+                name: (data.name || '').trim(),
+                contract_no: data.contract_no || '',
+                contract_value_after_tax: Number(data.contract_value_after_tax) || 0,
+                advance_value: Number(data.advance_value) || 0,
+                debt_to_collect: Number(data.debt_to_collect) || 0,
+                plhds: (data.plhd_list || []).map((value) => Number(value) || 0),
+                address: data.address || '',
+                cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
+                cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
+                project_type: data.project_type || 'TRá»°C TIáº¾P ORDER',
+                status: data.status || 'Doing'
+            };
+
+            if (!projectPayload.name) {
+                throw new Error('Vui long nhap ten cong trinh.');
+            }
+
             if (isEdit) {
-                if (data.original_name && data.name !== data.original_name) {
+                if (data.original_name && projectPayload.name !== data.original_name) {
                     // Changing name requires INSERT new, UPDATE relations, DELETE old because of foreign key constraints
-                    const { error: insertError } = await supabase.from('projects').insert([{
-                        name: data.name,
-                        contract_no: data.contract_no,
-                        contract_value_after_tax: data.contract_value_after_tax,
-                        advance_value: data.advance_value,
-                        debt_to_collect: data.debt_to_collect,
-                        plhds: data.plhd_list || [],
-                        address: data.address,
-                        cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                        project_type: data.project_type || 'TRỰC TIẾP ORDER',
-                        status: data.status || 'Doing'
-                    }]);
+                    const { error: insertError } = await supabase.from('projects').insert([projectPayload]);
                     if (insertError) {
                         console.error('Insert error during rename:', insertError);
                         throw new Error('Tên công trình mới đã tồn tại hoặc lỗi dữ liệu.');
                     }
 
                     await Promise.all([
-                        supabase.from('transactions').update({ project_name: data.name }).eq('project_name', data.original_name),
-                        supabase.from('incomes').update({ project_name: data.name }).eq('project_name', data.original_name),
-                        supabase.from('approval_requests').update({ project_name: data.name }).eq('project_name', data.original_name),
-                        supabase.from('partner_debts').update({ project_name: data.name }).eq('project_name', data.original_name),
-                        supabase.from('material_orders').update({ project_name: data.name }).eq('project_name', data.original_name)
+                        supabase.from('transactions').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('incomes').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('approval_requests').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('partner_debts').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('material_orders').update({ project_name: projectPayload.name }).eq('project_name', data.original_name)
                     ]);
 
                     const { error: deleteError } = await supabase.from('projects').delete().eq('name', data.original_name);
@@ -1123,43 +1129,27 @@ export default function Home() {
                         throw deleteError;
                     }
                 } else {
-                    const { error } = await supabase.from('projects').update({
-                        name: data.name,
-                        contract_no: data.contract_no,
-                        contract_value_after_tax: data.contract_value_after_tax,
-                        advance_value: data.advance_value,
-                        debt_to_collect: data.debt_to_collect,
-                        plhds: data.plhd_list || [],
-                        address: data.address,
-                        cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                        cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                        project_type: data.project_type || 'TRỰC TIẾP ORDER',
-                        status: data.status || 'Doing'
-                    }).eq('name', data.original_name || data.name);
+                    const { error } = await supabase.from('projects').update(projectPayload).eq('name', data.original_name || projectPayload.name);
                     if (error) throw error;
                 }
             } else {
-                const { error } = await supabase.from('projects').insert([{
-                    name: data.name,
-                    contract_no: data.contract_no,
-                    contract_value_after_tax: data.contract_value_after_tax,
-                    advance_value: data.advance_value,
-                    debt_to_collect: data.debt_to_collect,
-                    plhds: data.plhd_list || [],
-                    address: data.address,
-                    cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
-                    cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                    project_type: data.project_type || 'TRỰC TIẾP ORDER',
-                    status: data.status || 'Doing'
-                }]);
+                const { error } = await supabase.from('projects').insert([projectPayload]);
                 if (error) throw error;
             }
             showToast('Đã cập nhật thông tin công trình!');
             logActivity(isEdit ? 'Sửa' : 'Thêm', 'Công trình', isEdit ? `Cập nhật thông tin: ${data.name}` : `Tạo mới: ${data.name}`, data.name);
             fetchData();
+            return true;
         } catch (error) {
-            console.error('Error saving project:', error);
-            showToast('Lỗi khi lưu công trình! ' + (error.message || ''), 'error');
+            const errorInfo = {
+                message: error?.message || '',
+                details: error?.details || '',
+                hint: error?.hint || '',
+                code: error?.code || ''
+            };
+            const readableError = Object.values(errorInfo).filter(Boolean).join(' - ') || 'Khong co chi tiet loi tu Supabase.';
+            console.error('Error saving project:', errorInfo, error);
+            showToast('Lỗi khi lưu công trình! ' + readableError, 'error');
         } finally {
             setIsLoading(false);
         }

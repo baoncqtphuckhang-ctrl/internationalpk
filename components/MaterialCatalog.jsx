@@ -8,6 +8,7 @@ import { formatDateVN, formatCurrency } from '@/lib/utils';
 import CurrencyInput from './CurrencyInput';
 import { DEFAULT_CATEGORIES } from './MaterialOrder';
 import { supabase } from '@/lib/supabase';
+import ConfirmModal from './ConfirmModal';
 
 export default function MaterialCatalog({ projects, showToast }) {
     const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
@@ -27,6 +28,7 @@ export default function MaterialCatalog({ projects, showToast }) {
 
     const [allTemplates, setAllTemplates] = useState({});
     const [isLoading, setIsLoading] = useState(true);
+    const [versionToDelete, setVersionToDelete] = useState(null);
 
     const loadTemplatesFromDb = async () => {
         setIsLoading(true);
@@ -322,7 +324,6 @@ export default function MaterialCatalog({ projects, showToast }) {
             showToast('Không thể xóa đợt giá duy nhất!', 'error');
             return;
         }
-        if (!window.confirm('Bạn có chắc chắn muốn xóa đợt giá này?')) return;
         const updated = configVersions.filter(v => v.id !== id);
         
         // Re-number names
@@ -409,7 +410,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                     </div>
                 </div>
 
-                <div className="p-6 space-y-10 bg-slate-100/50">
+                <div className="p-4 space-y-6 bg-slate-100/50">
                     {configVersions.map((version, vIdx) => {
                         const isEditing = editingVersionId === version.id;
                         const categories = isEditing ? editingCategories : version.categories;
@@ -418,7 +419,7 @@ export default function MaterialCatalog({ projects, showToast }) {
 
                         return (
                             <div key={version.id} className={`bg-white rounded-2xl shadow-sm border ${isEditing ? 'border-blue-400 shadow-blue-500/10' : 'border-slate-200'} overflow-hidden transition-all duration-300`}>
-                                <div className={`p-4 border-b flex flex-col md:flex-row md:items-center justify-between gap-4 ${isEditing ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
+                                <div className={`px-4 py-3 border-b flex flex-col md:flex-row md:items-center justify-between gap-3 ${isEditing ? 'bg-blue-50/50 border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
                                     <div className="flex items-center gap-4 flex-wrap">
                                         {isEditing ? (
                                             <input 
@@ -470,7 +471,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                 </button>
                                                 <button 
                                                     disabled={editingVersionId !== null} 
-                                                    onClick={() => handleDeleteVersion(version.id)}
+                                                    onClick={() => setVersionToDelete(version)}
                                                     className="px-4 py-2 bg-red-50 hover:bg-red-100 text-red-700 rounded-xl font-bold transition flex items-center gap-2 border border-red-200 disabled:opacity-50 disabled:cursor-not-allowed"
                                                 >
                                                     <Trash2 size={16} /> Xóa
@@ -480,7 +481,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                     </div>
                                 </div>
                                 
-                                <div className={`p-4 space-y-4 transition-all duration-300 ${!isEditing ? 'opacity-70' : ''}`}>
+                                <div className={`p-3 space-y-3 transition-all duration-300 ${!isEditing ? 'opacity-70' : ''}`}>
                                     {categories.map((cat, catIdx) => (
                                         <div key={catIdx} className="border-2 border-slate-200 rounded-2xl overflow-hidden group">
                                             <div className="bg-slate-100 p-3 border-b-2 border-slate-200 flex items-center justify-between">
@@ -512,7 +513,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                 )}
                                             </div>
                                             <div className="p-4 bg-white">
-                                                <div className="space-y-2 mb-3">
+                                                <div className="space-y-1 mb-2">
                                                     {cat.items.map((item, itemIdx) => (
                                                         <div key={itemIdx} className="flex gap-2 items-center">
                                                             <span className="w-8 text-center text-xs font-bold text-slate-400">{itemIdx + 1}</span>
@@ -697,6 +698,17 @@ export default function MaterialCatalog({ projects, showToast }) {
                     </div>
                 </div>
             )}
+            <ConfirmModal
+                isOpen={Boolean(versionToDelete)}
+                title="Xóa đợt đơn giá"
+                message={`Bạn có chắc chắn muốn xóa ${versionToDelete?.name || 'đợt đơn giá này'}?`}
+                confirmText="Xóa đợt giá"
+                onConfirm={() => {
+                    handleDeleteVersion(versionToDelete.id);
+                    setVersionToDelete(null);
+                }}
+                onCancel={() => setVersionToDelete(null)}
+            />
         </div>
     );
 }

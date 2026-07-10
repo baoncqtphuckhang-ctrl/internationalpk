@@ -23,6 +23,11 @@ body {
   color: var(--foreground);
 }
 
+table th,
+table td {
+  vertical-align: middle;
+}
+
 .expected-print-title,
 .expected-print-signatures {
   display: none;

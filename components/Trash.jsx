@@ -150,6 +150,16 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
         }
     };
 
+    const getRequesterName = (item) => {
+        if (item?.requested_by) return item.requested_by;
+        try {
+            const data = typeof item.record_data === 'string' ? JSON.parse(item.record_data) : item.record_data;
+            return data?.requested_by || data?.created_by || data?.deleted_by || '';
+        } catch (e) {
+            return item?.requested_by || '';
+        }
+    };
+
     useEffect(() => {
         fetchTrash();
     }, []);
@@ -415,6 +425,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Thời gian xóa</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider text-center">Còn lại</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Người xóa</th>
+                                <th className="p-4 font-black uppercase text-xs tracking-wider">Người đề nghị</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Loại dữ liệu</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Nội dung</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider text-center w-32">Thao tác</th>
@@ -423,7 +434,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                         <tbody className="divide-y divide-slate-100">
                             {filteredTrashItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="p-8 text-center text-slate-500">{trashItems.length === 0 ? 'Thùng rác trống.' : 'Không có mục nào khớp bộ lọc.'}</td>
+                                    <td colSpan="8" className="p-8 text-center text-slate-500">{trashItems.length === 0 ? 'Thùng rác trống.' : 'Không có mục nào khớp bộ lọc.'}</td>
                                 </tr>
                             ) : (
                                 filteredTrashItems.map(item => {
@@ -455,6 +466,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                                 </span>
                                             </td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{item.deleted_by}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-700">{getRequesterName(item) || '-'}</td>
                                             <td className="p-4 text-sm font-medium text-slate-600">{getTableName(item.original_table)}</td>
                                             <td className="p-4 text-sm text-slate-500 max-w-sm">
                                                 {renderContent(item)}
