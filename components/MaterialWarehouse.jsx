@@ -44,6 +44,7 @@ export const matchesWarehouseInventoryItem = (t, criteria, excludeId = null) => 
 };
 
 export default function MaterialWarehouse({ currentUser, projects, showToast, realtimeVersion }) {
+    const isCHT = currentUser?.role?.toUpperCase() === 'CHỈ HUY TRƯỞNG' || currentUser?.role?.toUpperCase() === 'CHT';
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -185,6 +186,14 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
 
     const handleSave = async (e) => {
         e.preventDefault();
+        if (modalType === 'NHẬP' && isCHT) {
+            alert('Bạn không có quyền thực hiện thao tác nhập kho!');
+            return;
+        }
+        if (editingId && isCHT) {
+            alert('Bạn không có quyền chỉnh sửa giao dịch kho!');
+            return;
+        }
         if (!formData.project_name || !formData.material_name || !formData.quantity || parseFloat(formData.quantity) <= 0) {
             alert('Vui lòng điền đầy đủ thông tin và số lượng phải lớn hơn 0!');
             return;
@@ -300,6 +309,10 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
     };
 
     const handleDelete = (id) => {
+        if (isCHT) {
+            showToast('Bạn không có quyền xóa giao dịch kho!', 'error');
+            return;
+        }
         setConfirmModal({
             isOpen: true,
             message: 'Bạn có chắc chắn muốn xóa giao dịch này? Hành động này sẽ thay đổi số liệu tồn kho.',
@@ -327,6 +340,10 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
     };
 
     const handleEditInventory = (item) => {
+        if (isCHT) {
+            showToast('Bạn không có quyền điều chỉnh tồn kho!', 'error');
+            return;
+        }
         setModalType('NHẬP');
         setFormData({
             project_name: item.project_name,
@@ -350,6 +367,10 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
     };
 
     const handleDeleteInventoryGroup = (item) => {
+        if (isCHT) {
+            showToast('Bạn không có quyền xóa dữ liệu kho!', 'error');
+            return;
+        }
         setConfirmModal({
             isOpen: true,
             message: `Bạn có chắc chắn muốn xóa TOÀN BỘ lịch sử giao dịch của vật tư "${item.material_name}" trong công trình này?`,
@@ -684,7 +705,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                         </div>
                     </div>
                     <div className="flex gap-2">
-                        {currentUser?.role?.toUpperCase() !== 'CHỈ HUY TRƯỞNG' && (
+                        {!isCHT && (
                             <button onClick={() => handleOpenModal('NHẬP')} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-sm shadow-blue-600/20">
                                 <ArrowDownToLine size={18} /> Nhập Kho
                             </button>
@@ -838,7 +859,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                                                                 <td className="py-3 px-6 text-center"><span className="font-black text-amber-600 bg-amber-50 px-2 py-1 rounded-md border border-amber-100">-{ex.quantity} <span className="text-[11px] font-semibold">{item.unit}</span></span></td>
                                                                                 <td className="py-3 px-6 text-slate-600">{cleanNote || <span className="italic text-slate-400">Không có vị trí/ghi chú</span>}</td>
                                                                                 <td className="py-3 px-6 text-center">
-                                                                                    <div className="flex items-center justify-center gap-1">
+                                                                                    {!isCHT ? (
+                                                                                        <div className="flex items-center justify-center gap-1">
                                                                                         <button onClick={(e) => { 
                                                                                             e.stopPropagation(); 
                                                                                             const phaseMatch = ex.note ? ex.note.match(/\[Đợt giá: (.*?)\]/) : null; 
@@ -855,7 +877,10 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                                                                             setShowModal(true); 
                                                                                         }} className="text-slate-400 hover:text-amber-500 hover:bg-amber-50 p-1.5 rounded-md transition" title="Sửa phiếu xuất"><Edit2 size={14} /></button>
                                                                                         <button onClick={async (e) => { e.stopPropagation(); handleDelete(ex.id); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-1.5 rounded-md transition" title="Xóa phiếu xuất"><Trash2 size={14} /></button>
-                                                                                    </div>
+                                                                                        </div>
+                                                                                    ) : (
+                                                                                        <span className="text-xs text-slate-400">-</span>
+                                                                                    )}
                                                                                 </td>
                                                                             </tr>
                                                                         );
@@ -900,8 +925,12 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                                         {!isTotalRow ? (
                                                             <div className="flex items-center justify-center gap-2">
                                                                 <button onClick={(e) => { e.stopPropagation(); handleOpenExportFromItem(item); }} className="text-slate-400 hover:text-amber-600 hover:bg-amber-50 p-2 rounded-lg transition" title="Xuất kho"><ArrowUpFromLine size={16} /></button>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleEditInventory(item); }} className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition" title="Thêm phiếu điều chỉnh tồn kho"><Edit2 size={16} /></button>
-                                                                <button onClick={(e) => { e.stopPropagation(); handleDeleteInventoryGroup(item); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition" title="Xóa TOÀN BỘ phiếu của vật tư này"><Trash2 size={16} /></button>
+                                                                {!isCHT && (
+                                                                    <>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleEditInventory(item); }} className="text-slate-400 hover:text-blue-500 hover:bg-blue-50 p-2 rounded-lg transition" title="Thêm phiếu điều chỉnh tồn kho"><Edit2 size={16} /></button>
+                                                                        <button onClick={(e) => { e.stopPropagation(); handleDeleteInventoryGroup(item); }} className="text-slate-400 hover:text-red-500 hover:bg-red-50 p-2 rounded-lg transition" title="Xóa TOÀN BỘ phiếu của vật tư này"><Trash2 size={16} /></button>
+                                                                    </>
+                                                                )}
                                                             </div>
                                                         ) : (
                                                             <span className="text-xs text-slate-400 italic">Tổng hợp</span>
@@ -1089,6 +1118,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                     </tr>
                                 ) : (
                                     filteredTransactions.map((t) => {
+                                        const isLocalCHT = currentUser?.role?.toUpperCase() === 'CHT' || currentUser?.role?.toUpperCase() === 'CHỈ HUY TRƯỞNG';
                                         let parsedPhase = '';
                                         let parsedNoteText = t.note || '';
                                         if (parsedNoteText) {
@@ -1124,7 +1154,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                             </td>
                                             <td className="px-6 py-4 text-slate-500 text-xs font-bold uppercase">{t.created_by}</td>
                                             <td className="px-6 py-4 text-right">
-                                                {!t.is_auto && (
+                                                {!t.is_auto && !isLocalCHT && (
                                                     <button onClick={() => handleDelete(t.id)} className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition" title="Xóa giao dịch thủ công">
                                                         <Trash2 size={16} />
                                                     </button>

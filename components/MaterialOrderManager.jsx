@@ -194,7 +194,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         let normalizedStatus = status;
         if (status === 'Draft') normalizedStatus = 'Draft';
         else if (status === 'Bị từ chối' || status === 'Rejected') normalizedStatus = 'Rejected';
-        else if (status === 'Hoàn tất hạch toán' || status === 'Đã hoàn tất' || status === 'Accounted') normalizedStatus = 'Accounted';
+        else if (status === 'Hoàn tất hạch toán' || status === 'Đã hoàn tất' || status === 'Accounted' || status === 'Approved') normalizedStatus = 'Accounted';
         else if (status === 'Chờ hạch toán' || status === 'Paid') normalizedStatus = 'Paid';
         else normalizedStatus = 'Waiting QS'; // Treat other waiting states as Waiting
 
@@ -214,7 +214,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         const allowedProjectNames = projects.map(p => p.name);
         if (!allowedProjectNames.includes(order.project_name)) return false;
         
-        const { isFullyReceived } = getDeliveryProgress(order);
+        const { totalOrdered, totalReceivedQty } = getDeliveryProgress(order);
+        const isFullyReceived = (totalOrdered > 0 && totalReceivedQty >= totalOrdered) || 
+                                ((normalizedStatus === 'Accounted' || normalizedStatus === 'Approved') && totalOrdered === 0);
         const matchesDeliveryView = deliveryView === 'all'
             || (deliveryView === 'delivering' && !isFullyReceived)
             || (deliveryView === 'received' && isFullyReceived);
@@ -1296,7 +1298,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 const proj = projects.find(p => p.name === order.project_name);
                                                 const isMuaHo = proj && proj.project_type === 'TỔNG THẦU MUA HỘ';
                                                 
-                                                const { totalOrdered, totalReceivedQty, isFullyReceived } = getDeliveryProgress(order);
+                                                const { totalOrdered, totalReceivedQty, isFullyReceived: baseFullyReceived } = getDeliveryProgress(order);
+                                                const isFullyReceived = baseFullyReceived || ((status === 'Accounted' || status === 'Approved' || status === 'Hoàn tất hạch toán') && totalOrdered === 0);
                                                 
                                                 let statusConfig = STATUS_LABELS[status] || { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info };
                                                 let StatusIcon = statusConfig.icon;

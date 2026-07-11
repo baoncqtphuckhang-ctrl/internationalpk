@@ -2630,7 +2630,7 @@ export default function Home() {
                                 />
                         ) : materialSubTab === 'catalog' ? (
                                 <MaterialCatalog 
-                                    projects={allowedProjects.filter(p => p.project_type !== 'TỔNG THẦU MUA HỘ')} 
+                                    projects={allowedProjects} 
                                     showToast={showToast} 
                                     realtimeVersion={realtimeVersion}
                                 />
