@@ -6,7 +6,7 @@ import {
     Search, ClipboardList, Printer, Download, Eye, 
     Calendar, User, Briefcase, MapPin, CheckCircle, 
     Clock, AlertTriangle, XCircle, ArrowLeft, RefreshCw,
-    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3, RotateCcw
+    DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3, RotateCcw, X, Plus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 
@@ -69,6 +69,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     
     const [expandedItems, setExpandedItems] = useState({});
     const [uploadingId, setUploadingId] = useState(null);
+    const [invoiceModal, setInvoiceModal] = useState({ isOpen: false, order: null, number: '', date: '' });
     const [editReceiveModal, setEditReceiveModal] = useState({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null });
 
     const toggleItemExpansion = (key) => {
@@ -680,6 +681,226 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         }
     };
 
+    const openInvoiceModal = (order) => {
+        let initialInvoices = Array.isArray(order.invoices) ? [...order.invoices] : [];
+        if (initialInvoices.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
+            initialInvoices.push({
+                number: order.invoice_number || '',
+                date: order.invoice_date || '',
+                pdf_url: order.invoice_pdf_url || ''
+            });
+        }
+        if (initialInvoices.length === 0) {
+            initialInvoices.push({ number: '', date: '', pdf_url: '' });
+        }
+        setInvoiceModal({
+            isOpen: true,
+            order,
+            invoices: initialInvoices
+        });
+    };
+
+    const handleSaveInvoiceInfo = async (order, invoicesList) => {
+        try {
+            if (order._is_orphan) {
+                showToast('Đơn này là dữ liệu tạm, không thể lưu hóa đơn!', 'error');
+                return;
+            }
+            
+            const cleanInvoices = invoicesList.filter(inv => inv.number?.trim() || inv.date || inv.pdf_url);
+            const firstInvoice = cleanInvoices[0] || { number: '', date: '', pdf_url: '' };
+            
+            const { error } = await supabase
+                .from('material_orders')
+                .update({ 
+                    invoices: cleanInvoices,
+                    invoice_number: firstInvoice.number || null,
+                    invoice_date: firstInvoice.date || null,
+                    invoice_pdf_url: firstInvoice.pdf_url || null
+                })
+                .eq('id', order.id);
+                
+            if (error) throw error;
+            
+            showToast('Đã lưu thông tin hóa đơn!', 'success');
+            setOrders(prev => prev.map(o => o.id === order.id ? { 
+                ...o, 
+                invoices: cleanInvoices,
+                invoice_number: firstInvoice.number,
+                invoice_date: firstInvoice.date,
+                invoice_pdf_url: firstInvoice.pdf_url
+            } : o));
+            setInvoiceModal({ isOpen: false, order: null, invoices: [] });
+        } catch (err) {
+            console.error('Error saving invoice info:', err);
+            showToast('Lỗi khi lưu thông tin hóa đơn: ' + err.message, 'error');
+        }
+    };
+
+    const handleUploadInvoicePdfForIdx = async (e, order, idx) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            showToast('Vui lòng chọn file PDF!', 'error');
+            e.target.value = '';
+            return;
+        }
+
+        setUploadingId('invoice_pdf_' + idx);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || 'invoice';
+            const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = order.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            
+            const fileName = 'mo_invoice_' + Date.now() + '_' + sanitizedName + '.' + fileExt;
+            const filePath = sanitizedProject + '/invoices/' + fileName;
+
+            const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+                throw new Error(uploadError.message === 'Bucket not found' 
+                    ? 'Không tìm thấy bucket "invoices"' 
+                    : uploadError.message);
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+
+            setInvoiceModal(prev => {
+                const newInvoices = [...prev.invoices];
+                newInvoices[idx] = { ...newInvoices[idx], pdf_url: publicUrl };
+                return { ...prev, invoices: newInvoices };
+            });
+
+            showToast('Tải lên hóa đơn PDF thành công! Hãy nhấn Lưu để hoàn tất.', 'success');
+        } catch (err) {
+            console.error('Upload PDF Error:', err);
+            showToast(err.message || 'Lỗi khi tải file!', 'error');
+        } finally {
+            setUploadingId(null);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleDeleteInvoicePdfForIdx = (idx) => {
+        setInvoiceModal(prev => {
+            const newInvoices = [...prev.invoices];
+            newInvoices[idx] = { ...newInvoices[idx], pdf_url: '' };
+            return { ...prev, invoices: newInvoices };
+        });
+        showToast('Đã gỡ hóa đơn PDF! Hãy nhấn Lưu để hoàn tất.', 'info');
+    };
+
+    const handleUploadInvoicePdf = async (e, order) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
+            showToast('Vui lòng chọn file PDF!', 'error');
+            e.target.value = '';
+            return;
+        }
+
+        setUploadingId(`invoice_pdf_${order.id}`);
+        try {
+            const fileExt = file.name.split('.').pop();
+            const originalName = file.name.substring(0, file.name.lastIndexOf('.')) || 'invoice';
+            const sanitizedName = originalName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            const sanitizedProject = order.project_name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+            
+            const fileName = `mo_invoice_${Date.now()}_${sanitizedName}.${fileExt}`;
+            const filePath = `${sanitizedProject}/invoices/${fileName}`;
+
+            const { error: uploadError } = await supabase.storage
+                .from('invoices')
+                .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+            if (uploadError) {
+                throw new Error(uploadError.message === 'Bucket not found' 
+                    ? 'Không tìm thấy bucket "invoices"' 
+                    : uploadError.message);
+            }
+
+            const { data: { publicUrl } } = supabase.storage
+                .from('invoices')
+                .getPublicUrl(filePath);
+
+            if (order._is_orphan) {
+                showToast('Đơn này là dữ liệu tạm, không thể lưu PDF!', 'error');
+                return;
+            }
+
+            const { error } = await supabase
+                .from('material_orders')
+                .update({ invoice_pdf_url: publicUrl })
+                .eq('id', order.id);
+
+            if (error) throw error;
+
+            showToast('Tải lên hóa đơn PDF thành công!', 'success');
+            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, invoice_pdf_url: publicUrl } : o));
+        } catch (err) {
+            console.error('Upload PDF Error:', err);
+            showToast(err.message || 'Lỗi khi tải file!', 'error');
+        } finally {
+            setUploadingId(null);
+            if (e.target) e.target.value = '';
+        }
+    };
+
+    const handleDeleteInvoicePdf = async (order) => {
+        const pdfUrl = order.invoice_pdf_url;
+        if (!pdfUrl) return;
+
+        setIsLoading(true);
+        try {
+            if (pdfUrl.includes('/public/invoices/')) {
+                const parts = pdfUrl.split('/public/invoices/');
+                if (parts.length > 1) {
+                    const filePath = decodeURIComponent(parts[1]);
+                    const { error: storageError } = await supabase.storage.from('invoices').remove([filePath]);
+                    if (storageError) console.warn('Error deleting PDF from storage:', storageError);
+                }
+            }
+
+            if (order._is_orphan) {
+                showToast('Đơn này là dữ liệu tạm, không thể xóa PDF!', 'error');
+                return;
+            }
+
+            const { error } = await supabase
+                .from('material_orders')
+                .update({ invoice_pdf_url: null })
+                .eq('id', order.id);
+
+            if (error) throw error;
+
+            showToast('Đã xóa hóa đơn PDF!');
+            setOrders(prev => prev.map(o => o.id === order.id ? { ...o, invoice_pdf_url: null } : o));
+        } catch (err) {
+            console.error('Delete PDF Error:', err);
+            showToast('Lỗi khi xóa file PDF!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
+
+    const handleConfirmDeleteInvoicePdf = (order) => {
+        setConfirmModal({
+            isOpen: true,
+            message: 'Bạn có chắc chắn muốn xóa hóa đơn PDF của đơn hàng này không?',
+            onConfirm: async () => {
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                await handleDeleteInvoicePdf(order);
+            }
+        });
+    };
+
     const handleUploadReceipt = async (e, order, catIdx, itemIdx, historyIdx, historyItem) => {
         const files = Array.from(e.target.files);
         if (!files || files.length === 0) return;
@@ -1097,7 +1318,6 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 }
             `}} />
 
-            {!selectedOrder ? (
                 <>
                     {/* HEADER */}
                     <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -1286,6 +1506,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                 <th className="px-6 py-4 hidden xl:table-cell">Người đặt</th>
                                                 <th className="px-6 py-4 text-center hidden sm:table-cell">Số vật tư</th>
                                                 <th className="px-6 py-4">Trạng thái</th>
+                                                <th className="px-6 py-4">Số hóa đơn</th>
+                                                <th className="px-6 py-4">Ngày hóa đơn</th>
+                                                <th className="px-6 py-4 text-center">Hóa đơn PDF</th>
                                                 <th className="px-6 py-4 text-right">Hạch toán thực tế</th>
                                                 <th className="px-6 py-4 text-center">Thao tác</th>
                                             </tr>
@@ -1378,6 +1601,84 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                     {statusConfig.label}
                                                                 </span>
                                                             </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openInvoiceModal(order);
+                                                            }}>
+                                                                {(() => {
+                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
+                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
+                                                                        invList = [{ number: order.invoice_number || '' }];
+                                                                    }
+                                                                    const numbers = invList.map(inv => inv.number).filter(Boolean).join(', ');
+                                                                    return numbers ? (
+                                                                        <span className="font-bold text-slate-700 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border border-slate-200/40 transition cursor-pointer inline-block max-w-[120px] truncate" title={numbers}>
+                                                                            {numbers}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-xs text-indigo-500 hover:text-indigo-600 hover:underline cursor-pointer font-bold flex items-center gap-1">
+                                                                            <Plus size={12} /> Nhập số HD
+                                                                        </span>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="px-6 py-4 whitespace-nowrap" onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openInvoiceModal(order);
+                                                            }}>
+                                                                {(() => {
+                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
+                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
+                                                                        invList = [{ date: order.invoice_date || '' }];
+                                                                    }
+                                                                    const dates = invList.map(inv => inv.date ? formatDateVN(inv.date) : '').filter(Boolean).join(', ');
+                                                                    return dates ? (
+                                                                        <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border border-slate-200/40 transition cursor-pointer inline-block max-w-[150px] truncate" title={dates}>
+                                                                            {dates}
+                                                                        </span>
+                                                                    ) : (
+                                                                        <span className="text-xs text-indigo-500 hover:text-indigo-600 hover:underline cursor-pointer font-bold flex items-center gap-1">
+                                                                            <Plus size={12} /> Nhập ngày HD
+                                                                        </span>
+                                                                    );
+                                                                })()}
+                                                            </td>
+                                                            <td className="px-6 py-4 text-center whitespace-nowrap" onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                openInvoiceModal(order);
+                                                            }}>
+                                                                {(() => {
+                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
+                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
+                                                                        invList = [{ number: order.invoice_number || '', pdf_url: order.invoice_pdf_url || '' }];
+                                                                    }
+                                                                    const pdfs = invList.filter(inv => inv.pdf_url);
+                                                                    if (pdfs.length === 0) {
+                                                                        return (
+                                                                            <span className="text-xs text-slate-400 hover:text-indigo-600 hover:underline cursor-pointer font-bold flex items-center justify-center gap-1">
+                                                                                <Upload size={12} /> Tải PDF
+                                                                            </span>
+                                                                        );
+                                                                    }
+                                                                    return (
+                                                                        <div className="flex items-center justify-center gap-1.5 flex-wrap max-w-[150px]">
+                                                                            {pdfs.map((inv, idx) => (
+                                                                                <a 
+                                                                                    key={idx}
+                                                                                    href={inv.pdf_url} 
+                                                                                    target="_blank" 
+                                                                                    rel="noopener noreferrer" 
+                                                                                    className="p-1 px-2 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-md text-[11px] transition-all duration-200 flex items-center gap-0.5 font-bold border border-blue-100" 
+                                                                                    title={'Xem hóa đơn ' + (inv.number || (idx + 1))}
+                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                >
+                                                                                    <Eye size={11} /> {inv.number ? (inv.number.length > 5 ? inv.number.substring(0,5)+'..' : inv.number) : ('HĐ ' + (idx + 1))}
+                                                                                </a>
+                                                                            ))}
+                                                                        </div>
+                                                                    );
+                                                                })()}
+                                                            </td>
                                                             <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold hidden md:table-cell">
                                                                 {status === 'Approved' || (req && req.total_amount > 0) ? (
                                                                      <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
@@ -1453,7 +1754,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         </tr>
                                                         {expandedOrderId === order.id && (
                                                             <tr className="bg-slate-50/50">
-                                                                <td colSpan="9" className="p-0 border-y border-slate-200">
+                                                                <td colSpan="11" className="p-0 border-y border-slate-200">
                                                                     <div className="p-6">
                                                                         <div className="mb-4 flex items-center gap-2">
                                                                             <div className="bg-sky-100 text-sky-600 p-1.5 rounded-lg">
@@ -1722,33 +2023,49 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         </div>
                     )}
                 </>
-            ) : (
-                /* DETAIL VIEW (WITH PRINT & COST ALLOCATION) */
-                <div className="space-y-6">
-                    {/* BACK BAR */}
-                    <div className="flex justify-between items-center no-print">
-                        <button 
-                            onClick={() => { setSelectedOrder(null); setMatchedRequest(null); }}
-                            className="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-4 py-2 rounded-2xl text-xs font-black transition flex items-center gap-2"
-                        >
-                            <ArrowLeft size={16} /> QUAY LẠI DANH SÁCH
-                        </button>
-                        
-                        <div className="flex gap-3">
+
+            {/* DETAIL VIEW MODAL OVERLAY */}
+            {selectedOrder && (
+                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center z-50 p-4">
+                    <div className="bg-slate-50 rounded-3xl shadow-2xl w-full max-w-5xl border border-slate-200 overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-200">
+                        {/* Sticky Modal Header */}
+                        <header className="px-6 py-4 bg-white border-b border-slate-200 flex justify-between items-center sticky top-0 z-10">
+                            <div>
+                                <h3 className="font-black text-slate-800 text-lg flex items-center gap-2">
+                                    <ClipboardList className="text-indigo-600" size={20} />
+                                    <span>{isMuaHoManager ? 'Chi tiết đơn mua hộ' : 'Chi tiết đơn vật tư'}</span>
+                                </h3>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Công trình: <span className="font-semibold text-slate-700">{selectedOrder.project_name}</span> | Đợt: <span className="font-semibold text-slate-700">{selectedOrder.order_phase}</span>
+                                </p>
+                            </div>
                             <button 
-                                onClick={handlePrint}
-                                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-2xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-indigo-600/15"
+                                onClick={() => { setSelectedOrder(null); setMatchedRequest(null); }}
+                                className="text-slate-400 hover:text-slate-600 p-2 rounded-xl hover:bg-slate-100 transition cursor-pointer"
                             >
-                                <Printer size={16} /> IN PHIẾU A4
+                                <X size={20} />
                             </button>
-                            <button 
-                                onClick={() => handleExportExcel(selectedOrder)}
-                                className="bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded-2xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-green-600/15"
-                            >
-                                <Download size={16} /> XUẤT EXCEL
-                            </button>
-                        </div>
-                    </div>
+                        </header>
+
+                        {/* Modal Body / Scrollable Content */}
+                        <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                            {/* DETAIL VIEW (WITH PRINT & COST ALLOCATION) */}
+                            <div className="space-y-6">
+                                {/* ACTION BUTTONS */}
+                                <div className="flex justify-end gap-3 no-print">
+                                    <button 
+                                        onClick={handlePrint}
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-indigo-600/15 cursor-pointer"
+                                    >
+                                        <Printer size={16} /> IN PHIẾU A4
+                                    </button>
+                                    <button 
+                                        onClick={() => handleExportExcel(selectedOrder)}
+                                        className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-green-600/15 cursor-pointer"
+                                    >
+                                        <Download size={16} /> XUẤT EXCEL
+                                    </button>
+                                </div>
 
                     {/* TRACKING STATUS BANNER */}
                     {matchedRequest && (
@@ -1970,7 +2287,10 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         )}
                     </div>
                 </div>
-            )}
+            </div>
+        </div>
+    </div>
+)}
 
             {/* Custom Confirm Modal */}
             {confirmModal.isOpen && (
@@ -2099,7 +2419,173 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     </div>
                 </div>
             )}
+
+            {/* Invoice Info Edit Modal (Popup box with blur) */}
+            {invoiceModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col transform transition-all duration-300 scale-100 max-h-[85vh]">
+                        <div className="bg-indigo-600 px-6 py-4 flex items-center justify-between">
+                            <h3 className="text-lg font-bold text-white flex items-center gap-2 text-sm md:text-base">
+                                <Edit3 size={18} />
+                                Cập nhật thông tin hóa đơn
+                            </h3>
+                            <button 
+                                onClick={() => setInvoiceModal({ isOpen: false, order: null, invoices: [] })}
+                                className="text-white/70 hover:text-white transition"
+                            >
+                                <XCircle size={24} />
+                            </button>
+                        </div>
+                        <div className="p-6 overflow-y-auto space-y-4 flex-1 custom-scrollbar">
+                            <div className="bg-slate-50 border border-slate-200/60 p-4 rounded-xl space-y-1">
+                                <p className="text-xs text-slate-500 font-medium">Công trình: <span className="font-bold text-slate-800">{invoiceModal.order?.project_name}</span></p>
+                                <p className="text-xs text-slate-500 font-medium">Đợt hàng: <span className="font-bold text-slate-800">{invoiceModal.order?.order_phase}</span></p>
+                            </div>
+                            
+                            <div className="space-y-4 divide-y divide-slate-100">
+                                {invoiceModal.invoices.map((inv, idx) => (
+                                    <div key={idx} className="pt-4 first:pt-0 grid grid-cols-1 md:grid-cols-12 gap-3 items-end">
+                                        <div className="md:col-span-1 flex items-center justify-center mb-2 md:mb-0">
+                                            <span className="bg-indigo-50 text-indigo-600 text-xs font-bold w-6 h-6 rounded-full flex items-center justify-center border border-indigo-100">
+                                                {idx + 1}
+                                            </span>
+                                        </div>
+                                        <div className="md:col-span-4">
+                                            <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[10px]">
+                                                Số hóa đơn
+                                            </label>
+                                            <input 
+                                                type="text" 
+                                                value={inv.number}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setInvoiceModal(prev => {
+                                                        const list = [...prev.invoices];
+                                                        list[idx] = { ...list[idx], number: val };
+                                                        return { ...prev, invoices: list };
+                                                    });
+                                                }}
+                                                className="w-full border border-slate-200 bg-slate-50/30 rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:bg-white text-xs font-medium"
+                                                placeholder="Nhập số HĐ..."
+                                            />
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[10px]">
+                                                Ngày hóa đơn
+                                            </label>
+                                            <input 
+                                                type="date" 
+                                                value={inv.date || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    setInvoiceModal(prev => {
+                                                        const list = [...prev.invoices];
+                                                        list[idx] = { ...list[idx], date: val };
+                                                        return { ...prev, invoices: list };
+                                                    });
+                                                }}
+                                                className="w-full border border-slate-200 bg-slate-50/30 rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:bg-white text-xs font-medium"
+                                            />
+                                        </div>
+                                        <div className="md:col-span-3">
+                                            <label className="block text-slate-700 font-bold mb-1 uppercase tracking-wider text-[10px]">
+                                                File Hóa đơn PDF
+                                            </label>
+                                            {inv.pdf_url ? (
+                                                <div className="flex items-center gap-1.5 h-[34px]">
+                                                    <a 
+                                                        href={inv.pdf_url} 
+                                                        target="_blank" 
+                                                        rel="noopener noreferrer" 
+                                                        className="px-2.5 py-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg text-[11px] font-bold transition flex items-center gap-1"
+                                                        title="Xem PDF"
+                                                    >
+                                                        <Eye size={12} /> Xem
+                                                    </a>
+                                                    <button 
+                                                        onClick={() => handleDeleteInvoicePdfForIdx(idx)}
+                                                        className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition"
+                                                        title="Gỡ PDF"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            ) : (
+                                                <div className="relative group/upload flex items-center h-[34px]">
+                                                    <input
+                                                        type="file"
+                                                        accept=".pdf"
+                                                        className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                                        onChange={(e) => handleUploadInvoicePdfForIdx(e, invoiceModal.order, idx)}
+                                                        disabled={uploadingId === 'invoice_pdf_' + idx}
+                                                    />
+                                                    <button 
+                                                        className="px-3 py-1.5 text-[11px] font-bold rounded-lg border border-dashed border-slate-300 bg-slate-50 text-slate-600 flex items-center gap-1 hover:bg-indigo-50 hover:text-indigo-600 hover:border-indigo-300 w-full transition"
+                                                    >
+                                                        {uploadingId === 'invoice_pdf_' + idx ? (
+                                                            <>
+                                                                <RefreshCw size={12} className="animate-spin" />
+                                                                Đang tải...
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Upload size={12} /> Tải PDF
+                                                            </>
+                                                        )}
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="md:col-span-1 flex items-center justify-center h-[34px] mb-2 md:mb-0">
+                                            {invoiceModal.invoices.length > 1 && (
+                                                <button 
+                                                    onClick={() => {
+                                                        setInvoiceModal(prev => ({
+                                                            ...prev,
+                                                            invoices: prev.invoices.filter((_, i) => i !== idx)
+                                                        }));
+                                                    }}
+                                                    className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition"
+                                                    title="Xóa hóa đơn này"
+                                                >
+                                                    <X size={16} />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            
+                            <button
+                                onClick={() => {
+                                    setInvoiceModal(prev => ({
+                                        ...prev,
+                                        invoices: [...prev.invoices, { number: '', date: '', pdf_url: '' }]
+                                    }));
+                                }}
+                                className="w-full mt-2 py-2 border border-dashed border-indigo-300 hover:border-indigo-500 rounded-xl text-xs font-bold text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/40 transition flex items-center justify-center gap-1.5"
+                            >
+                                <Plus size={14} /> Thêm hóa đơn khác (HĐ 2, 3...)
+                            </button>
+                        </div>
+                        <div className="bg-slate-50 px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+                            <button 
+                                onClick={() => setInvoiceModal({ isOpen: false, order: null, invoices: [] })}
+                                className="px-5 py-2.5 rounded-xl font-bold text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition text-xs"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                onClick={() => handleSaveInvoiceInfo(invoiceModal.order, invoiceModal.invoices)}
+                                className="px-5 py-2.5 rounded-xl font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-600/20 transition flex items-center gap-2 text-xs"
+                            >
+                                <Save size={16} />
+                                Lưu thông tin
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
-

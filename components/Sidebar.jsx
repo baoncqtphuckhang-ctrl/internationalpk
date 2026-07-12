@@ -99,6 +99,20 @@ export default function Sidebar({
                 label: 'Duyệt xóa'
             };
         }
+        if (notification?.type === 'delete_request_approved') {
+            return {
+                dot: 'bg-emerald-500',
+                badge: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
+                label: 'Đã duyệt'
+            };
+        }
+        if (notification?.type === 'delete_request_rejected') {
+            return {
+                dot: 'bg-slate-500',
+                badge: 'bg-slate-500/10 text-slate-400 border-slate-500/20',
+                label: 'Từ chối'
+            };
+        }
         if (notification?.type?.includes('dntt')) {
             return {
                 dot: 'bg-blue-400',

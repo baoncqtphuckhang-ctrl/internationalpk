@@ -566,7 +566,6 @@ export default function Home() {
             if (filteredRows.length === 0) {
                 return false;
             }
-
             const { error } = await supabase.from('notifications').insert(filteredRows);
             if (error) {
                 console.warn('Notifications table might not exist yet:', error);
@@ -579,202 +578,236 @@ export default function Home() {
         }
     };
 
-    const fetchData = async (showLoading = true) => {
-        console.log("fetchData called, showLoading:", showLoading);
-        if (showLoading) setIsLoading(true);
-        const currentRole = currentUser?.role?.toUpperCase?.() || '';
-        const isAdminUser = currentRole === 'ADMIN';
+    const fetchProjectsData = async () => {
+        const { data: projData, error } = await supabase.from('projects').select('*').order('name');
+        if (error) throw error;
+        const sortedProjData = (projData || []).sort((a, b) => {
+            const isCompletedA = a.status === 'Finish';
+            const isCompletedB = b.status === 'Finish';
+            if (isCompletedA && !isCompletedB) return 1;
+            if (!isCompletedA && isCompletedB) return -1;
+            return (a.name || '').localeCompare(b.name || '');
+        });
+        setProjects(sortedProjData);
+        if (sortedProjData.length > 0) {
+            setSelectedProject(prev => prev ? prev : sortedProjData[0].name);
+        }
+
+        const details = {};
+        projData?.forEach(p => {
+            const plhdArray = p.plhds || [];
+            const extraPlhdTotal = plhdArray.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
+            const debtToCollect = p.debt_to_collect || 0;
+            
+            details[p.name] = { 
+                contractValueAfterTax: p.contract_value_after_tax,
+                advanceValue: p.advance_value,
+                debtToCollect: debtToCollect,
+                extraPlhdTotal: extraPlhdTotal,
+                totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal,
+                contractNo: p.contract_no,
+                address: p.address || '',
+                chtName: p.cht_name || '',
+                chtPhone: p.cht_phone || '',
+                projectType: p.project_type || 'TRỰC TIẾP ORDER',
+                plhds: plhdArray,
+                status: p.status || 'Doing'
+            };
+        });
+        setProjectDetails(details);
+    };
+
+    const fetchTransactionsData = async () => {
+        let allTrans = [];
+        let page = 0;
+        const pageSize = 1000;
+        while(true) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('*')
+                .order('accounting_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+            
+            if (error) {
+                console.error('Fetch transactions error:', error);
+                throw error;
+            }
+            
+            if (data && data.length > 0) {
+                allTrans = [...allTrans, ...data];
+                if (data.length < pageSize) break;
+                page++;
+            } else {
+                break;
+            }
+        }
+
+        const normalizedTransData = allTrans.map(t => ({
+            ...t,
+            code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
+        }));
+        setTransactions(normalizedTransData);
+    };
+
+    const fetchIncomesData = async () => {
+        const { data: incData, error } = await supabase.from('incomes').select('*').order('date', { ascending: false });
+        if (error) throw error;
+        setIncomes(incData || []);
+    };
+
+    const fetchApprovalRequestsData = async () => {
+        const { data: approvalData, error } = await supabase.from('approval_requests').select('*').order('created_at', { ascending: false });
+        if (error) throw error;
+        setDnttList(approvalData || []);
+    };
+
+    const fetchPartnerDebtsData = async () => {
         try {
-            const { data: projData } = await supabase.from('projects').select('*').order('name');
-            const sortedProjData = (projData || []).sort((a, b) => {
-                const isCompletedA = a.status === 'Finish';
-                const isCompletedB = b.status === 'Finish';
-                if (isCompletedA && !isCompletedB) return 1;
-                if (!isCompletedA && isCompletedB) return -1;
-                return (a.name || '').localeCompare(b.name || '');
-            });
-            setProjects(sortedProjData);
-            if (sortedProjData.length > 0) {
-                setSelectedProject(prev => prev ? prev : sortedProjData[0].name);
+            const { data: debtsData, error: debtsError } = await supabase.from('partner_debts').select('*').order('created_at', { ascending: false });
+            if (!debtsError) {
+                setPartnerDebts(debtsData || []);
+            }
+        } catch (e) {
+            console.warn('Partner debts table might not exist yet', e);
+        }
+    };
+
+    const fetchExpectedInvoicesData = async () => {
+        try {
+            const { data: expInvData, error: expInvError } = await supabase.from('expected_invoices').select('*');
+            if (!expInvError) {
+                setExpectedInvoices(expInvData || []);
+            }
+        } catch (e) {
+            console.warn('Expected invoices table might not exist yet', e);
+        }
+    };
+
+    const fetchNotificationsData = async () => {
+        try {
+            const notificationFilters = [
+                currentUser?.username ? `recipient_username.eq.${currentUser.username}` : null,
+                currentUser?.role ? `recipient_role.eq.${currentUser.role}` : null,
+                'recipient_role.eq.ALL',
+                currentUser?.username ? `created_by.eq.${currentUser.username}` : null
+            ].filter(Boolean).join(',');
+
+            let notificationQuery = supabase
+                .from('notifications')
+                .select('*')
+                .order('created_at', { ascending: false })
+                .limit(100);
+
+            if (notificationFilters) {
+                notificationQuery = notificationQuery.or(notificationFilters);
             }
 
-            const details = {};
-            projData?.forEach(p => {
-                const plhdArray = p.plhds || [];
-                const extraPlhdTotal = plhdArray.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
-                const debtToCollect = p.debt_to_collect || 0;
-                
-                details[p.name] = { 
-                    contractValueAfterTax: p.contract_value_after_tax,
-                    advanceValue: p.advance_value,
-                    debtToCollect: debtToCollect,
-                    extraPlhdTotal: extraPlhdTotal,
-                    totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal,
-                    contractNo: p.contract_no,
-                    address: p.address || '',
-                    chtName: p.cht_name || '',
-                    chtPhone: p.cht_phone || '',
-                    projectType: p.project_type || 'TRỰC TIẾP ORDER',
-                    plhds: plhdArray,
-                    status: p.status || 'Doing'
-                };
-            });
-            setProjectDetails(details);
+            let { data: notificationData, error: notificationError } = await notificationQuery;
 
-            let allTrans = [];
-            let page = 0;
-            const pageSize = 1000;
-            while(true) {
-                const { data, error } = await supabase
-                    .from('transactions')
-                    .select('*')
-                    .order('accounting_date', { ascending: false })
-                    .order('id', { ascending: true })
-                    .range(page * pageSize, (page + 1) * pageSize - 1);
-                
-                if (error) {
-                    console.error('Fetch transactions error:', error);
-                    break;
-                }
-                
-                if (data && data.length > 0) {
-                    allTrans = [...allTrans, ...data];
-                    if (data.length < pageSize) break;
-                    page++;
-                } else {
-                    break;
-                }
-            }
-
-            const normalizedTransData = allTrans.map(t => ({
-                ...t,
-                code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
-            }));
-            setTransactions(normalizedTransData);
-
-            const { data: incData } = await supabase.from('incomes').select('*').order('date', { ascending: false });
-            setIncomes(incData || []);
-
-            const { data: approvalData } = await supabase.from('approval_requests').select('*').order('created_at', { ascending: false });
-            setDnttList(approvalData || []);
-
-            try {
-                const { data: debtsData, error: debtsError } = await supabase.from('partner_debts').select('*').order('created_at', { ascending: false });
-                if (!debtsError) {
-                    setPartnerDebts(debtsData || []);
-                }
-            } catch (e) {
-                console.warn('Partner debts table might not exist yet', e);
-            }
-
-            try {
-                const { data: expInvData, error: expInvError } = await supabase.from('expected_invoices').select('*');
-                if (!expInvError) {
-                    setExpectedInvoices(expInvData || []);
-                }
-            } catch (e) {
-                console.warn('Expected invoices table might not exist yet', e);
-            }
-
-            try {
-                const notificationFilters = [
-                    currentUser?.username ? `recipient_username.eq.${currentUser.username}` : null,
-                    currentUser?.role ? `recipient_role.eq.${currentUser.role}` : null,
-                    'recipient_role.eq.ALL',
-                    currentUser?.username ? `created_by.eq.${currentUser.username}` : null
-                ].filter(Boolean).join(',');
-
-                let notificationQuery = supabase
+            if (notificationError) {
+                const fallback = await supabase
                     .from('notifications')
                     .select('*')
                     .order('created_at', { ascending: false })
-                    .limit(100);
+                    .limit(500);
+                notificationData = fallback.data;
+                notificationError = fallback.error;
+            }
 
-                if (notificationFilters) {
-                    notificationQuery = notificationQuery.or(notificationFilters);
-                }
-
-                let { data: notificationData, error: notificationError } = await notificationQuery;
-
-                if (notificationError) {
-                    const fallback = await supabase
-                        .from('notifications')
-                        .select('*')
-                        .order('created_at', { ascending: false })
-                        .limit(500);
-                    notificationData = fallback.data;
-                    notificationError = fallback.error;
-                }
-
-                if (!notificationError) {
-                    setNotificationsAvailable(true);
-                    const currentRoleName = normalizeRoleName(currentUser?.role);
-                    const visibleNotifications = Array.from(
-                        new Map(
-                            (notificationData || [])
-                                .filter(notification => {
-                                    const isRecipient = notification.recipient_username === currentUser?.username ||
-                                                        normalizeRoleName(notification.recipient_role) === currentRoleName ||
-                                                        normalizeRoleName(notification.recipient_role) === 'ALL';
-                                    if (isRecipient && !notification.recipient_deleted) {
-                                        return true;
-                                    }
-                                    const isSender = notification.created_by === currentUser?.username;
-                                    const sentToAdmin = normalizeRoleName(notification.recipient_role) === 'ADMIN' ||
-                                                        notification.recipient_username === 'admin';
-                                    if (isSender && sentToAdmin && !notification.sender_deleted) {
-                                        return true;
-                                    }
-                                    return false;
-                                })
-                                .map(notification => {
-                                    const key = [
-                                        notification.source_table || '',
-                                        notification.source_id || '',
-                                        notification.type || '',
-                                        notification.title || '',
-                                        notification.message || '',
-                                        notification.recipient_username || '',
-                                        notification.recipient_role || ''
-                                    ].join('|');
-                                    return [key, notification];
-                                })
-                        ).values()
-                    );
-                    setNotifications(visibleNotifications);
-                } else {
-                    setNotificationsAvailable(false);
-                    setNotifications([]);
-                }
-            } catch (e) {
-                console.warn('Notifications table might not exist yet', e);
+            if (!notificationError) {
+                setNotificationsAvailable(true);
+                const currentRoleName = normalizeRoleName(currentUser?.role);
+                const visibleNotifications = Array.from(
+                    new Map(
+                        (notificationData || [])
+                            .filter(notification => {
+                                const isRecipient = notification.recipient_username === currentUser?.username ||
+                                                    normalizeRoleName(notification.recipient_role) === currentRoleName ||
+                                                    normalizeRoleName(notification.recipient_role) === 'ALL';
+                                if (isRecipient && !notification.recipient_deleted) {
+                                    return true;
+                                }
+                                const isSender = notification.created_by === currentUser?.username;
+                                const sentToAdmin = normalizeRoleName(notification.recipient_role) === 'ADMIN' ||
+                                                    notification.recipient_username === 'admin';
+                                if (isSender && sentToAdmin && !notification.sender_deleted) {
+                                    return true;
+                                }
+                                return false;
+                            })
+                            .map(notification => {
+                                const key = [
+                                    notification.source_table || '',
+                                    notification.source_id || '',
+                                    notification.type || '',
+                                    notification.title || '',
+                                    notification.message || '',
+                                    notification.recipient_username || '',
+                                    notification.recipient_role || ''
+                                ].join('|');
+                                return [key, notification];
+                            })
+                    ).values()
+                );
+                setNotifications(visibleNotifications);
+            } else {
                 setNotificationsAvailable(false);
                 setNotifications([]);
             }
+        } catch (e) {
+            console.warn('Notifications table might not exist yet', e);
+            setNotificationsAvailable(false);
+            setNotifications([]);
+        }
+    };
 
+    const fetchDeleteRequestsData = async () => {
+        try {
+            const { data: delData, error: delError } = await supabase.from('delete_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+            if (!delError) {
+                setDeleteRequests(delData || []);
+                await syncDeleteRequestNotifications(delData || []);
+            }
+        } catch (e) {
+            console.warn('delete_requests table might not exist yet', e);
+        }
+    };
+
+    const fetchActivityLogsData = async () => {
+        const currentRole = currentUser?.role?.toUpperCase?.() || '';
+        const isAdminUser = currentRole === 'ADMIN';
+        if (isAdminUser) {
             try {
-                const { data: delData, error: delError } = await supabase.from('delete_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
-                if (!delError) {
-                    setDeleteRequests(delData || []);
-                    await syncDeleteRequestNotifications(delData || []);
+                const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
+                if (!logsError) {
+                    setActivityLogs(logsData || []);
                 }
             } catch (e) {
-                console.warn('delete_requests table might not exist yet', e);
+                console.warn('Activity logs table might not exist yet', e);
             }
+        } else {
+            setActivityLogs([]);
+        }
+    };
 
-            if (isAdminUser) {
-                try {
-                    const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
-                    if (!logsError) {
-                        setActivityLogs(logsData || []);
-                    }
-                } catch (e) {
-                    console.warn('Activity logs table might not exist yet', e);
-                }
-            } else {
-                setActivityLogs([]);
-            }
+    const fetchData = async (showLoading = true) => {
+        console.log("fetchData called, showLoading:", showLoading);
+        if (showLoading) setIsLoading(true);
+        try {
+            await Promise.all([
+                fetchProjectsData(),
+                fetchTransactionsData(),
+                fetchIncomesData(),
+                fetchApprovalRequestsData(),
+                fetchPartnerDebtsData(),
+                fetchExpectedInvoicesData(),
+                fetchNotificationsData(),
+                fetchDeleteRequestsData(),
+                fetchActivityLogsData()
+            ]);
         } catch (error) {
+            console.error(error);
             showToast('Lỗi kết nối Database!', 'error');
         } finally {
             if (showLoading) setIsLoading(false);
@@ -915,82 +948,56 @@ export default function Home() {
 
     const [editTransaction, setEditTransaction] = useState(null);
     const [incomeTableCols, setIncomeTableCols] = useState({
-        ngayHd: true,
-        ngayTt: true,
-        dot: true,
-        soHd: true,
-        truocThue: true,
-        vat: true,
-        sauThue: true,
-        thucNhanHstt: true,
-        canTru: true,
-        thucNhanThucTe: true,
-        thucNhanGomCanTru: true
+        ngayHd: true, ngayTt: true, dot: true, soHd: true, truocThue: true, vat: true, sauThue: true, thucNhanHstt: true, canTru: true, thucNhanThucTe: true, thucNhanGomCanTru: true
     });
 
     const [isPasting, setIsPasting] = useState(false);
     const [pasteText, setPasteText] = useState('');
 
-        const handleConfirmImport = async (processedTransactions) => {
-            setIsLoading(true);
-            try {
-                const { error } = await supabase.from('transactions').insert(processedTransactions);
-                if (error) throw error;
-                showToast(`Đã nhập thành công ${processedTransactions.length} dòng dữ liệu!`);
-                logActivity('Thêm', 'Giao dịch', `Nhập từ Excel ${processedTransactions.length} dòng`, processedTransactions[0]?.project_name);
-                setPasteText('');
-                setIsPasting(false);
-                fetchData();
-            } catch (error) {
-                showToast('Lỗi khi lưu dữ liệu vào Database!', 'error');
-            } finally {
-                setIsLoading(false);
+    const handleConfirmImport = async (processedTransactions) => {
+        setIsLoading(true);
+        try {
+            const { data, error } = await supabase.from('transactions').insert(processedTransactions).select();
+            if (error) throw error;
+            showToast(`Đã nhập thành công ${processedTransactions.length} dòng dữ liệu!`);
+            logActivity('Thêm', 'Giao dịch', `Nhập từ Excel ${processedTransactions.length} dòng`, processedTransactions[0]?.project_name);
+            setPasteText('');
+            setIsPasting(false);
+            if (data && data.length > 0) {
+                const normalizedTransData = data.map(t => ({
+                    ...t,
+                    code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
+                }));
+                setTransactions(prev => [...normalizedTransData, ...prev]);
             }
-        };
+        } catch (error) {
+            showToast('Lỗi khi lưu dữ liệu vào Database!', 'error');
+        } finally {
+            setIsLoading(false);
+        }
+    };
 
     const handleAddData = async (type, data, editId = null) => {
         setIsLoading(true);
         try {
             if (type === 'EXPENSE' || type === 'OFFICE_INCOME') {
                 const payload = {
-                    project_name: data.project_name,
-                    accounting_date: data.accounting_date,
-                    invoice_date: data.invoice_date || null,
-                    invoice_no: data.invoice_no || '',
-                    recipient: data.recipient || '',
-                    corresponding_account: type === 'OFFICE_INCOME' 
-                        ? (data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) 
-                        : (data.corresponding_account || ''),
-                    code: type === 'OFFICE_INCOME' 
-                        ? (data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) 
-                        : data.code,
-                    debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit,
-                    note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''),
-                    created_by: data.creator || currentUser.username
+                    project_name: data.project_name, accounting_date: data.accounting_date, invoice_date: data.invoice_date || null, invoice_no: data.invoice_no || '', recipient: data.recipient || '', corresponding_account: type === 'OFFICE_INCOME' ? (data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) : (data.corresponding_account || ''), code: type === 'OFFICE_INCOME' ? (data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) : data.code, debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit, note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
-                    if (type === 'EXPENSE') {
-                        payload.credit = 0;
-                        payload.debit = data.debit || 0;
-                    }
-                    const { error } = await supabase.from('transactions').update(payload).eq('id', editId);
+                    if (type === 'EXPENSE') { payload.credit = 0; payload.debit = data.debit || 0; }
+                    const { data: updatedRow, error } = await supabase.from('transactions').update(payload).eq('id', editId).select().single();
                     if (error) throw error;
+                    if (updatedRow) setTransactions(prev => prev.map(t => t.id === editId ? { ...updatedRow, code: updatedRow.code ? updatedRow.code.toString().trim().replace(',', '.') : updatedRow.code } : t));
                 } else {
-                    const { error } = await supabase.from('transactions').insert([payload]);
+                    const { data: newRow, error } = await supabase.from('transactions').insert([payload]).select().single();
                     if (error) throw error;
+                    if (newRow) setTransactions(prev => [{ ...newRow, code: newRow.code ? newRow.code.toString().trim().replace(',', '.') : newRow.code }, ...prev]);
                 }
             } else {
                 const isReal = type === 'INCOME_REAL';
                 const payload = {
-                    project_name: data.project_name,
-                    date: data.accounting_date,
-                    phase: data.phase,
-                    amount: isReal ? 0 : (data.amount || 0),
-                    vat_amount: isReal ? 0 : (data.vat_amount || 0),
-                    post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0),
-                    is_paid: isReal ? true : false,
-                    note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }),
-                    created_by: data.creator || currentUser.username
+                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);
@@ -998,27 +1005,24 @@ export default function Home() {
                     if (originalData) {
                         try {
                             const parsedNote = JSON.parse(originalData.note);
-                            if (parsedNote.type_data) {
-                                isOriginalReal = parsedNote.type_data === 'INCOME_REAL';
-                            } else {
-                                isOriginalReal = (originalData.post_tax_amount === 0 && originalData.amount === 0);
-                            }
+                            isOriginalReal = parsedNote.type_data ? parsedNote.type_data === 'INCOME_REAL' : (originalData.post_tax_amount === 0 && originalData.amount === 0);
                         } catch(e) {
                             isOriginalReal = (originalData.post_tax_amount === 0 && originalData.amount === 0);
                         }
                     }
-                    
                     if (isReal !== isOriginalReal) {
-                        // User switched tabs while editing. Insert instead of update to prevent data loss.
-                        const { error } = await supabase.from('incomes').insert([payload]);
+                        const { data: newRow, error } = await supabase.from('incomes').insert([payload]).select().single();
                         if (error) throw error;
+                        if (newRow) setIncomes(prev => [newRow, ...prev]);
                     } else {
-                        const { error } = await supabase.from('incomes').update(payload).eq('id', editId);
+                        const { data: updatedRow, error } = await supabase.from('incomes').update(payload).eq('id', editId).select().single();
                         if (error) throw error;
+                        if (updatedRow) setIncomes(prev => prev.map(i => i.id === editId ? updatedRow : i));
                     }
                 } else {
-                    const { error } = await supabase.from('incomes').insert([payload]);
+                    const { data: newRow, error } = await supabase.from('incomes').insert([payload]).select().single();
                     if (error) throw error;
+                    if (newRow) setIncomes(prev => [newRow, ...prev]);
                 }
             }
             showToast('Đã lưu dữ liệu thành công!');
@@ -1028,14 +1032,12 @@ export default function Home() {
                 setActiveTab(previousTab);
                 setPreviousTab(null);
             }
-            fetchData();
         } catch (error) {
             showToast('Lỗi khi lưu dữ liệu!', 'error');
         } finally {
             setIsLoading(false);
         }
     };
-
     const handleEditTransaction = (t) => {
         let typeStr = 'EXPENSE';
         if (t.phase) {
@@ -1435,7 +1437,7 @@ export default function Home() {
             if (requestError) throw requestError;
 
             const sent = await createNotifications({
-                recipients: getAdminRecipients(),
+                recipients: getDeleteApprovalRecipients(),
                 title: 'Đề nghị xóa giao dịch chi',
                 message: `${currentUser?.name || currentUser?.username} đề nghị admin xóa giao dịch chi của công trình ${transaction.project_name}, ngày ${formatDateVN(transaction.accounting_date)}, số tiền ${formatCurrency(amount)}. Lý do: ${cleanReason}.`,
                 type: 'delete_request',
@@ -2068,6 +2070,34 @@ export default function Home() {
                 .eq('id', request.id);
             if (reqError) throw reqError;
 
+            // Update notifications related to this delete request to show it has been approved
+            try {
+                const approverLabel = `${currentUser?.role || 'Admin'} ${currentUser?.name || currentUser?.username}`;
+                const resolvedMessage = `${approverLabel} đã phê duyệt yêu cầu xóa: ${request.record_name || 'dữ liệu'}.`;
+                
+                await supabase
+                    .from('notifications')
+                    .update({ 
+                        title: 'Đề nghị xóa dữ liệu (Đã duyệt)', 
+                        message: resolvedMessage, 
+                        type: 'delete_request_approved'
+                    })
+                    .eq('source_table', 'delete_requests')
+                    .eq('source_id', request.id);
+
+                await supabase
+                    .from('notifications')
+                    .update({ 
+                        title: 'Đề nghị xóa dữ liệu (Đã duyệt)', 
+                        message: resolvedMessage, 
+                        type: 'delete_request_approved'
+                    })
+                    .eq('source_table', request.original_table)
+                    .eq('source_id', request.record_id);
+            } catch(e) {
+                console.warn('Failed to update deletion notifications:', e);
+            }
+
             await notifyDeleteRequestRequester(request, 'approved', request.record_name);
 
             showToast('Đã phê duyệt xóa dữ liệu!');
@@ -2089,6 +2119,34 @@ export default function Home() {
                 .delete()
                 .eq('id', request.id);
             if (reqError) throw reqError;
+
+            // Update notifications related to this delete request to show it has been rejected
+            try {
+                const rejecterLabel = `${currentUser?.role || 'Admin'} ${currentUser?.name || currentUser?.username}`;
+                const resolvedMessage = `${rejecterLabel} đã từ chối yêu cầu xóa: ${request.record_name || 'dữ liệu'}.`;
+                
+                await supabase
+                    .from('notifications')
+                    .update({ 
+                        title: 'Đề nghị xóa dữ liệu (Từ chối)', 
+                        message: resolvedMessage, 
+                        type: 'delete_request_rejected'
+                    })
+                    .eq('source_table', 'delete_requests')
+                    .eq('source_id', request.id);
+
+                await supabase
+                    .from('notifications')
+                    .update({ 
+                        title: 'Đề nghị xóa dữ liệu (Từ chối)', 
+                        message: resolvedMessage, 
+                        type: 'delete_request_rejected'
+                    })
+                    .eq('source_table', request.original_table)
+                    .eq('source_id', request.record_id);
+            } catch(e) {
+                console.warn('Failed to update deletion notifications:', e);
+            }
 
             await notifyDeleteRequestRequester(request, 'rejected', request.record_name);
 
@@ -2710,7 +2768,9 @@ export default function Home() {
                                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
                                     <div className="bg-blue-600 p-6 rounded-2xl text-white shadow-lg">
                                         <p className="text-xs font-bold uppercase opacity-80">Tổng HĐ & PLHĐ</p>
-                                        <p className="text-3xl font-black mt-2" title={`Hợp đồng: ${formatCurrency(projectDetails[selectedProject]?.contractValueAfterTax || 0)}\nPLHĐ 1: ${formatCurrency(projectDetails[selectedProject]?.debtToCollect || 0)}\nCác PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTotal || 0)}`}>
+                                        <p className="text-3xl font-black mt-2" title={`Hợp đồng: ${formatCurrency(projectDetails[selectedProject]?.contractValueAfterTax || 0)}
+PLHĐ 1: ${formatCurrency(projectDetails[selectedProject]?.debtToCollect || 0)}
+Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTotal || 0)}`}>
                                             {formatCurrency(projectDetails[selectedProject]?.totalContractAndPlhd || 0)}
                                         </p>
                                     </div>
