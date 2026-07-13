@@ -897,7 +897,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 txsToInsert.push({
                                     project_name: a.project_name,
                                     accounting_date: new Date().toISOString().split('T')[0],
-                                    code: code,
+                                    code: paymentModal.bhxhCode || code,
                                     corresponding_account: '3383',
                                     recipient: finalRecipient,
                                     debit: bhxhAlloc,
@@ -2833,59 +2833,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     
                     <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
                         <div className="grid grid-cols-2 gap-4">
-                            <div className={paymentModal.corresponding_account === '3341' ? 'col-span-2' : ''}>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Nhân viên</label>
-                                <input type="text" value={paymentModal.empName} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
-                            </div>
-                            {paymentModal.corresponding_account !== '3341' && (
-                                <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-1">Số tiền thanh toán (Còn lại)</label>
-                                    <input type="text" value={formatCurrency(paymentModal.amount)} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none cursor-not-allowed" />
-                                </div>
-                            )}
-                            {paymentModal.corresponding_account === '3341' && (
-                                <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="font-bold text-slate-600">1. Lương & Phụ cấp (Nợ {paymentModal.code} / Có 3341):</span>
-                                        <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions)} VNĐ</span>
-                                    </div>
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="font-bold text-slate-600">2. BHXH Công ty đóng (Nợ {paymentModal.code} / Có 3383):</span>
-                                        <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.companyBhxh)} VNĐ</span>
-                                    </div>
-                                    <div className="flex justify-between items-center pt-2 border-t border-slate-200 text-sm font-black">
-                                        <span className="text-slate-900">Tổng cộng chi phí hạch toán:</span>
-                                        <span className="text-orange-600 text-base">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions + paymentModal.companyBhxh)} VNĐ</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Người nhận</label>
-                                <input type="text" value={paymentModal.recipient} onChange={(e) => setPaymentModal({...paymentModal, recipient: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Ghi chú</label>
-                                <input type="text" value={paymentModal.note} onChange={(e) => setPaymentModal({...paymentModal, note: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Mã chi phí (Nợ)</label>
-                                <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none">
-                                    <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                    <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                    <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                    <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                    <option value="154">154 - Chi phí SXKD dở dang</option>
-                                    <option value="3341">3341 - Phải trả người lao động</option>
-                                </select>
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Tài khoản đối ứng (Có)</label>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Loại giao dịch (Tài khoản Có)</label>
                                 <select 
                                     value={paymentModal.corresponding_account} 
                                     onChange={(e) => {
@@ -2899,18 +2848,110 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                         setPaymentModal({
                                             ...paymentModal, 
                                             corresponding_account: val,
-                                            note: newNote
+                                            note: newNote,
+                                            code: val === '3341' ? '6427' : '3341' // Default nợ
                                         });
                                     }} 
-                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none"
+                                    className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm font-black text-amber-900 outline-none focus:border-amber-500 transition appearance-none"
                                 >
-                                    <option value="1111">1111 - Tiền mặt</option>
-                                    <option value="1121">1121 - Tiền gửi ngân hàng</option>
-                                    <option value="3341">3341 - Phải trả người lao động</option>
+                                    <option value="3341">Hạch toán Lương (Nợ Chi phí / Có 3341 & 3383)</option>
+                                    <option value="1111">Chi tiền mặt (Nợ Phải trả / Có 1111)</option>
+                                    <option value="1121">Chi tiền gửi NH (Nợ Phải trả / Có 1121)</option>
                                 </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Nhân viên</label>
+                                <input type="text" value={paymentModal.empName} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
                             </div>
                         </div>
 
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Người nhận</label>
+                                <input type="text" value={paymentModal.recipient} onChange={(e) => setPaymentModal({...paymentModal, recipient: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-black text-slate-900 mb-1">Ghi chú</label>
+                                <input type="text" value={paymentModal.note} onChange={(e) => setPaymentModal({...paymentModal, note: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
+                            </div>
+                        </div>
+
+                        {paymentModal.corresponding_account === '3341' ? (
+                            <div className="col-span-2 space-y-4 border-t border-b border-slate-200 py-4 my-2">
+                                {/* Ô HẠCH TOÁN LƯƠNG */}
+                                <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 space-y-3">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="font-black text-blue-800">1. Hạch toán Lương & Phụ cấp</span>
+                                        <span className="font-extrabold text-blue-900 text-base">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions)} VNĐ</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-blue-900 mb-1">Mã chi phí (Nợ)</label>
+                                            <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition appearance-none">
+                                                <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                                <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                                <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                                <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                                <option value="154">154 - Chi phí SXKD dở dang</option>
+                                                <option value="3341">3341 - Phải trả người lao động</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-blue-900 mb-1">Tài khoản đối ứng (Có)</label>
+                                            <input type="text" readOnly value="3341 - Phải trả người lao động" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-500 outline-none cursor-not-allowed" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Ô HẠCH TOÁN BHXH */}
+                                <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-3">
+                                    <div className="flex justify-between items-center text-sm">
+                                        <span className="font-black text-emerald-800">2. Hạch toán BHXH Công ty đóng</span>
+                                        <span className="font-extrabold text-emerald-900 text-base">{formatCurrency(paymentModal.companyBhxh)} VNĐ</span>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div>
+                                            <label className="block text-xs font-bold text-emerald-900 mb-1">Mã chi phí (Nợ)</label>
+                                            <select value={paymentModal.bhxhCode || paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, bhxhCode: e.target.value})} className="w-full bg-white border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 transition appearance-none">
+                                                <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                                <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                                <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                                <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                                <option value="154">154 - Chi phí SXKD dở dang</option>
+                                                <option value="3341">3341 - Phải trả người lao động</option>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-emerald-900 mb-1">Tài khoản đối ứng (Có)</label>
+                                            <input type="text" readOnly value="3383 - Bảo hiểm xã hội" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-500 outline-none cursor-not-allowed" />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="flex justify-between items-center text-sm font-black px-1">
+                                    <span className="text-slate-900">Tổng cộng chi phí hạch toán:</span>
+                                    <span className="text-orange-600 text-lg">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions + paymentModal.companyBhxh)} VNĐ</span>
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-1">Số tiền thanh toán (Còn lại)</label>
+                                    <input type="text" value={formatCurrency(paymentModal.amount)} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none cursor-not-allowed" />
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-1">Tài khoản thanh toán (Nợ)</label>
+                                    <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none">
+                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                    </select>
+                                </div>
+                            </div>
+                        )}
                         <div className="pt-2 border-t border-slate-200 mt-2">
                             <h4 className="font-black text-slate-800 mb-2">Hạch toán công trình {(isTechnical || paymentModal.allocations.length > 1) && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2">{isTechnical ? 'Bộ phận Kỹ thuật / Gondola' : 'Phân bổ nhiều công trình'}</span>}</h4>
                             
