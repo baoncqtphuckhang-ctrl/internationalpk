@@ -431,7 +431,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             if (emp.isDepartment || emp.is_department) {
                 return { ...emp, isDepartment: true, is_department: true };
             }
-            const copyFrom = createPeriodModal.copyFrom;
+            const copyFrom = createPeriodModal.copyFrom || selectedMonth;
             const periodAllocations = copyFrom && emp.allocations?.[copyFrom]
                 ? cloneData(emp.allocations[copyFrom])
                 : [];
@@ -864,6 +864,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const isAccrual = corresponding_account === '3341';
 
         if (isAccrual) {
+            // Hạch toán 1 lúc 2 chi phí: Lương & Phụ cấp (Nợ [code]/Có 3341) và BHXH (Nợ [code]/Có 3383)
+            const totalSalary = actualSalary + otherAdditions;
+
             if (useMultiple) {
                 const validAllocs = allocations.filter(a => a.project_name);
                 if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
@@ -875,9 +878,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     for (const a of validAllocs) {
                         const ratioVal = Number(a.ratio) || 0;
                         if (ratioVal > 0) {
-                            const salaryAlloc = Math.round((actualSalary * ratioVal) / 100);
+                            const salaryAlloc = Math.round((totalSalary * ratioVal) / 100);
                             const bhxhAlloc = Math.round((companyBhxh * ratioVal) / 100);
-                            const otherAlloc = Math.round((otherAdditions * ratioVal) / 100);
 
                             if (salaryAlloc > 0) {
                                 txsToInsert.push({
@@ -891,7 +893,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     created_by: currentUser.username
                                 });
                             }
-                            if (bhxhAlloc > 0) {
+                            if (companyBhxh > 0 && bhxhAlloc > 0) {
                                 txsToInsert.push({
                                     project_name: a.project_name,
                                     accounting_date: new Date().toISOString().split('T')[0],
@@ -900,18 +902,6 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     recipient: finalRecipient,
                                     debit: bhxhAlloc,
                                     note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
-                                    created_by: currentUser.username
-                                });
-                            }
-                            if (otherAlloc > 0) {
-                                txsToInsert.push({
-                                    project_name: a.project_name,
-                                    accounting_date: new Date().toISOString().split('T')[0],
-                                    code: code,
-                                    corresponding_account: '3341',
-                                    recipient: finalRecipient,
-                                    debit: otherAlloc,
-                                    note: `[PHỤ CẤP / TĂNG CA] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
                                     created_by: currentUser.username
                                 });
                             }
@@ -929,9 +919,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         const diffTime = Math.abs(to - from);
                         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
                         
-                        const salaryAlloc = Math.round((actualSalary / stdDays) * diffDays);
+                        const salaryAlloc = Math.round((totalSalary / stdDays) * diffDays);
                         const bhxhAlloc = Math.round((companyBhxh / stdDays) * diffDays);
-                        const otherAlloc = Math.round((otherAdditions / stdDays) * diffDays);
 
                         if (salaryAlloc > 0) {
                             txsToInsert.push({
@@ -945,7 +934,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 created_by: currentUser.username
                             });
                         }
-                        if (bhxhAlloc > 0) {
+                        if (companyBhxh > 0 && bhxhAlloc > 0) {
                             txsToInsert.push({
                                 project_name: a.project_name,
                                 accounting_date: new Date().toISOString().split('T')[0],
@@ -957,32 +946,20 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 created_by: currentUser.username
                             });
                         }
-                        if (otherAlloc > 0) {
-                            txsToInsert.push({
-                                project_name: a.project_name,
-                                accounting_date: new Date().toISOString().split('T')[0],
-                                code: code,
-                                corresponding_account: '3341',
-                                recipient: finalRecipient,
-                                debit: otherAlloc,
-                                note: `[PHỤ CẤP / TĂNG CA] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
-                                created_by: currentUser.username
-                            });
-                        }
                     }
                 }
             } else {
                 const selectedProject = allocations[0]?.project_name;
                 if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình!'});
                 
-                if (actualSalary > 0) {
+                if (totalSalary > 0) {
                     txsToInsert.push({
                         project_name: selectedProject,
                         accounting_date: new Date().toISOString().split('T')[0],
                         code: code,
                         corresponding_account: '3341',
                         recipient: finalRecipient,
-                        debit: actualSalary,
+                        debit: totalSalary,
                         note: `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId}`,
                         created_by: currentUser.username
                     });
@@ -996,18 +973,6 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         recipient: finalRecipient,
                         debit: companyBhxh,
                         note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId}`,
-                        created_by: currentUser.username
-                    });
-                }
-                if (otherAdditions > 0) {
-                    txsToInsert.push({
-                        project_name: selectedProject,
-                        accounting_date: new Date().toISOString().split('T')[0],
-                        code: code,
-                        corresponding_account: '3341',
-                        recipient: finalRecipient,
-                        debit: otherAdditions,
-                        note: `[PHỤ CẤP / TĂNG CA] ${empName} - Kỳ ${monthId}`,
                         created_by: currentUser.username
                     });
                 }
@@ -1366,11 +1331,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             let attVal = emp.attendance?.[monthKey]?.[i] ?? defaultAtt;
             if (isHoliday && attVal === 1) attVal = 0;
             
-            actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 1 : (Number(attVal) || 0));
+            // Chỉ tính ngày công cho các ngày thường (không cộng tăng ca lễ / chủ nhật)
+            if (!isSunday && !isHoliday) {
+                actual += (attVal === 'P' ? 1 : attVal === 'P/2' ? 1 : (Number(attVal) || 0));
+            }
         }
-        const overtimeHours = Number(emp.overtime_hours) || 0;
-        const overtimeDays = (overtimeHours * 2) / 8;
-        actual += overtimeDays;
         
         const total_actual_salary_8_raw = (basic / std) * actual + phone + parking + makeup + gondola + laptop;
         const total_actual_salary_8 = Math.ceil(total_actual_salary_8_raw / 1000) * 1000;
@@ -2881,22 +2846,16 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             {paymentModal.corresponding_account === '3341' && (
                                 <div className="col-span-2 bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-2">
                                     <div className="flex justify-between items-center text-sm">
-                                        <span className="font-bold text-slate-600">1. Lương thực tế (Nợ {paymentModal.code} / Có 3341):</span>
-                                        <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.actualSalary)} VNĐ</span>
+                                        <span className="font-bold text-slate-600">1. Lương & Phụ cấp (Nợ {paymentModal.code} / Có 3341):</span>
+                                        <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions)} VNĐ</span>
                                     </div>
                                     <div className="flex justify-between items-center text-sm">
                                         <span className="font-bold text-slate-600">2. BHXH Công ty đóng (Nợ {paymentModal.code} / Có 3383):</span>
                                         <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.companyBhxh)} VNĐ</span>
                                     </div>
-                                    {paymentModal.otherAdditions > 0 && (
-                                        <div className="flex justify-between items-center text-sm">
-                                            <span className="font-bold text-slate-600">3. Phụ cấp đi công trình PQ & Tăng ca (Nợ {paymentModal.code} / Có 3341):</span>
-                                            <span className="font-extrabold text-slate-800">{formatCurrency(paymentModal.otherAdditions)} VNĐ</span>
-                                        </div>
-                                    )}
                                     <div className="flex justify-between items-center pt-2 border-t border-slate-200 text-sm font-black">
-                                        <span className="text-slate-900">Tổng cộng chi phí lương:</span>
-                                        <span className="text-orange-600 text-base">{formatCurrency(paymentModal.actualSalary + paymentModal.companyBhxh + paymentModal.otherAdditions)} VNĐ</span>
+                                        <span className="text-slate-900">Tổng cộng chi phí hạch toán:</span>
+                                        <span className="text-orange-600 text-base">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions + paymentModal.companyBhxh)} VNĐ</span>
                                     </div>
                                 </div>
                             )}
