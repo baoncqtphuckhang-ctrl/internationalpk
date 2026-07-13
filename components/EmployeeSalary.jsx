@@ -851,200 +851,120 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     const handleCreatePaymentTransaction = async () => {
-        const { empName, department, amount, code, corresponding_account, recipient, note, allocations, globalStandardDays, monthId, actualSalary, companyBhxh, otherAdditions } = paymentModal;
+        const { empName, department, code, bhxhCode, corresponding_account, recipient, note, allocations, globalStandardDays, monthId, actualSalary, companyBhxh, otherAdditions } = paymentModal;
         
         const isTechnical = department === 'KỸ THUẬT' || department === 'KỸ THUẬT GONDOLA';
         const stdDays = globalStandardDays || 26;
         
         let txsToInsert = [];
-        const baseNote = note || `[CHI LƯƠNG] ${empName} - Kỳ ${monthId}`;
+        const baseNote = note || `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId}`;
         const finalRecipient = recipient || empName;
 
-        const useMultiple = isTechnical || allocations.length > 1;
-        const isAccrual = corresponding_account === '3341';
+        const totalSalary = actualSalary + otherAdditions;
+        const validAllocs = allocations.filter(a => a.project_name);
+        
+        if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
+        
+        const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
+        const useRatio = !isTechnical && totalRatio > 0;
 
-        if (isAccrual) {
-            // Hạch toán 1 lúc 2 chi phí: Lương & Phụ cấp (Nợ [code]/Có 3341) và BHXH (Nợ [code]/Có 3383)
-            const totalSalary = actualSalary + otherAdditions;
-
-            if (useMultiple) {
-                const validAllocs = allocations.filter(a => a.project_name);
-                if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
-                
-                const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
-                const useRatio = !isTechnical && totalRatio > 0;
-
-                if (useRatio) {
-                    for (const a of validAllocs) {
-                        const ratioVal = Number(a.ratio) || 0;
-                        if (ratioVal > 0) {
-                            const salaryAlloc = Math.round((totalSalary * ratioVal) / 100);
-                            const bhxhAlloc = Math.round((companyBhxh * ratioVal) / 100);
-
-                            if (salaryAlloc > 0) {
-                                txsToInsert.push({
-                                    project_name: a.project_name,
-                                    accounting_date: new Date().toISOString().split('T')[0],
-                                    code: code,
-                                    corresponding_account: '3341',
-                                    recipient: finalRecipient,
-                                    debit: salaryAlloc,
-                                    note: `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
-                                    created_by: currentUser.username
-                                });
-                            }
-                            if (companyBhxh > 0 && bhxhAlloc > 0) {
-                                txsToInsert.push({
-                                    project_name: a.project_name,
-                                    accounting_date: new Date().toISOString().split('T')[0],
-                                    code: paymentModal.bhxhCode || code,
-                                    corresponding_account: '3383',
-                                    recipient: finalRecipient,
-                                    debit: bhxhAlloc,
-                                    note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
-                                    created_by: currentUser.username
-                                });
-                            }
-                        }
-                    }
-                } else {
-                    const missingDates = validAllocs.some(a => !a.from_date || !a.to_date);
-                    if (missingDates) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ Từ ngày và Đến ngày cho các công trình!'});
-
-                    for (const a of validAllocs) {
-                        const from = new Date(a.from_date);
-                        const to = new Date(a.to_date);
-                        if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
-                        
-                        const diffTime = Math.abs(to - from);
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                        
-                        const salaryAlloc = Math.round((totalSalary / stdDays) * diffDays);
-                        const bhxhAlloc = Math.round((companyBhxh / stdDays) * diffDays);
-
-                        if (salaryAlloc > 0) {
-                            txsToInsert.push({
-                                project_name: a.project_name,
-                                accounting_date: new Date().toISOString().split('T')[0],
-                                code: code,
-                                corresponding_account: '3341',
-                                recipient: finalRecipient,
-                                debit: salaryAlloc,
-                                note: `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
-                                created_by: currentUser.username
-                            });
-                        }
-                        if (companyBhxh > 0 && bhxhAlloc > 0) {
-                            txsToInsert.push({
-                                project_name: a.project_name,
-                                accounting_date: new Date().toISOString().split('T')[0],
-                                code: code,
-                                corresponding_account: '3383',
-                                recipient: finalRecipient,
-                                debit: bhxhAlloc,
-                                note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
-                                created_by: currentUser.username
-                            });
-                        }
-                    }
-                }
-            } else {
-                const selectedProject = allocations[0]?.project_name;
-                if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình!'});
-                
-                if (totalSalary > 0) {
-                    txsToInsert.push({
-                        project_name: selectedProject,
-                        accounting_date: new Date().toISOString().split('T')[0],
-                        code: code,
-                        corresponding_account: '3341',
-                        recipient: finalRecipient,
-                        debit: totalSalary,
-                        note: `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId}`,
-                        created_by: currentUser.username
-                    });
-                }
-                if (companyBhxh > 0) {
-                    txsToInsert.push({
-                        project_name: selectedProject,
-                        accounting_date: new Date().toISOString().split('T')[0],
-                        code: code,
-                        corresponding_account: '3383',
-                        recipient: finalRecipient,
-                        debit: companyBhxh,
-                        note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId}`,
-                        created_by: currentUser.username
-                    });
-                }
-            }
-        } else {
-            if (useMultiple) {
-                const validAllocs = allocations.filter(a => a.project_name);
-                if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
-                
-                const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
-                const useRatio = !isTechnical && totalRatio > 0;
-
-                if (useRatio) {
-                    for (const a of validAllocs) {
-                        const ratioVal = Number(a.ratio) || 0;
-                        if (ratioVal > 0) {
-                            const allocAmount = Math.round((amount * ratioVal) / 100);
-                            if (allocAmount > 0) {
-                                txsToInsert.push({
-                                    project_name: a.project_name,
-                                    accounting_date: new Date().toISOString().split('T')[0],
-                                    code: code,
-                                    corresponding_account: corresponding_account,
-                                    recipient: finalRecipient,
-                                    debit: allocAmount,
-                                    note: `${baseNote} (${ratioVal}%)`,
-                                    created_by: currentUser.username
-                                });
-                            }
-                        }
-                    }
-                } else {
-                    const missingDates = validAllocs.some(a => !a.from_date || !a.to_date);
-                    if (missingDates) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ Từ ngày và Đến ngày cho các công trình!'});
-
-                    for (const a of validAllocs) {
-                        const from = new Date(a.from_date);
-                        const to = new Date(a.to_date);
-                        if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
-                        
-                        const diffTime = Math.abs(to - from);
-                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-                        
-                        const allocAmount = Math.round((amount / stdDays) * diffDays);
-                        if (allocAmount > 0) {
-                            txsToInsert.push({
-                                project_name: a.project_name,
-                                accounting_date: new Date().toISOString().split('T')[0],
-                                code: code,
-                                corresponding_account: corresponding_account,
-                                recipient: finalRecipient,
-                                debit: allocAmount,
-                                note: `${baseNote} (${diffDays} ngày)`,
-                                created_by: currentUser.username
-                            });
-                        }
-                    }
-                }
-            } else {
-                const selectedProject = allocations[0]?.project_name;
-                if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình!'});
-                
+        if (validAllocs.length === 1 && !isTechnical) {
+            if (totalSalary > 0) {
                 txsToInsert.push({
-                    project_name: selectedProject,
+                    project_name: validAllocs[0].project_name,
                     accounting_date: new Date().toISOString().split('T')[0],
                     code: code,
                     corresponding_account: corresponding_account,
                     recipient: finalRecipient,
-                    debit: amount,
+                    debit: totalSalary,
                     note: baseNote,
                     created_by: currentUser.username
                 });
+            }
+            if (companyBhxh > 0) {
+                txsToInsert.push({
+                    project_name: validAllocs[0].project_name,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    code: bhxhCode || code,
+                    corresponding_account: '3383',
+                    recipient: finalRecipient,
+                    debit: companyBhxh,
+                    note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId}`,
+                    created_by: currentUser.username
+                });
+            }
+        } else if (useRatio) {
+            for (const a of validAllocs) {
+                const ratioVal = Number(a.ratio) || 0;
+                if (ratioVal > 0) {
+                    const salaryAlloc = Math.round((totalSalary * ratioVal) / 100);
+                    const bhxhAlloc = Math.round((companyBhxh * ratioVal) / 100);
+
+                    if (salaryAlloc > 0) {
+                        txsToInsert.push({
+                            project_name: a.project_name,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: code,
+                            corresponding_account: corresponding_account,
+                            recipient: finalRecipient,
+                            debit: salaryAlloc,
+                            note: `${baseNote} (${ratioVal}%)`,
+                            created_by: currentUser.username
+                        });
+                    }
+                    if (companyBhxh > 0 && bhxhAlloc > 0) {
+                        txsToInsert.push({
+                            project_name: a.project_name,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: bhxhCode || code,
+                            corresponding_account: '3383',
+                            recipient: finalRecipient,
+                            debit: bhxhAlloc,
+                            note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
+                            created_by: currentUser.username
+                        });
+                    }
+                }
+            }
+        } else {
+            const missingDates = validAllocs.some(a => !a.from_date || !a.to_date);
+            if (missingDates) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ Từ ngày và Đến ngày cho các công trình!'});
+
+            for (const a of validAllocs) {
+                const from = new Date(a.from_date);
+                const to = new Date(a.to_date);
+                if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
+                
+                const diffTime = Math.abs(to - from);
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                
+                const salaryAlloc = Math.round((totalSalary / stdDays) * diffDays);
+                const bhxhAlloc = Math.round((companyBhxh / stdDays) * diffDays);
+
+                if (salaryAlloc > 0) {
+                    txsToInsert.push({
+                        project_name: a.project_name,
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        code: code,
+                        corresponding_account: corresponding_account,
+                        recipient: finalRecipient,
+                        debit: salaryAlloc,
+                        note: `${baseNote} (${diffDays} ngày)`,
+                        created_by: currentUser.username
+                    });
+                }
+                if (companyBhxh > 0 && bhxhAlloc > 0) {
+                    txsToInsert.push({
+                        project_name: a.project_name,
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        code: bhxhCode || code,
+                        corresponding_account: '3383',
+                        recipient: finalRecipient,
+                        debit: bhxhAlloc,
+                        note: `[BHXH CTY ĐÓNG] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
+                        created_by: currentUser.username
+                    });
+                }
             }
         }
 
@@ -1053,7 +973,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         try {
             await supabase.from('transactions').insert(txsToInsert);
             setAccountedTxs(prev => [...prev, ...txsToInsert.map(t => t.note)]);
-            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 });
+            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 });
             if (refreshData) refreshData();
             
             // Cập nhật local data
@@ -1064,8 +984,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     if (!monthData) return prev;
                     const newEmps = monthData.employees.map(emp => {
                         if (emp.id === paymentModal.empId) {
-                            // Cập nhật số tiền cash (đã chi)
-                            const totalAdded = txsToInsert.reduce((sum, t) => sum + t.debit, 0);
+                            // Cập nhật số tiền cash (đã chi) - chỉ cộng nếu là chi tiền mặt/nh, nhưng giờ mình đang mặc định là accrued hoặc cash, tạm bỏ qua cash update phức tạp, cứ để 0
+                            const totalAdded = corresponding_account !== '3341' && corresponding_account !== '3383' ? txsToInsert.reduce((sum, t) => sum + t.debit, 0) : 0;
                             return { ...emp, cash: (Number(emp.cash) || 0) + totalAdded };
                         }
                         return emp;
@@ -1088,7 +1008,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: `Đã tạo ${txsToInsert.length} phiếu chi thành công!` }), 300);
         } catch (e) {
             console.error(e);
-            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 });
+            setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 });
             setTimeout(() => setSystemModal({ isOpen: true, type: 'info', title: 'Lỗi', message: 'Lỗi khi tạo phiếu chi!' }), 300);
         }
     };
@@ -2823,260 +2743,181 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
 
         {paymentModal.isOpen && (() => {
             const isTechnical = paymentModal.department === 'KỸ THUẬT' || paymentModal.department === 'KỸ THUẬT GONDOLA';
+            const validAllocs = paymentModal.allocations.filter(a => a.project_name);
+            const hasProjects = validAllocs.length > 0;
+            const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
+            const totalSalary = paymentModal.actualSalary + paymentModal.otherAdditions;
+            const companyBhxh = paymentModal.companyBhxh;
+            
             return (
-            <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/40 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-                <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh] pointer-events-auto">
-                    <div className="bg-slate-900 px-6 py-4 flex justify-between items-center shrink-0">
-                        <h3 className="text-xl font-bold text-white">Hạch toán Lương</h3>
-                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 })} className="text-slate-400 hover:text-white transition"><X /></button>
-                    </div>
-                    
-                    <div className="p-6 overflow-y-auto custom-scrollbar space-y-4">
-                        <div className="grid grid-cols-2 gap-4">
+                <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh] pointer-events-auto">
+                        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center shrink-0">
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Loại giao dịch (Tài khoản Có)</label>
-                                <select 
-                                    value={paymentModal.corresponding_account} 
-                                    onChange={(e) => {
-                                        const val = e.target.value;
-                                        let newNote = paymentModal.note;
-                                        if (val === '3341') {
-                                            newNote = paymentModal.note.replace('[CHI LƯƠNG]', '[HẠCH TOÁN LƯƠNG]');
-                                        } else {
-                                            newNote = paymentModal.note.replace('[HẠCH TOÁN LƯƠNG]', '[CHI LƯƠNG]');
-                                        }
-                                        setPaymentModal({
-                                            ...paymentModal, 
-                                            corresponding_account: val,
-                                            note: newNote,
-                                            code: val === '3341' ? '6427' : '3341' // Default nợ
-                                        });
-                                    }} 
-                                    className="w-full bg-amber-50 border border-amber-200 rounded-xl px-4 py-2 text-sm font-black text-amber-900 outline-none focus:border-amber-500 transition appearance-none"
-                                >
-                                    <option value="3341">Hạch toán Lương (Nợ Chi phí / Có 3341 & 3383)</option>
-                                    <option value="1111">Chi tiền mặt (Nợ Phải trả / Có 1111)</option>
-                                    <option value="1121">Chi tiền gửi NH (Nợ Phải trả / Có 1121)</option>
-                                </select>
+                                <h3 className="text-xl font-bold text-white">Hạch toán Lương & Phụ Cấp</h3>
+                                <p className="text-slate-400 text-sm mt-1">Nhân viên: <span className="font-bold text-white">{paymentModal.empName}</span> - Kỳ: {paymentModal.monthId}</p>
                             </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Nhân viên</label>
-                                <input type="text" value={paymentModal.empName} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
-                            </div>
+                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0})} className="text-slate-400 hover:text-white transition"><X /></button>
                         </div>
-
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Người nhận</label>
-                                <input type="text" value={paymentModal.recipient} onChange={(e) => setPaymentModal({...paymentModal, recipient: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
-                            </div>
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-1">Ghi chú</label>
-                                <input type="text" value={paymentModal.note} onChange={(e) => setPaymentModal({...paymentModal, note: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition" />
-                            </div>
-                        </div>
-
-                        {paymentModal.corresponding_account === '3341' ? (
-                            <div className="col-span-2 space-y-4 border-t border-b border-slate-200 py-4 my-2">
-                                {/* Ô HẠCH TOÁN LƯƠNG */}
-                                <div className="bg-blue-50/50 border border-blue-200 rounded-xl p-4 space-y-3">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="font-black text-blue-800">1. Hạch toán Lương & Phụ cấp</span>
-                                        <span className="font-extrabold text-blue-900 text-base">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions)} VNĐ</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-blue-900 mb-1">Mã chi phí (Nợ)</label>
-                                            <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-blue-500 transition appearance-none">
-                                                <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                                <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                                <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                                <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                                <option value="154">154 - Chi phí SXKD dở dang</option>
-                                                <option value="3341">3341 - Phải trả người lao động</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-blue-900 mb-1">Tài khoản đối ứng (Có)</label>
-                                            <input type="text" readOnly value="3341 - Phải trả người lao động" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-500 outline-none cursor-not-allowed" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                {/* Ô HẠCH TOÁN BHXH */}
-                                <div className="bg-emerald-50/50 border border-emerald-200 rounded-xl p-4 space-y-3">
-                                    <div className="flex justify-between items-center text-sm">
-                                        <span className="font-black text-emerald-800">2. Hạch toán BHXH Công ty đóng</span>
-                                        <span className="font-extrabold text-emerald-900 text-base">{formatCurrency(paymentModal.companyBhxh)} VNĐ</span>
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div>
-                                            <label className="block text-xs font-bold text-emerald-900 mb-1">Mã chi phí (Nợ)</label>
-                                            <select value={paymentModal.bhxhCode || paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, bhxhCode: e.target.value})} className="w-full bg-white border border-emerald-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-emerald-500 transition appearance-none">
-                                                <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                                <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                                <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                                <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                                <option value="154">154 - Chi phí SXKD dở dang</option>
-                                                <option value="3341">3341 - Phải trả người lao động</option>
-                                            </select>
-                                        </div>
-                                        <div>
-                                            <label className="block text-xs font-bold text-emerald-900 mb-1">Tài khoản đối ứng (Có)</label>
-                                            <input type="text" readOnly value="3383 - Bảo hiểm xã hội" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm font-bold text-slate-500 outline-none cursor-not-allowed" />
-                                        </div>
-                                    </div>
-                                </div>
-
-                                <div className="flex justify-between items-center text-sm font-black px-1">
-                                    <span className="text-slate-900">Tổng cộng chi phí hạch toán:</span>
-                                    <span className="text-orange-600 text-lg">{formatCurrency(paymentModal.actualSalary + paymentModal.otherAdditions + paymentModal.companyBhxh)} VNĐ</span>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-1">Số tiền thanh toán (Còn lại)</label>
-                                    <input type="text" value={formatCurrency(paymentModal.amount)} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none cursor-not-allowed" />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-1">Tài khoản thanh toán (Nợ)</label>
-                                    <select value={paymentModal.code} onChange={(e) => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full bg-slate-50 border border-slate-300 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500 transition appearance-none">
-                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                        <option value="154">154 - Chi phí SXKD dở dang</option>
-                                        <option value="3341">3341 - Phải trả người lao động</option>
-                                    </select>
-                                </div>
-                            </div>
-                        )}
-                        <div className="pt-2 border-t border-slate-200 mt-2">
-                            <h4 className="font-black text-slate-800 mb-2">Hạch toán công trình {(isTechnical || paymentModal.allocations.length > 1) && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2">{isTechnical ? 'Bộ phận Kỹ thuật / Gondola' : 'Phân bổ nhiều công trình'}</span>}</h4>
-                            
-                            {!(isTechnical || paymentModal.allocations.length > 1) ? (
-                                <div>
-                                    <label className="block text-sm font-bold text-slate-700 mb-1">Chọn công trình duy nhất</label>
-                                    <select 
-                                        value={paymentModal.allocations[0]?.project_name || ''}
-                                        onChange={(e) => {
-                                            const newAllocs = [...paymentModal.allocations];
-                                            newAllocs[0].project_name = e.target.value;
-                                            setPaymentModal({...paymentModal, allocations: newAllocs});
-                                        }}
-                                        className="w-full px-4 py-2 bg-slate-50 border border-slate-300 rounded-xl focus:outline-none focus:border-blue-500 transition"
-                                    >
-                                        <option value="">-- Chọn công trình --</option>
-                                        {projects.map(p => {
-                                            const isCompleted = p.status === 'Finish';
-                                            const isCurrentProject = (paymentModal.allocations[0]?.project_name || '') === p.name;
-                                            return (
-                                                <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
-                                                    {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
-                                                </option>
-                                            );
-                                        })}
-                                    </select>
+                        
+                        <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 bg-slate-50 flex-1">
+                            {!hasProjects ? (
+                                <div className="bg-red-50 border-2 border-red-200 text-red-700 p-8 rounded-xl flex flex-col items-center justify-center space-y-3">
+                                    <h4 className="text-xl font-black">Lỗi: Chưa thiết lập công trình</h4>
+                                    <p className="font-medium text-center text-red-600">Nhân viên này chưa được phân bổ công trình nào trong kỳ.<br/>Hệ thống yêu cầu phải có ít nhất 1 công trình để tính toán và hạch toán chi phí.</p>
                                 </div>
                             ) : (
-                                <div className="space-y-3">
-                                    {paymentModal.allocations.map((alloc, idx) => (
-                                        <div key={alloc.id} className="flex gap-2 items-center bg-slate-50 p-2 border border-slate-200 rounded-lg">
-                                            <div className="flex-1">
-                                                <select 
-                                                    value={alloc.project_name}
-                                                    onChange={(e) => {
-                                                        const newAllocs = [...paymentModal.allocations];
-                                                        newAllocs[idx].project_name = e.target.value;
-                                                        setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                    }}
-                                                    className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded focus:outline-none focus:border-blue-500 transition"
-                                                >
-                                                    <option value="">-- Chọn công trình --</option>
-                                                    {projects.map(p => {
-                                                        const isCompleted = p.status === 'Finish';
-                                                        const isCurrentProject = alloc.project_name === p.name;
+                                <>
+                                    {/* 2 CỘT: TỔNG THU NHẬP và BHXH CÔNG TY ĐÓNG */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                        {/* CỘT 1: TỔNG THU NHẬP */}
+                                        <div className="bg-white border-2 border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-blue-50 px-4 py-3 border-b border-blue-200 flex justify-between items-center">
+                                                <h4 className="font-black text-blue-800 text-base">1. TỔNG THU NHẬP</h4>
+                                                <span className="font-black text-blue-600 text-lg">{formatCurrency(totalSalary)} ₫</span>
+                                            </div>
+                                            <div className="p-4 space-y-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Mã chi phí (Nợ)</label>
+                                                    <select value={paymentModal.code} onChange={e => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none">
+                                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select value={paymentModal.corresponding_account} onChange={e => setPaymentModal({...paymentModal, corresponding_account: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none bg-amber-50">
+                                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                                        <option value="1111">1111 - Tiền mặt</option>
+                                                        <option value="1121">1121 - Tiền gửi ngân hàng</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CỘT 2: BHXH CÔNG TY ĐÓNG */}
+                                        <div className="bg-white border-2 border-emerald-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-200 flex justify-between items-center">
+                                                <h4 className="font-black text-emerald-800 text-base">2. BHXH CÔNG TY ĐÓNG</h4>
+                                                <span className="font-black text-emerald-600 text-lg">{formatCurrency(companyBhxh)} ₫</span>
+                                            </div>
+                                            <div className="p-4 space-y-4">
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Mã chi phí (Nợ)</label>
+                                                    <select value={paymentModal.bhxhCode || paymentModal.code} onChange={e => setPaymentModal({...paymentModal, bhxhCode: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-emerald-500 outline-none">
+                                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                                    </select>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select disabled className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-500 bg-slate-100 cursor-not-allowed appearance-none">
+                                                        <option value="3383">3383 - Bảo hiểm xã hội</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    {/* BẢNG PHÂN BỔ CÔNG TRÌNH */}
+                                    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                                        <div className="bg-slate-100 px-4 py-3 border-b border-slate-200 flex justify-between items-center">
+                                            <h4 className="font-black text-slate-800">CHI TIẾT PHÂN BỔ THEO CÔNG TRÌNH</h4>
+                                            <span className="text-xs font-bold text-slate-500 bg-white px-2 py-1 rounded-md border border-slate-200">
+                                                {isTechnical ? "Chia đều theo ngày công" : `Tổng tỷ lệ: ${totalRatio}%`}
+                                            </span>
+                                        </div>
+                                        <div className="overflow-x-auto">
+                                            <table className="w-full text-sm text-left">
+                                                <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
+                                                    <tr>
+                                                        <th className="py-2 px-4">Công trình</th>
+                                                        <th className="py-2 px-4 text-center">Tỷ lệ / Ngày</th>
+                                                        <th className="py-2 px-4 text-right text-blue-800">Thu nhập (Nợ)</th>
+                                                        <th className="py-2 px-4 text-right text-emerald-800">BHXH (Nợ)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-slate-100 font-medium">
+                                                    {validAllocs.map((a, idx) => {
+                                                        const isRatioMode = !isTechnical && totalRatio > 0;
+                                                        let pctLabel = '';
+                                                        let sAlloc = 0;
+                                                        let bAlloc = 0;
+                                                        if (isRatioMode) {
+                                                            const r = Number(a.ratio) || 0;
+                                                            pctLabel = `${r}%`;
+                                                            sAlloc = Math.round((totalSalary * r) / 100);
+                                                            bAlloc = Math.round((companyBhxh * r) / 100);
+                                                        } else {
+                                                            const from = new Date(a.from_date);
+                                                            const to = new Date(a.to_date);
+                                                            if (to >= from) {
+                                                                const diffDays = Math.ceil(Math.abs(to - from) / (1000 * 60 * 60 * 24)) + 1;
+                                                                pctLabel = `${diffDays} ngày`;
+                                                                const std = paymentModal.globalStandardDays || 26;
+                                                                sAlloc = Math.round((totalSalary / std) * diffDays);
+                                                                bAlloc = Math.round((companyBhxh / std) * diffDays);
+                                                            } else {
+                                                                pctLabel = "Lỗi ngày";
+                                                            }
+                                                        }
                                                         return (
-                                                            <option key={p.name} value={p.name} disabled={isCompleted && !isCurrentProject}>
-                                                                {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
-                                                            </option>
+                                                            <tr key={idx} className="hover:bg-slate-50 transition">
+                                                                <td className="py-2 px-4 font-bold text-slate-800">{a.project_name}</td>
+                                                                <td className="py-2 px-4 text-center">
+                                                                    <span className="bg-slate-100 text-slate-600 px-2 py-0.5 rounded font-bold text-xs">{pctLabel}</span>
+                                                                </td>
+                                                                <td className="py-2 px-4 text-right font-black text-blue-600">{formatCurrency(sAlloc)} ₫</td>
+                                                                <td className="py-2 px-4 text-right font-black text-emerald-600">{formatCurrency(bAlloc)} ₫</td>
+                                                            </tr>
                                                         );
                                                     })}
-                                                </select>
-                                            </div>
-                                            {!isTechnical && alloc.ratio !== undefined && (
-                                                <div className="w-20 flex items-center gap-1">
-                                                    <input 
-                                                        type="number" 
-                                                        value={alloc.ratio} 
-                                                        onChange={(e) => {
-                                                            const newAllocs = [...paymentModal.allocations];
-                                                            newAllocs[idx].ratio = parseInt(e.target.value, 10) || 0;
-                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                        }} 
-                                                        className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded text-center font-bold" 
-                                                        placeholder="Ratio"
-                                                        title="Tỷ lệ %"
-                                                    />
-                                                    <span className="text-xs font-bold text-slate-500">%</span>
-                                                </div>
-                                            )}
-                                            {(isTechnical || (alloc.ratio === undefined || alloc.ratio === 0)) && (
-                                                <>
-                                                    <div className="w-32">
-                                                        <input type="date" value={alloc.from_date} onChange={(e) => {
-                                                            const newAllocs = [...paymentModal.allocations];
-                                                            newAllocs[idx].from_date = e.target.value;
-                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                        }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Từ ngày" />
-                                                    </div>
-                                                    <div className="w-32">
-                                                        <input type="date" value={alloc.to_date} onChange={(e) => {
-                                                            const newAllocs = [...paymentModal.allocations];
-                                                            newAllocs[idx].to_date = e.target.value;
-                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                        }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Đến ngày" />
-                                                    </div>
-                                                </>
-                                            )}
-                                            <button onClick={() => {
-                                                const newAllocs = paymentModal.allocations.filter(a => a.id !== alloc.id);
-                                                setPaymentModal({...paymentModal, allocations: newAllocs});
-                                            }} className="p-1.5 text-red-500 hover:bg-red-100 rounded transition"><Trash2 size={16}/></button>
+                                                    <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-200">
+                                                        <td className="py-2 px-4" colSpan={2}>TỔNG CỘNG HẠCH TOÁN</td>
+                                                        <td className="py-2 px-4 text-right text-blue-700 text-base">{formatCurrency(totalSalary)} ₫</td>
+                                                        <td className="py-2 px-4 text-right text-emerald-700 text-base">{formatCurrency(companyBhxh)} ₫</td>
+                                                    </tr>
+                                                </tbody>
+                                            </table>
                                         </div>
-                                    ))}
-                                    <button 
-                                        onClick={() => {
-                                            setPaymentModal({...paymentModal, allocations: [...paymentModal.allocations, {id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: '', ratio: 0}]});
-                                        }}
-                                        className="text-sm font-bold text-blue-600 flex items-center gap-1 hover:text-blue-800 transition"
-                                    >
-                                        <Plus size={16}/> Thêm dòng phân bổ
-                                    </button>
-                                    
-                                    <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-800 mt-2 leading-relaxed">
-                                        <b>Lưu ý:</b> 
-                                        {isTechnical 
-                                            ? ` Số tiền hạch toán cho mỗi công trình = (Tổng tiền / ${paymentModal.globalStandardDays} ngày công chuẩn) × Số ngày trong khoảng (Từ ngày - Đến ngày).`
-                                            : ` Số tiền hạch toán cho mỗi công trình sẽ được chia theo tỷ lệ phần trăm (%) tương ứng.`
-                                        }
                                     </div>
-                                </div>
+                                    
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="bg-white p-3 border border-slate-200 rounded-xl">
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Người nhận / Đối tượng</label>
+                                            <input type="text" value={paymentModal.recipient} onChange={e => setPaymentModal({...paymentModal, recipient: e.target.value})} className="w-full outline-none font-bold text-slate-800 text-sm bg-transparent" />
+                                        </div>
+                                        <div className="bg-white p-3 border border-slate-200 rounded-xl">
+                                            <label className="block text-xs font-bold text-slate-500 mb-1">Ghi chú giao dịch</label>
+                                            <input type="text" value={paymentModal.note} onChange={e => setPaymentModal({...paymentModal, note: e.target.value})} className="w-full outline-none font-bold text-slate-800 text-sm bg-transparent" />
+                                        </div>
+                                    </div>
+                                </>
                             )}
                         </div>
-                    </div>
-                    
-                    <div className="p-4 bg-slate-50 flex justify-end gap-3 shrink-0 border-t border-slate-200">
-                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
-                            Hủy bỏ
-                        </button>
-                        <button onClick={handleCreatePaymentTransaction} className="px-5 py-2.5 text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-200 rounded-xl transition">
-                            Tạo phiếu chi
-                        </button>
+                        
+                        <div className="p-4 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0 rounded-b-2xl">
+                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0})} className="px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                disabled={!hasProjects}
+                                onClick={handleCreatePaymentTransaction} 
+                                className={`px-8 py-2.5 font-black text-white rounded-xl shadow-lg transition ${hasProjects ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-200' : 'bg-slate-300 cursor-not-allowed shadow-none'}`}
+                            >
+                                TẠO PHIẾU HẠCH TOÁN
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
             );
         })()}
 
