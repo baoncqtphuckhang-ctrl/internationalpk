@@ -81,20 +81,25 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                     <button onClick={() => {
                         const t = document.getElementById('expense-table');
                         if(t){
+                            const printTableWidth = Math.max(550, 200 + filteredData.length * 220);
                             const printCSS = `
                                 *{box-sizing:border-box;margin:0;padding:0}
-                                body{font-family:Arial,sans-serif;font-size:9px;padding:8px;color:#000!important;background:#fff!important}
-                                h2{text-align:center;font-size:13px;margin-bottom:8px;font-weight:bold;color:#000!important}
-                                table{border-collapse:collapse;width:100%;font-size:8px}
-                                th,td{border:1px solid #aaa!important;padding:3px 4px!important;text-align:right!important;color:#000!important;background:#fff!important}
-                                thead th:first-child,tbody td:first-child,tfoot td:first-child{text-align:left!important;font-weight:bold}
-                                thead th{background:#e8e8e8!important;font-weight:bold;text-align:center!important}
-                                tbody tr:nth-child(even) td{background:#f5f5f5!important}
-                                tfoot td{background:#ddd!important;font-weight:bold;color:#000!important}
-                                @media print{body{padding:4px}@page{size:landscape}}
+                                body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#000!important;background:#fff!important}
+                                h2{text-align:center;font-size:16px;margin-bottom:15px;font-weight:bold;color:#000!important;text-transform:uppercase;letter-spacing:1px}
+                                .print-container{display:flex;justify-content:center;width:100%;margin-top:20px}
+                                table{border-collapse:collapse;width:${printTableWidth}px;max-width:100%;font-size:10px;box-shadow:0 0 10px rgba(0,0,0,0.05)}
+                                th,td{border:1px solid #bbb!important;padding:6px 8px!important;text-align:left!important;vertical-align:middle!important;color:#000!important;background:#fff!important}
+                                thead th:first-child,tbody td:first-child,tfoot td:first-child{text-align:left!important;font-weight:bold;font-size:10px}
+                                thead th{background:#f2f2f2!important;font-weight:bold;text-align:center!important;font-size:10px}
+                                tbody tr:nth-child(even) td{background:#fafafa!important}
+                                tfoot td{background:#e8e8e8!important;font-weight:bold;color:#000!important;font-size:10.5px}
+                                .empty-column{display:none!important}
+                                button, .opacity-0, svg, .absolute{display:none!important}
+                                th span{margin-left:0!important;display:block;text-align:center}
+                                @media print{body{padding:10px}@page{size:landscape;margin:1cm}}
                             `;
                             const w = window.open('','_blank','width=1400,height=800');
-                            w.document.write(`<html><head><title>Tổng Hợp Chi Phí</title><style>${printCSS}</style></head><body><h2>Tổng Hợp Chi Phí</h2>${t.outerHTML}</body></html>`);
+                            w.document.write(`<html><head><title>Tổng Hợp Chi Phí</title><style>${printCSS}</style></head><body><h2>Tổng Hợp Chi Phí</h2><div class="print-container">${t.outerHTML}</div></body></html>`);
                             w.document.close();
                             setTimeout(()=>{w.print();},800);
                         }
@@ -158,7 +163,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </div>
                                     </th>
                                 ))}
-                                <th className="p-3 border-b border-slate-200 sticky top-0 bg-slate-100 z-20 w-full min-w-[50px]"></th>
+                                <th className="p-3 border-b border-slate-200 sticky top-0 bg-slate-100 z-20 w-full min-w-[50px] empty-column"></th>
                             </tr>
                         </thead>
                         <tbody>
@@ -176,7 +181,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                             {renderExpense(row[d.project])}
                                         </td>
                                     ))}
-                                    <td className="p-3 border-slate-100 w-full"></td>
+                                    <td className="p-3 border-slate-100 w-full empty-column"></td>
                                 </tr>
                             ))}
                         </tbody>
@@ -188,7 +193,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         {renderExpense(transposedTotals[d.project])}
                                     </td>
                                 ))}
-                                <td className="p-1.5 px-3 border-t-[3px] border-t-slate-400 border-slate-800 bg-black w-full"></td>
+                                <td className="p-1.5 px-3 border-t-[3px] border-t-slate-400 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">ĐÃ THU</td>
@@ -201,7 +206,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
-                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">CHƯA THU</td>
@@ -214,7 +219,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
-                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">LỢI NHUẬN CHƯA THU</td>
@@ -231,7 +236,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
-                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
                             <tr className="bg-black border-t border-slate-800">
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px]">LỢI NHUẬN</td>
@@ -248,7 +253,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                         </td>
                                     );
                                 })}
-                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full"></td>
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
 
                         </tfoot>

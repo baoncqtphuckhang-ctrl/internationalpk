@@ -69,10 +69,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         vat_rate: 8,
         vat_amount: 0,
         post_tax_amount: 0,
-        post_tax_amount: 0,
-        actual_received_amount: 0,
+        actual_received_amount: '',
         deduction_amount: 0,
-        creator: ''
+        creator: '',
+        is_offset: false
     });
 
     const [errors, setErrors] = useState({});
@@ -112,7 +112,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
                 recipient: editData.recipient || '',
-                actual_received_amount: editData.actual_received_amount || 0,
+                actual_received_amount: editData.actual_received_amount || '',
                 creator: editData.created_by || '',
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0,
@@ -132,17 +132,26 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     }
                     return editData.note || '';
                 })(),
-                actual_received_amount: (() => {
-                    if (editData.note) {
-                        try {
-                            const parsed = JSON.parse(editData.note);
-                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                return parsed.actual_received_amount;
-                            }
-                        } catch(e) {}
-                    }
-                    return 0;
-                })(),
+                 actual_received_amount: (() => {
+                     if (editData.note) {
+                         try {
+                             const parsed = JSON.parse(editData.note);
+                             if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
+                                 return parsed.actual_received_amount;
+                             }
+                         } catch(e) {}
+                     }
+                     return '';
+                 })(),
+                 is_offset: (() => {
+                     if (editData.note) {
+                         try {
+                             const parsed = JSON.parse(editData.note);
+                             return !!parsed.is_offset;
+                         } catch(e) {}
+                     }
+                     return false;
+                 })(),
                 deduction_amount: (() => {
                     if (editData.note) {
                         try {
@@ -236,9 +245,16 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 if (inv.note) {
                     try {
                         const parsed = JSON.parse(inv.note);
-                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                            expected = Number(parsed.actual_received_amount) || 0;
-                            break; // Chỉ lấy giá trị mới nhất
+                        if (parsed && typeof parsed === 'object') {
+                            if (parsed.is_offset) {
+                                expected = 0;
+                                break;
+                            }
+                            if ('actual_received_amount' in parsed) {
+                                const val = Number(parsed.actual_received_amount) || 0;
+                                expected = val || inv.post_tax_amount || inv.amount || 0;
+                                break; // Chỉ lấy giá trị mới nhất
+                            }
                         }
                     } catch(e) {}
                 }
@@ -484,8 +500,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             vat_rate: 8,
             vat_amount: 0,
             post_tax_amount: 0,
-            actual_received_amount: 0,
-            deduction_amount: 0
+            actual_received_amount: '',
+            deduction_amount: 0,
+            is_offset: false
         }));
         setIsCustomCode(false);
     };
@@ -894,15 +911,47 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     />
                                 </div>
                                 {/* Giá trị thực nhận kỳ này */}
-                                <div>
-                                    <label className={labelCls}>Giá trị thực nhận kỳ này (Theo Hồ sơ thanh toán)</label>
-                                    <input
-                                        type="text"
-                                        value={formData.actual_received_amount ? formatCurrency(formData.actual_received_amount) : ''}
-                                        onChange={(e) => handleChange('actual_received_amount', parseVietnameseNumber(e.target.value))}
-                                        placeholder="Nhập giá trị thực nhận theo hồ sơ..."
-                                        className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
-                                    />
+                                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                                    <div>
+                                        <label className={labelCls}>Giá trị thực nhận kỳ này (Theo Hồ sơ thanh toán)</label>
+                                        <input
+                                            type="text"
+                                            value={formData.is_offset ? '0' : ((formData.actual_received_amount !== undefined && formData.actual_received_amount !== null && formData.actual_received_amount !== '') ? formatCurrency(formData.actual_received_amount) : '')}
+                                            onChange={(e) => {
+                                                const val = parseVietnameseNumber(e.target.value);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    actual_received_amount: val,
+                                                    is_offset: val === 0
+                                                }));
+                                                if (errors.actual_received_amount) {
+                                                    setErrors(prev => { const er = {...prev}; delete er.actual_received_amount; return er; });
+                                                }
+                                            }}
+                                            placeholder="Nhập giá trị thực nhận theo hồ sơ..."
+                                            className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
+                                            disabled={!!formData.is_offset}
+                                        />
+                                    </div>
+                                    <div className="flex items-center gap-2 pb-3.5">
+                                        <input 
+                                            type="checkbox"
+                                            id="is_offset"
+                                            checked={!!formData.is_offset}
+                                            onChange={(e) => {
+                                                const checked = e.target.checked;
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    is_offset: checked,
+                                                    actual_received_amount: checked ? 0 : ''
+                                                }));
+                                            }}
+                                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                        />
+                                        <label htmlFor="is_offset" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                            Là hóa đơn xuất bù (Không cần thu tiền / HSTT = 0đ)
+                                        </label>
+                                    </div>
                                 </div>
                             </>
                         ) : type === 'INCOME_REAL' ? (

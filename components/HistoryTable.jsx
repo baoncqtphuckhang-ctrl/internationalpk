@@ -383,12 +383,87 @@ export default function HistoryTable({
                         <Upload size={16} /> Nhập từ Excel
                     </button>
                     <button onClick={() => {
-                        const el = document.getElementById('history-table');
-                        if(el) {
-                            el.classList.add('print-area');
-                            window.print();
-                            el.classList.remove('print-area');
-                        }
+                        const printTableRows = filteredTransactions.map((t, idx) => `
+                            <tr>
+                                <td style="text-align:center;border:1px solid #aaa;padding:4px">${idx + 1}</td>
+                                <td style="border:1px solid #aaa;padding:4px">${t.project_name || ''}</td>
+                                <td style="text-align:center;border:1px solid #aaa;padding:4px">${formatDateVN(t.accounting_date)}</td>
+                                <td style="text-align:center;border:1px solid #aaa;padding:4px">${formatDateVN(t.invoice_date)}</td>
+                                <td style="border:1px solid #aaa;padding:4px;font-family:monospace">${t.invoice_no || '-'}</td>
+                                <td style="white-space:normal;text-align:left;border:1px solid #aaa;padding:4px;max-width:300px;word-wrap:break-word">${t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '') || ''}</td>
+                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#1d4ed8">${t.code || ''}</td>
+                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#475569">${t.corresponding_account || '-'}</td>
+                                <td style="color:#dc2626;text-align:right;border:1px solid #aaa;padding:4px">${t.debit > 0 ? formatCurrency(t.debit).replace('₫', '') : ''}</td>
+                                <td style="color:#16a34a;text-align:right;border:1px solid #aaa;padding:4px">${t.credit > 0 ? formatCurrency(t.credit).replace('₫', '') : ''}</td>
+                                <td style="font-weight:bold;color:${(t.credit - t.debit) >= 0 ? '#15803d' : '#b91c1c'};text-align:right;border:1px solid #aaa;padding:4px">
+                                    ${formatCurrency(t.credit - t.debit).replace('₫', '')}
+                                </td>
+                                <td style="border:1px solid #aaa;padding:4px">${t.recipient || '-'}</td>
+                                <td style="border:1px solid #aaa;padding:4px;font-size:8px">${t.created_by || '-'}${t.created_at ? ' (' + new Date(t.created_at).toLocaleDateString('vi-VN') + ')' : ''}</td>
+                            </tr>
+                        `).join('');
+
+                        const totalDebit = filteredTransactions.reduce((sum, t) => sum + (Number(t.debit) || 0), 0);
+                        const totalCredit = filteredTransactions.reduce((sum, t) => sum + (Number(t.credit) || 0), 0);
+                        const totalBalance = totalCredit - totalDebit;
+
+                        const printCSS = `
+                            *{box-sizing:border-box;margin:0;padding:0}
+                            body{font-family:Arial,sans-serif;font-size:9px;padding:15px;color:#000!important;background:#fff!important}
+                            h2{text-align:center;font-size:14px;margin-bottom:4px;font-weight:bold}
+                            h4{text-align:center;font-size:10px;margin-bottom:12px;color:#555}
+                            table{border-collapse:collapse;width:100%;font-size:8px}
+                            th{border:1px solid #aaa!important;padding:4px 5px!important;background:#f1f5f9!important;font-weight:bold;text-align:center!important}
+                            td{border:1px solid #aaa!important;padding:4px 5px!important}
+                            @media print{@page{size:landscape;margin:0.8cm}}
+                        `;
+
+                        const w = window.open('','_blank','width=1400,height=800');
+                        w.document.write(`
+                            <html>
+                            <head>
+                                <title>Lịch sử chi tiền</title>
+                                <style>${printCSS}</style>
+                            </head>
+                            <body>
+                                <h2>LỊCH SỬ GIAO DỊCH CHI TIỀN</h2>
+                                <h4>Dự án: ${selectedProject || 'Tất cả'} - Tổng cộng: ${filteredTransactions.length} giao dịch đã lọc</h4>
+                                <table style="width:100%;border-collapse:collapse">
+                                    <thead>
+                                        <tr>
+                                            <th>STT</th>
+                                            <th>Công trình</th>
+                                            <th>Ngày HT</th>
+                                            <th>Ngày HĐ</th>
+                                            <th>Số HĐ</th>
+                                            <th style="width:22%">Diễn giải</th>
+                                            <th>Tài khoản</th>
+                                            <th>TK đối ứng</th>
+                                            <th>Nợ</th>
+                                            <th>Có</th>
+                                            <th>Số tiền</th>
+                                            <th>Tên đối tượng</th>
+                                            <th>Người nhập</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${printTableRows}
+                                    </tbody>
+                                    <tfoot style="font-weight:bold;background:#e2e8f0">
+                                        <tr>
+                                            <td colspan="8" style="text-align:center;border:1px solid #aaa;padding:4px">TỔNG CỘNG</td>
+                                            <td style="color:#dc2626;text-align:right;border:1px solid #aaa;padding:4px">${formatCurrency(totalDebit).replace('₫', '')}</td>
+                                            <td style="color:#16a34a;text-align:right;border:1px solid #aaa;padding:4px">${formatCurrency(totalCredit).replace('₫', '')}</td>
+                                            <td style="color:${totalBalance >= 0 ? '#15803d' : '#b91c1c'};text-align:right;border:1px solid #aaa;padding:4px">${formatCurrency(totalBalance).replace('₫', '')}</td>
+                                            <td colspan="2" style="border:1px solid #aaa"></td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </body>
+                            </html>
+                        `);
+                        w.document.close();
+                        setTimeout(()=>{w.print();},800);
                     }} className="bg-slate-600 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 flex items-center gap-2 shadow-lg transition">
                         <Printer size={16} /> In
                     </button>

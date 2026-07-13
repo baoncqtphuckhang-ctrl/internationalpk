@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
@@ -30,10 +30,36 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     });
 
     const [deleteModal, setDeleteModal] = useState({ isOpen: false, projectName: '', password: '' });
+    const [isCustomContractor, setIsCustomContractor] = useState(false);
+    const [isCustomInvestor, setIsCustomInvestor] = useState(false);
+
+    const existingContractors = useMemo(() => {
+        const contractors = new Set();
+        projects.forEach(p => {
+            const details = projectDetails[p.name] || {};
+            if (details.generalContractor && details.generalContractor.trim()) {
+                contractors.add(details.generalContractor.trim());
+            }
+        });
+        return Array.from(contractors).sort();
+    }, [projects, projectDetails]);
+
+    const existingInvestors = useMemo(() => {
+        const investors = new Set();
+        projects.forEach(p => {
+            const details = projectDetails[p.name] || {};
+            if (details.investor && details.investor.trim()) {
+                investors.add(details.investor.trim());
+            }
+        });
+        return Array.from(investors).sort();
+    }, [projects, projectDetails]);
 
 
     const handleOpenEdit = (p) => {
         const details = projectDetails[p.name] || {};
+        const gc = details.generalContractor || '';
+        const inv = details.investor || '';
         setEditingProject(p.name);
         setFormData({
             original_name: p.name,
@@ -51,8 +77,12 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             project_type: details.projectType || 'TRỰC TIẾP ORDER',
             debt_to_collect: details.debtToCollect || 0,
             plhd_list: p.plhds || [],
-            status: p.status || 'Doing'
+            status: p.status || 'Doing',
+            general_contractor: gc,
+            investor: inv
         });
+        setIsCustomContractor(gc && !existingContractors.includes(gc));
+        setIsCustomInvestor(inv && !existingInvestors.includes(inv));
         setIsAdding(true);
     };
 
@@ -62,7 +92,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         if (!saved) return;
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing' });
+        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
     };
 
     const handleDelete = (projectName) => {
@@ -105,7 +135,9 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             p.name.toLowerCase().includes(term) ||
             (details.address || '').toLowerCase().includes(term) ||
             (details.chtName || '').toLowerCase().includes(term) ||
-            (details.contractNo || '').toLowerCase().includes(term)
+            (details.contractNo || '').toLowerCase().includes(term) ||
+            (details.generalContractor || '').toLowerCase().includes(term) ||
+            (details.investor || '').toLowerCase().includes(term)
         );
     });
 
@@ -123,7 +155,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing' });
+                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -192,6 +224,100 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
                                     placeholder="Địa chỉ chi tiết của dự án..."
                                 />
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-sm font-black text-slate-900">Tổng thầu</label>
+                                    {isCustomContractor && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                setIsCustomContractor(false);
+                                                setFormData({ ...formData, general_contractor: '' });
+                                            }}
+                                            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                                        >
+                                            Chọn từ danh sách
+                                        </button>
+                                    )}
+                                </div>
+                                {isCustomContractor ? (
+                                    <input 
+                                        type="text"
+                                        value={formData.general_contractor || ''}
+                                        onChange={(e) => setFormData({...formData, general_contractor: e.target.value.toUpperCase()})}
+                                        className="w-full p-3 border-2 border-indigo-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 font-bold"
+                                        placeholder="Nhập tên tổng thầu mới..."
+                                        autoFocus
+                                    />
+                                ) : (
+                                    <select
+                                        value={formData.general_contractor || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '__NEW__') {
+                                                setIsCustomContractor(true);
+                                                setFormData({ ...formData, general_contractor: '' });
+                                            } else {
+                                                setFormData({ ...formData, general_contractor: val });
+                                            }
+                                        }}
+                                        className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800 font-bold"
+                                    >
+                                        <option value="">-- Chọn tổng thầu --</option>
+                                        {existingContractors.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                        <option value="__NEW__" className="text-indigo-600 font-bold">+ Nhập tổng thầu mới...</option>
+                                    </select>
+                                )}
+                            </div>
+                            <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                    <label className="block text-sm font-black text-slate-900">Chủ đầu tư</label>
+                                    {isCustomInvestor && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                setIsCustomInvestor(false);
+                                                setFormData({ ...formData, investor: '' });
+                                            }}
+                                            className="text-xs text-indigo-600 hover:text-indigo-800 font-bold"
+                                        >
+                                            Chọn từ danh sách
+                                        </button>
+                                    )}
+                                </div>
+                                {isCustomInvestor ? (
+                                    <input 
+                                        type="text"
+                                        value={formData.investor || ''}
+                                        onChange={(e) => setFormData({...formData, investor: e.target.value.toUpperCase()})}
+                                        className="w-full p-3 border-2 border-indigo-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 font-bold"
+                                        placeholder="Nhập tên chủ đầu tư mới..."
+                                        autoFocus
+                                    />
+                                ) : (
+                                    <select
+                                        value={formData.investor || ''}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === '__NEW__') {
+                                                setIsCustomInvestor(true);
+                                                setFormData({ ...formData, investor: '' });
+                                            } else {
+                                                setFormData({ ...formData, investor: val });
+                                            }
+                                        }}
+                                        className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800 font-bold"
+                                    >
+                                        <option value="">-- Chọn chủ đầu tư --</option>
+                                        {existingInvestors.map(c => (
+                                            <option key={c} value={c}>{c}</option>
+                                        ))}
+                                        <option value="__NEW__" className="text-indigo-600 font-bold">+ Nhập chủ đầu tư mới...</option>
+                                    </select>
+                                )}
                             </div>
                             {formData.cht_list.map((cht, index) => (
                                 <React.Fragment key={`cht-${index}`}>
@@ -359,6 +485,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                             value={searchTerm}
                             onChange={(e) => setSearchTerm(e.target.value)}
                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-indigo-500 focus:bg-white transition"
+                            autoComplete="off"
                         />
                     </div>
                     <div className="flex items-center gap-2 border border-slate-200 rounded-2xl p-1 bg-slate-50">
@@ -407,6 +534,13 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                 <div className="flex flex-col">
                                                     <span className="text-sm">{p.name}</span>
                                                     <span className="text-xs text-slate-400 mt-1 font-bold">{details.projectType || 'TRỰC TIẾP ORDER'}</span>
+                                                    {(details.generalContractor || details.investor) && (
+                                                        <span className="text-[10px] text-indigo-600 mt-1 font-bold">
+                                                            {details.generalContractor ? `Tổng thầu: ${details.generalContractor}` : ''}
+                                                            {details.generalContractor && details.investor ? ' | ' : ''}
+                                                            {details.investor ? `CĐT: ${details.investor}` : ''}
+                                                        </span>
+                                                    )}
                                                 </div>
                                             </td>
                                             <td className="p-4 text-sm text-slate-500 max-w-[200px] truncate" title={details.address}>{details.address || '---'}</td>
@@ -515,6 +649,18 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                 <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.address}>{details.address}</span>
                                             </div>
                                         )}
+                                        {details.generalContractor && (
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">🏢 Tổng thầu:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.generalContractor}>{details.generalContractor}</span>
+                                            </div>
+                                        )}
+                                        {details.investor && (
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">👤 Chủ đầu tư:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.investor}>{details.investor}</span>
+                                            </div>
+                                        )}
                                         {(details.chtName || details.chtPhone) && (
                                             <div className="flex justify-between border-b border-slate-50 pb-2">
                                                 <span className="text-slate-400 flex items-center gap-1 whitespace-nowrap min-w-[140px]">👷 Chỉ Huy Trưởng:</span>
@@ -558,6 +704,55 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             <div className="mt-8 text-sm font-bold text-slate-500 bg-white p-4 rounded-2xl border border-slate-200 text-center">
                 Tổng số: <span className="text-slate-800 font-extrabold">{totalItems}</span> công trình
             </div>
+
+            {deleteModal.isOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[9999] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div style={{ display: 'none' }}>
+                        <input type="text" name="dummy-username" autoComplete="username" />
+                        <input type="password" name="dummy-password" autoComplete="current-password" />
+                    </div>
+                    <form 
+                        onSubmit={(e) => { e.preventDefault(); confirmDelete(); }}
+                        autoComplete="off"
+                        className="bg-white rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-100 animate-in zoom-in-95 duration-200 text-left"
+                    >
+                        <h3 className="text-lg font-black text-slate-900 mb-2 flex items-center gap-2 text-red-600">
+                            ⚠ Xác nhận xóa công trình
+                        </h3>
+                        <p className="text-slate-500 text-sm mb-4 leading-relaxed font-semibold">
+                            Bạn đang yêu cầu xóa công trình <span className="font-extrabold text-slate-800">"{deleteModal.projectName}"</span>. 
+                            Hành động này sẽ xóa vĩnh viễn công trình và chuyển tất cả các chứng từ liên quan (nếu có) vào thùng rác. 
+                            Để tiếp tục, vui lòng nhập mật khẩu xác nhận của Admin:
+                        </p>
+                        <div className="mb-6">
+                            <input 
+                                type="password" 
+                                placeholder="Nhập mật khẩu Admin..." 
+                                value={deleteModal.password}
+                                onChange={(e) => setDeleteModal(prev => ({ ...prev, password: e.target.value }))}
+                                className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-red-500 font-bold bg-slate-50 text-slate-800"
+                                autoFocus
+                                autoComplete="new-password"
+                            />
+                        </div>
+                        <div className="flex justify-end gap-3">
+                            <button 
+                                type="button" 
+                                onClick={() => setDeleteModal({ isOpen: false, projectName: '', password: '' })} 
+                                className="px-5 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm"
+                            >
+                                Hủy bỏ
+                            </button>
+                            <button 
+                                type="submit"
+                                className="bg-red-600 text-white px-6 py-2.5 rounded-xl font-bold hover:bg-red-700 shadow-lg shadow-red-600/20 transition text-sm flex items-center gap-2"
+                            >
+                                <Trash2 size={16} /> XÁC NHẬN XÓA
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
         </div>
     );
 }

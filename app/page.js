@@ -611,7 +611,9 @@ export default function Home() {
                 chtPhone: p.cht_phone || '',
                 projectType: p.project_type || 'TRỰC TIẾP ORDER',
                 plhds: plhdArray,
-                status: p.status || 'Doing'
+                status: p.status || 'Doing',
+                generalContractor: p.general_contractor || '',
+                investor: p.investor || ''
             };
         });
         setProjectDetails(details);
@@ -997,7 +999,7 @@ export default function Home() {
             } else {
                 const isReal = type === 'INCOME_REAL';
                 const payload = {
-                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '' }), created_by: data.creator || currentUser.username
+                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', is_offset: !!data.is_offset }), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);
@@ -1100,8 +1102,10 @@ export default function Home() {
                 address: data.address || '',
                 cht_name: (data.cht_list || []).map(c => c.name).filter(Boolean).join(', '),
                 cht_phone: (data.cht_list || []).map(c => c.phone).filter(Boolean).join(', '),
-                project_type: data.project_type || 'TRá»°C TIáº¾P ORDER',
-                status: data.status || 'Doing'
+                project_type: data.project_type || 'TRỰC TIẾP ORDER',
+                status: data.status || 'Doing',
+                general_contractor: data.general_contractor || '',
+                investor: data.investor || ''
             };
 
             if (!projectPayload.name) {
@@ -2268,8 +2272,12 @@ export default function Home() {
             if (i.note) {
                 try {
                     const parsed = JSON.parse(i.note);
-                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                        return Number(parsed.actual_received_amount) || 0;
+                    if (parsed && typeof parsed === 'object') {
+                        if (parsed.is_offset) return 0;
+                        if ('actual_received_amount' in parsed) {
+                            const val = Number(parsed.actual_received_amount) || 0;
+                            if (val > 0) return val;
+                        }
                     }
                 } catch(e) {}
             }
@@ -2308,9 +2316,16 @@ export default function Home() {
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                phaseHstt = Number(parsed.actual_received_amount) || 0;
-                                break; // Chỉ lấy giá trị mới nhất
+                            if (parsed && typeof parsed === 'object') {
+                                if (parsed.is_offset) {
+                                    phaseHstt = 0;
+                                    break;
+                                }
+                                if ('actual_received_amount' in parsed) {
+                                    const val = Number(parsed.actual_received_amount) || 0;
+                                    phaseHstt = val || inv.post_tax_amount || inv.amount || 0;
+                                    break; // Chỉ lấy giá trị mới nhất
+                                }
                             }
                         } catch(e) {}
                     }
@@ -2790,9 +2805,59 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                             <button onClick={() => {
                                                 const el = document.getElementById('income-table');
                                                 if(el) {
-                                                    el.classList.add('print-area');
-                                                    window.print();
-                                                    el.classList.remove('print-area');
+                                                    const contractVal = formatCurrency(projectDetails[selectedProject]?.totalContractAndPlhd || 0);
+                                                    const advVal = formatCurrency(projectDetails[selectedProject]?.advanceValue || 0);
+                                                    const totalExp = formatCurrency(allowedTransactions.filter(t => t.project_name === selectedProject).reduce((sum, t) => sum + (t.debit || 0), 0));
+
+                                                    const printCSS = `
+                                                        *{box-sizing:border-box;margin:0;padding:0}
+                                                        body{font-family:Arial,sans-serif;font-size:10px;padding:20px;color:#000!important;background:#fff!important}
+                                                        h2{text-align:center;font-size:15px;margin-bottom:12px;font-weight:bold;color:#000!important;text-transform:uppercase;letter-spacing:0.5px}
+                                                        .header-summary{display:flex;gap:15px;margin-bottom:20px;justify-content:center}
+                                                        .summary-box{border:1px solid #aaa;padding:8px 12px;border-radius:6px;text-align:center;min-width:160px;background:#f8fafc!important}
+                                                        .summary-box p{font-size:8px;text-transform:uppercase;color:#475569;font-weight:bold;margin-bottom:2px}
+                                                        .summary-box h3{font-size:13px;font-weight:900;color:#0f172a!important}
+                                                        .print-container{display:flex;justify-content:center;width:100%}
+                                                        table{border-collapse:collapse;width:100%;font-size:9px;border:1px solid #aaa}
+                                                        th,td{border:1px solid #aaa!important;padding:5px 6px!important;text-align:right!important;vertical-align:middle!important;color:#000!important}
+                                                        thead th{background:#e2e8f0!important;font-weight:bold;text-align:center!important}
+                                                        tbody tr:nth-child(even) td{background:#f8fafc!important}
+                                                        button, svg, .absolute{display:none!important}
+                                                        input, select{border:none!important;background:transparent!important;outline:none!important;pointer-events:none!important;text-align:inherit!important;font-weight:inherit!important;color:inherit!important;font-size:inherit!important}
+                                                        @media print{body{padding:10px}@page{size:landscape;margin:1cm}}
+                                                    `;
+
+                                                    const w = window.open('','_blank','width=1400,height=800');
+                                                    w.document.write(`
+                                                        <html>
+                                                        <head>
+                                                            <title>Chi tiết hóa đơn - ${selectedProject}</title>
+                                                            <style>${printCSS}</style>
+                                                        </head>
+                                                        <body>
+                                                            <h2>Chi tiết Công trình: ${selectedProject}</h2>
+                                                            <div class="header-summary">
+                                                                <div class="summary-box">
+                                                                    <p>Tổng HĐ & PLHĐ</p>
+                                                                    <h3>${contractVal}</h3>
+                                                                </div>
+                                                                <div class="summary-box">
+                                                                    <p>Đã Tạm ứng</p>
+                                                                    <h3>${advVal}</h3>
+                                                                </div>
+                                                                <div class="summary-box">
+                                                                    <p>Tổng Chi Phí</p>
+                                                                    <h3>${totalExp}</h3>
+                                                                </div>
+                                                            </div>
+                                                            <div class="print-container">
+                                                                ${el.outerHTML}
+                                                            </div>
+                                                        </body>
+                                                        </html>
+                                                    `);
+                                                    w.document.close();
+                                                    setTimeout(()=>{w.print();},800);
                                                 }
                                             }} className="bg-emerald-700 hover:bg-emerald-800 text-white px-3 py-1 rounded text-xs flex items-center gap-1 transition shadow">
                                                 <Printer size={14} /> In
@@ -2885,9 +2950,16 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                             if (inv.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inv.note);
-                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                        expectedForPhase = Number(parsed.actual_received_amount) || 0;
-                                                                        break;
+                                                                    if (parsed && typeof parsed === 'object') {
+                                                                        if (parsed.is_offset) {
+                                                                            expectedForPhase = 0;
+                                                                            break;
+                                                                        }
+                                                                        if ('actual_received_amount' in parsed) {
+                                                                            const val = Number(parsed.actual_received_amount) || 0;
+                                                                            expectedForPhase = val || inv.post_tax_amount || inv.amount || 0;
+                                                                            break;
+                                                                        }
                                                                     }
                                                                 } catch(e) {}
                                                             }
@@ -2920,9 +2992,16 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                             if (inv.note) {
                                                                 try {
                                                                     const parsed = JSON.parse(inv.note);
-                                                                    if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                        expectedForPhase = Number(parsed.actual_received_amount) || 0;
-                                                                        break;
+                                                                    if (parsed && typeof parsed === 'object') {
+                                                                        if (parsed.is_offset) {
+                                                                            expectedForPhase = 0;
+                                                                            break;
+                                                                        }
+                                                                        if ('actual_received_amount' in parsed) {
+                                                                            const val = Number(parsed.actual_received_amount) || 0;
+                                                                            expectedForPhase = val || inv.post_tax_amount || inv.amount || 0;
+                                                                            break;
+                                                                        }
                                                                     }
                                                                 } catch(e) {}
                                                             }
@@ -3038,14 +3117,19 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                         {(() => {
                                                                             if (i._isRealOnly) return '-';
                                                                             let hstt = 0;
+                                                                            let isOffset = false;
                                                                             if (i.note) {
                                                                                 try {
                                                                                     const parsed = JSON.parse(i.note);
-                                                                                    if (parsed && typeof parsed === 'object' && parsed.actual_received_amount) {
-                                                                                        hstt = Number(parsed.actual_received_amount);
+                                                                                    if (parsed && typeof parsed === 'object') {
+                                                                                        isOffset = !!parsed.is_offset;
+                                                                                        if (parsed.actual_received_amount) {
+                                                                                            hstt = Number(parsed.actual_received_amount);
+                                                                                        }
                                                                                     }
                                                                                 } catch(e) {}
                                                                             }
+                                                                            if (isOffset) return '0';
                                                                             return hstt > 0 ? formatCurrency(hstt) : '-';
                                                                         })()}
                                                                     </td>}
@@ -3077,9 +3161,16 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                                 if (inv.note) {
                                                                                     try {
                                                                                         const parsed = JSON.parse(inv.note);
-                                                                                        if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                                                                            expected = Number(parsed.actual_received_amount) || 0;
-                                                                                            break;
+                                                                                        if (parsed && typeof parsed === 'object') {
+                                                                                            if (parsed.is_offset) {
+                                                                                                expected = 0;
+                                                                                                break;
+                                                                                            }
+                                                                                            if ('actual_received_amount' in parsed) {
+                                                                                                const val = Number(parsed.actual_received_amount) || 0;
+                                                                                                expected = val || inv.post_tax_amount || inv.amount || 0;
+                                                                                                break;
+                                                                                            }
                                                                                         }
                                                                                     } catch(e) {}
                                                                                 }
@@ -3119,10 +3210,10 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                                 return sum + val;
                                                                             }, 0);
                                                                             
-                                                                            const percentage = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 0;
-                                                                            const isFull = actual >= expected && expected > 0;
+                                                                            const percentage = expected > 0 ? Math.min(100, Math.max(0, (actual / expected) * 100)) : 100;
+                                                                            const isFull = expected === 0 || actual >= expected;
                                                                             
-                                                                            const isFullCash = actualCash >= expected && expected > 0;
+                                                                            const isFullCash = expected === 0 || actualCash >= expected;
                                                                             
                                                                             return (
                                                                                 <>

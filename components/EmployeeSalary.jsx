@@ -199,6 +199,129 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         queueMicrotask(() => { skipDraftSyncRef.current = false; });
     };
 
+    const handleUpdateAllocation = (empId, idx, field, val, period) => {
+        const isActive = period === selectedMonth && !viewingHistoryId;
+
+        if (isActive) {
+            setEmployees(prev => prev.map(emp => {
+                if (emp.id === empId) {
+                    const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
+                    if (currentPeriodAllocs[idx]) {
+                        currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                    }
+                    const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                    return { ...emp, allocations: updatedAllocations };
+                }
+                return emp;
+            }));
+        } else {
+            setHistoryRecords(prev => {
+                const monthData = prev[period];
+                if (!monthData) return prev;
+                const newEmps = monthData.employees.map(emp => {
+                    if (emp.id === empId) {
+                        const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
+                        if (currentPeriodAllocs[idx]) {
+                            currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                        }
+                        const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                        return { ...emp, allocations: updatedAllocations };
+                    }
+                    return emp;
+                });
+                const updated = { ...monthData, employees: newEmps };
+                
+                const metadata = monthData.employees.find(e => e.id === 'metadata_holidays') || { id: 'metadata_holidays', holidays: [], base_month: period };
+                const filteredEmps = newEmps.filter(e => e.id !== 'metadata_holidays');
+                
+                supabase.from('salary_history').update({
+                    employees_data: [...filteredEmps, metadata]
+                }).eq('month_id', period).then();
+                
+                return { ...prev, [period]: updated };
+            });
+        }
+    };
+
+    const handleAddAllocationRow = (empId, period) => {
+        const isActive = period === selectedMonth && !viewingHistoryId;
+        const newRow = { projectName: '', ratio: 0, from_date: '', to_date: '' };
+
+        if (isActive) {
+            setEmployees(prev => prev.map(emp => {
+                if (emp.id === empId) {
+                    const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
+                    currentPeriodAllocs.push(newRow);
+                    const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                    return { ...emp, allocations: updatedAllocations };
+                }
+                return emp;
+            }));
+        } else {
+            setHistoryRecords(prev => {
+                const monthData = prev[period];
+                if (!monthData) return prev;
+                const newEmps = monthData.employees.map(emp => {
+                    if (emp.id === empId) {
+                        const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
+                        currentPeriodAllocs.push(newRow);
+                        const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                        return { ...emp, allocations: updatedAllocations };
+                    }
+                    return emp;
+                });
+                const updated = { ...monthData, employees: newEmps };
+                
+                const metadata = monthData.employees.find(e => e.id === 'metadata_holidays') || { id: 'metadata_holidays', holidays: [], base_month: period };
+                const filteredEmps = newEmps.filter(e => e.id !== 'metadata_holidays');
+                
+                supabase.from('salary_history').update({
+                    employees_data: [...filteredEmps, metadata]
+                }).eq('month_id', period).then();
+                
+                return { ...prev, [period]: updated };
+            });
+        }
+    };
+
+    const handleDeleteAllocationRow = (empId, idx, period) => {
+        const isActive = period === selectedMonth && !viewingHistoryId;
+
+        if (isActive) {
+            setEmployees(prev => prev.map(emp => {
+                if (emp.id === empId) {
+                    const currentPeriodAllocs = (emp.allocations?.[period] || []).filter((_, i) => i !== idx);
+                    const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                    return { ...emp, allocations: updatedAllocations };
+                }
+                return emp;
+            }));
+        } else {
+            setHistoryRecords(prev => {
+                const monthData = prev[period];
+                if (!monthData) return prev;
+                const newEmps = monthData.employees.map(emp => {
+                    if (emp.id === empId) {
+                        const currentPeriodAllocs = (emp.allocations?.[period] || []).filter((_, i) => i !== idx);
+                        const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                        return { ...emp, allocations: updatedAllocations };
+                    }
+                    return emp;
+                });
+                const updated = { ...monthData, employees: newEmps };
+                
+                const metadata = monthData.employees.find(e => e.id === 'metadata_holidays') || { id: 'metadata_holidays', holidays: [], base_month: period };
+                const filteredEmps = newEmps.filter(e => e.id !== 'metadata_holidays');
+                
+                supabase.from('salary_history').update({
+                    employees_data: [...filteredEmps, metadata]
+                }).eq('month_id', period).then();
+                
+                return { ...prev, [period]: updated };
+            });
+        }
+    };
+
     const activatePeriod = (periodId) => {
         const prevMonth = selectedMonthRef.current;
         if (prevMonth && prevMonth !== periodId && employeesRef.current.length > 0 && !historyRecordsRef.current[prevMonth]) {
@@ -1649,7 +1772,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             </tr>
         </tfoot>
     </table>
-        ) : (
+        ) : tabToRender === 'attendance' ? (
     <table className={`w-full text-xs border-collapse whitespace-nowrap min-w-max ${tableReadOnly ? 'pointer-events-none' : ''}`}>
         <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
             <tr>
@@ -1751,6 +1874,129 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             })()}
         </tbody>
     </table>
+        ) : (
+            <table className="w-full text-xs border-collapse whitespace-nowrap min-w-max">
+                <thead className="bg-slate-100 sticky top-0 z-30 shadow-sm">
+                    <tr>
+                        <th className="border border-slate-300 p-2 font-black text-slate-800 text-center w-12 bg-slate-100">STT</th>
+                        <th className="border border-slate-300 p-2 font-black text-slate-800 text-left min-w-[200px] sticky left-0 z-40 bg-slate-100">HỌ VÀ TÊN</th>
+                        <th className="border border-slate-300 p-2 font-black text-slate-800 text-center w-36 bg-slate-100">BỘ PHẬN</th>
+                        <th className="border border-slate-300 p-2 font-black text-slate-800 text-left min-w-[650px] bg-slate-100">PHÂN BỔ CÔNG TRÌNH & TỶ LỆ (%)</th>
+                        <th className="border border-slate-300 p-2 font-black text-slate-800 text-center w-24 bg-slate-100">TỔNG TỶ LỆ</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {(() => {
+                        let localStt = 0;
+                        return periodCalculatedEmployees.map(emp => {
+                            if (emp.isDepartment) {
+                                return (
+                                    <tr key={emp.id} className="bg-slate-100 font-black text-slate-700">
+                                        <td colSpan={5} className="border border-slate-300 p-2 text-left uppercase sticky left-0 z-20 bg-slate-100">
+                                            {emp.department}
+                                        </td>
+                                    </tr>
+                                );
+                            }
+                            localStt++;
+                            const currentPeriodAllocs = emp.allocations?.[period] || [];
+                            const totalRatio = currentPeriodAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
+                            const ratioStatusClass = totalRatio === 100 ? 'text-emerald-600' : 'text-red-500';
+
+                            return (
+                                <tr key={emp.id} className="hover:bg-slate-50/50 bg-white">
+                                    <td className="border border-slate-300 p-2 text-center font-bold text-slate-500">{localStt}</td>
+                                    <td className="border border-slate-300 p-2 font-bold text-slate-800 sticky left-0 z-20 bg-white shadow-[2px_0_5px_rgba(0,0,0,0.02)]">
+                                        {emp.name}
+                                    </td>
+                                    <td className="border border-slate-300 p-2 text-center font-semibold text-slate-600">{emp.department}</td>
+                                    <td className="border border-slate-300 p-2 text-left">
+                                        <div className="space-y-2 py-1">
+                                            {currentPeriodAllocs.map((alloc, idx) => (
+                                                <div key={idx} className="flex items-center gap-2 bg-slate-50 p-1.5 border border-slate-200 rounded-lg max-w-max">
+                                                    <select 
+                                                        value={alloc.projectName || ''} 
+                                                        onChange={(e) => handleUpdateAllocation(emp.id, idx, 'projectName', e.target.value, period)}
+                                                        disabled={tableReadOnly}
+                                                        className="px-2 py-1.5 text-xs border border-slate-300 rounded font-bold text-slate-800 bg-white outline-none focus:border-blue-500"
+                                                    >
+                                                        <option value="">-- Chọn công trình --</option>
+                                                        {projects.map(p => {
+                                                            const isCompleted = p.status === 'Finish';
+                                                            const isCurrent = alloc.projectName === p.name;
+                                                            return (
+                                                                <option key={p.name} value={p.name} disabled={isCompleted && !isCurrent}>
+                                                                    {p.name} {isCompleted ? ' (FINISH)' : ''}
+                                                                </option>
+                                                            );
+                                                        })}
+                                                    </select>
+
+                                                    <input 
+                                                        type="date" 
+                                                        value={alloc.from_date || ''} 
+                                                        onChange={(e) => handleUpdateAllocation(emp.id, idx, 'from_date', e.target.value, period)}
+                                                        disabled={tableReadOnly}
+                                                        className="px-1.5 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 bg-white outline-none focus:border-blue-500"
+                                                        title="Từ ngày"
+                                                    />
+
+                                                    <span className="text-[10px] font-bold text-slate-400">→</span>
+
+                                                    <input 
+                                                        type="date" 
+                                                        value={alloc.to_date || ''} 
+                                                        onChange={(e) => handleUpdateAllocation(emp.id, idx, 'to_date', e.target.value, period)}
+                                                        disabled={tableReadOnly}
+                                                        className="px-1.5 py-1 text-xs border border-slate-300 rounded font-semibold text-slate-800 bg-white outline-none focus:border-blue-500"
+                                                        title="Đến ngày"
+                                                    />
+
+                                                    <div className="flex items-center gap-1">
+                                                        <input 
+                                                            type="number" 
+                                                            min="0" 
+                                                            max="100"
+                                                            value={alloc.ratio === undefined ? '' : alloc.ratio} 
+                                                            onChange={(e) => handleUpdateAllocation(emp.id, idx, 'ratio', parseInt(e.target.value, 10) || 0, period)}
+                                                            disabled={tableReadOnly}
+                                                            className="w-14 px-1.5 py-1 text-xs border border-slate-300 rounded font-bold text-slate-800 text-center bg-white outline-none focus:border-blue-500"
+                                                            placeholder="Tỷ lệ %"
+                                                        />
+                                                        <span className="text-xs font-bold text-slate-500">%</span>
+                                                    </div>
+
+                                                    {!tableReadOnly && (
+                                                        <button 
+                                                            onClick={() => handleDeleteAllocationRow(emp.id, idx, period)}
+                                                            className="text-red-500 hover:bg-red-100 p-1.5 rounded transition"
+                                                            title="Xóa dòng phân bổ"
+                                                        >
+                                                            <Trash2 size={14}/>
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            ))}
+                                            
+                                            {!tableReadOnly && (
+                                                <button 
+                                                    onClick={() => handleAddAllocationRow(emp.id, period)}
+                                                    className="text-xs font-black text-blue-600 flex items-center gap-0.5 hover:text-blue-800 transition"
+                                                >
+                                                    <Plus size={14}/> Thêm công trình
+                                                </button>
+                                            )}
+                                        </div>
+                                    </td>
+                                    <td className={`border border-slate-300 p-2 text-center font-black text-sm \${ratioStatusClass}`}>
+                                        {totalRatio}%
+                                    </td>
+                                </tr>
+                            );
+                        });
+                    })()}
+                </tbody>
+            </table>
         )}
     </div>
         );
@@ -2201,6 +2447,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                 <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-lg">
                                                     <button onClick={() => setHistorySubTab('salary')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${historySubTab === 'salary' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
                                                     <button onClick={() => setHistorySubTab('attendance')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${historySubTab === 'attendance' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
+                                                    <button onClick={() => setHistorySubTab('allocation')} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${historySubTab === 'allocation' ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><Plus size={16} /> Phân Bổ Nhân Sự</button>
                                                 </div>
                                             </div>
                                             <div className="overflow-x-auto custom-scrollbar relative bg-white">
@@ -2293,8 +2540,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                             )}
                                             <div className="p-4 bg-slate-50 border-b border-slate-200 flex items-center justify-between">
                                                 <div className="flex items-center gap-2 bg-slate-200/50 p-1 rounded-lg">
-                                                    <button onClick={() => { if (isActive) setActiveTab('salary'); else activatePeriod(period); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab !== 'attendance' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
+                                                    <button onClick={() => { if (isActive) setActiveTab('salary'); else activatePeriod(period); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'salary' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><List size={16} /> Bảng Tính Lương</button>
                                                     <button onClick={() => { if (!isActive) activatePeriod(period); setActiveTab('attendance'); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'attendance' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><CheckSquare size={16} /> Bảng Chấm Công</button>
+                                                    <button onClick={() => { if (!isActive) activatePeriod(period); setActiveTab('allocation'); }} className={`flex items-center gap-2 px-4 py-1.5 text-sm font-bold rounded-md transition ${activeTab === 'allocation' && isActive ? 'bg-white shadow text-blue-600' : 'text-slate-600 hover:bg-slate-200'}`}><Plus size={16} /> Phân Bổ Nhân Sự</button>
                                                 </div>
                                             </div>
                                             {renderTableContent(undefined, period)}
