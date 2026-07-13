@@ -208,6 +208,23 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                     if (currentPeriodAllocs[idx]) {
                         currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                        // Auto calculate ratio if from_date or to_date changes
+                        if (field === 'from_date' || field === 'to_date') {
+                            const target = currentPeriodAllocs[idx];
+                            if (target.from_date && target.to_date) {
+                                const from = new Date(target.from_date);
+                                const to = new Date(target.to_date);
+                                if (to >= from) {
+                                    const parts = period.split('-');
+                                    const year = parseInt(parts[0], 10);
+                                    const month = parseInt(parts[1], 10);
+                                    const daysInMonth = new Date(year, month, 0).getDate();
+                                    const diffTime = Math.abs(to - from);
+                                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                                    target.ratio = Math.round((diffDays / daysInMonth) * 100);
+                                }
+                            }
+                        }
                     }
                     const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
                     return { ...emp, allocations: updatedAllocations };
@@ -223,6 +240,23 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                         if (currentPeriodAllocs[idx]) {
                             currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                            // Auto calculate ratio if from_date or to_date changes
+                            if (field === 'from_date' || field === 'to_date') {
+                                const target = currentPeriodAllocs[idx];
+                                if (target.from_date && target.to_date) {
+                                    const from = new Date(target.from_date);
+                                    const to = new Date(target.to_date);
+                                    if (to >= from) {
+                                        const parts = period.split('-');
+                                        const year = parseInt(parts[0], 10);
+                                        const month = parseInt(parts[1], 10);
+                                        const daysInMonth = new Date(year, month, 0).getDate();
+                                        const diffTime = Math.abs(to - from);
+                                        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                                        target.ratio = Math.round((diffDays / daysInMonth) * 100);
+                                    }
+                                }
+                            }
                         }
                         const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
                         return { ...emp, allocations: updatedAllocations };
@@ -535,6 +569,17 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             let historyMap = {};
             let draftMap = {};
             try {
+                const savedHistory = localStorage.getItem('misa_salary_history');
+                if (savedHistory) {
+                    try { historyMap = JSON.parse(savedHistory); } catch (e) {}
+                }
+                const savedDrafts = localStorage.getItem('misa_draft_records');
+                if (savedDrafts) {
+                    try { draftMap = JSON.parse(savedDrafts); } catch (e) {}
+                }
+            } catch (e) {}
+
+            try {
                 const { data, error } = await supabase.from('salary_history').select('*');
                 if (error) throw error;
                 if (data && data.length > 0) {
@@ -549,21 +594,19 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             employees: cloneData(emps.filter(e => e.id !== 'metadata_holidays'))
                         };
                         if (item.month_id.endsWith('-DRAFT')) {
-                            draftMap[item.month_id.replace('-DRAFT', '')] = recordData;
+                            const m = item.month_id.replace('-DRAFT', '');
+                            if (!draftMap[m] || new Date(recordData.timestamp) > new Date(draftMap[m].timestamp || 0)) {
+                                draftMap[m] = recordData;
+                            }
                         } else {
-                            historyMap[item.month_id] = recordData;
+                            if (!historyMap[item.month_id] || new Date(recordData.timestamp) > new Date(historyMap[item.month_id].timestamp || 0)) {
+                                historyMap[item.month_id] = recordData;
+                            }
                         }
                     });
                 }
             } catch (err) {
-                const savedHistory = localStorage.getItem('misa_salary_history');
-                if (savedHistory) {
-                    try { historyMap = JSON.parse(savedHistory); } catch (e) {}
-                }
-                const savedDrafts = localStorage.getItem('misa_draft_records');
-                if (savedDrafts) {
-                    try { draftMap = JSON.parse(savedDrafts); } catch (e) {}
-                }
+                console.error("Error loading salary history from DB:", err);
             }
 
             setHistoryRecords(historyMap);
