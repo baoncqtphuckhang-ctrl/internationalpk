@@ -860,38 +860,62 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const baseNote = note || `[CHI LƯƠNG] ${empName} - Kỳ ${monthId}`;
         const finalRecipient = recipient || empName;
 
-        if (isTechnical) {
-            // Lọc ra các dòng hợp lệ
-            const validAllocs = allocations.filter(a => a.project_name && a.from_date && a.to_date);
-            if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ ít nhất 1 dòng phân bổ (Công trình, Từ ngày, Đến ngày)!'});
+        const useMultiple = isTechnical || allocations.length > 1;
+
+        if (useMultiple) {
+            const validAllocs = allocations.filter(a => a.project_name);
+            if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
             
-            for (const a of validAllocs) {
-                const from = new Date(a.from_date);
-                const to = new Date(a.to_date);
-                if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
-                
-                // Tính số ngày
-                const diffTime = Math.abs(to - from);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1; // Bao gồm cả 2 ngày
-                
-                // Số tiền = (Tổng tiền / Công chuẩn) * Số ngày
-                const allocAmount = Math.round((amount / stdDays) * diffDays);
-                
-                if (allocAmount > 0) {
-                    txsToInsert.push({
-                        project_name: a.project_name,
-                        accounting_date: new Date().toISOString().split('T')[0],
-                        code: code,
-                        corresponding_account: corresponding_account,
-                        recipient: finalRecipient,
-                        debit: allocAmount,
-                        note: `${baseNote} (${diffDays} ngày)`,
-                        created_by: currentUser.username
-                    });
+            const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
+            const useRatio = !isTechnical && totalRatio > 0;
+
+            if (useRatio) {
+                for (const a of validAllocs) {
+                    const ratioVal = Number(a.ratio) || 0;
+                    if (ratioVal > 0) {
+                        const allocAmount = Math.round((amount * ratioVal) / 100);
+                        if (allocAmount > 0) {
+                            txsToInsert.push({
+                                project_name: a.project_name,
+                                accounting_date: new Date().toISOString().split('T')[0],
+                                code: code,
+                                corresponding_account: corresponding_account,
+                                recipient: finalRecipient,
+                                debit: allocAmount,
+                                note: `${baseNote} (${ratioVal}%)`,
+                                created_by: currentUser.username
+                            });
+                        }
+                    }
+                }
+            } else {
+                const missingDates = validAllocs.some(a => !a.from_date || !a.to_date);
+                if (missingDates) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng điền đầy đủ Từ ngày và Đến ngày cho các công trình!'});
+
+                for (const a of validAllocs) {
+                    const from = new Date(a.from_date);
+                    const to = new Date(a.to_date);
+                    if (to < from) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Ngày kết thúc phải lớn hơn hoặc bằng ngày bắt đầu!'});
+                    
+                    const diffTime = Math.abs(to - from);
+                    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                    
+                    const allocAmount = Math.round((amount / stdDays) * diffDays);
+                    if (allocAmount > 0) {
+                        txsToInsert.push({
+                            project_name: a.project_name,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: code,
+                            corresponding_account: corresponding_account,
+                            recipient: finalRecipient,
+                            debit: allocAmount,
+                            note: `${baseNote} (${diffDays} ngày)`,
+                            created_by: currentUser.username
+                        });
+                    }
                 }
             }
         } else {
-            // Nhân viên bình thường
             const selectedProject = allocations[0]?.project_name;
             if (!selectedProject) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn công trình!'});
             
@@ -1710,20 +1734,34 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                             <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-1 rounded whitespace-nowrap border border-slate-200 cursor-not-allowed" title="Đã hạch toán">Đã hạch toán</span>
                                         ) : (
                                             <button 
-                                                onClick={() => setPaymentModal({ 
-                                                    isOpen: true, 
-                                                    empId: emp.id, 
-                                                    empName: emp.name, 
-                                                    department: emp.department, 
-                                                    amount: emp.calculated.remaining, 
-                                                    code: '6421', 
-                                                    corresponding_account: '1111', 
-                                                    recipient: emp.name, 
-                                                    note: `[CHI LƯƠNG] ${emp.name} - Kỳ ${viewingHistoryId}`, 
-                                                    allocations: [{id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: ''}], 
-                                                    monthId: viewingHistoryId,
-                                                    globalStandardDays: historyRecords[viewingHistoryId]?.globalStandardDays || 26 
-                                                })}
+                                                onClick={() => {
+                                                    const targetPeriod = viewingHistoryId || period;
+                                                    const existingAllocs = emp.allocations?.[targetPeriod] || [];
+                                                    const initialAllocs = existingAllocs.length > 0
+                                                        ? existingAllocs.map((alloc, idx) => ({
+                                                            id: alloc.id || (Date.now() + idx),
+                                                            project_name: alloc.projectName || alloc.project_name || '',
+                                                            from_date: alloc.from_date || '',
+                                                            to_date: alloc.to_date || '',
+                                                            ratio: alloc.ratio || 0
+                                                        }))
+                                                        : [{ id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: '', ratio: 0 }];
+                                                    
+                                                    setPaymentModal({ 
+                                                        isOpen: true, 
+                                                        empId: emp.id, 
+                                                        empName: emp.name, 
+                                                        department: emp.department, 
+                                                        amount: emp.calculated.remaining, 
+                                                        code: '6421', 
+                                                        corresponding_account: '1111', 
+                                                        recipient: emp.name, 
+                                                        note: `[CHI LƯƠNG] ${emp.name} - Kỳ ${targetPeriod}`, 
+                                                        allocations: initialAllocs, 
+                                                        monthId: targetPeriod,
+                                                        globalStandardDays: (viewingHistoryId ? historyRecords[viewingHistoryId]?.globalStandardDays : globalStandardDays) || 26 
+                                                    });
+                                                }}
                                                 className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 font-bold px-2 py-1 rounded text-xs transition whitespace-nowrap"
                                             >
                                                 Hạch toán
@@ -2717,9 +2755,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </div>
 
                         <div className="pt-2 border-t border-slate-200 mt-2">
-                            <h4 className="font-black text-slate-800 mb-2">Hạch toán công trình {isTechnical && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2">Bộ phận Kỹ thuật / Gondola</span>}</h4>
+                            <h4 className="font-black text-slate-800 mb-2">Hạch toán công trình {(isTechnical || paymentModal.allocations.length > 1) && <span className="text-xs text-blue-600 bg-blue-100 px-2 py-0.5 rounded ml-2">{isTechnical ? 'Bộ phận Kỹ thuật / Gondola' : 'Phân bổ nhiều công trình'}</span>}</h4>
                             
-                            {!isTechnical ? (
+                            {!(isTechnical || paymentModal.allocations.length > 1) ? (
                                 <div>
                                     <label className="block text-sm font-bold text-slate-700 mb-1">Chọn công trình duy nhất</label>
                                     <select 
@@ -2769,20 +2807,41 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                     })}
                                                 </select>
                                             </div>
-                                            <div className="w-32">
-                                                <input type="date" value={alloc.from_date} onChange={(e) => {
-                                                    const newAllocs = [...paymentModal.allocations];
-                                                    newAllocs[idx].from_date = e.target.value;
-                                                    setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Từ ngày" />
-                                            </div>
-                                            <div className="w-32">
-                                                <input type="date" value={alloc.to_date} onChange={(e) => {
-                                                    const newAllocs = [...paymentModal.allocations];
-                                                    newAllocs[idx].to_date = e.target.value;
-                                                    setPaymentModal({...paymentModal, allocations: newAllocs});
-                                                }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Đến ngày" />
-                                            </div>
+                                            {!isTechnical && alloc.ratio !== undefined && (
+                                                <div className="w-20 flex items-center gap-1">
+                                                    <input 
+                                                        type="number" 
+                                                        value={alloc.ratio} 
+                                                        onChange={(e) => {
+                                                            const newAllocs = [...paymentModal.allocations];
+                                                            newAllocs[idx].ratio = parseInt(e.target.value, 10) || 0;
+                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                        }} 
+                                                        className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded text-center font-bold" 
+                                                        placeholder="Ratio"
+                                                        title="Tỷ lệ %"
+                                                    />
+                                                    <span className="text-xs font-bold text-slate-500">%</span>
+                                                </div>
+                                            )}
+                                            {(isTechnical || (alloc.ratio === undefined || alloc.ratio === 0)) && (
+                                                <>
+                                                    <div className="w-32">
+                                                        <input type="date" value={alloc.from_date} onChange={(e) => {
+                                                            const newAllocs = [...paymentModal.allocations];
+                                                            newAllocs[idx].from_date = e.target.value;
+                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                        }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Từ ngày" />
+                                                    </div>
+                                                    <div className="w-32">
+                                                        <input type="date" value={alloc.to_date} onChange={(e) => {
+                                                            const newAllocs = [...paymentModal.allocations];
+                                                            newAllocs[idx].to_date = e.target.value;
+                                                            setPaymentModal({...paymentModal, allocations: newAllocs});
+                                                        }} className="w-full px-2 py-1.5 text-sm bg-white border border-slate-300 rounded" title="Đến ngày" />
+                                                    </div>
+                                                </>
+                                            )}
                                             <button onClick={() => {
                                                 const newAllocs = paymentModal.allocations.filter(a => a.id !== alloc.id);
                                                 setPaymentModal({...paymentModal, allocations: newAllocs});
@@ -2791,7 +2850,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     ))}
                                     <button 
                                         onClick={() => {
-                                            setPaymentModal({...paymentModal, allocations: [...paymentModal.allocations, {id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: ''}]});
+                                            setPaymentModal({...paymentModal, allocations: [...paymentModal.allocations, {id: Date.now(), project_name: projects?.[0]?.name || '', from_date: '', to_date: '', ratio: 0}]});
                                         }}
                                         className="text-sm font-bold text-blue-600 flex items-center gap-1 hover:text-blue-800 transition"
                                     >
@@ -2799,7 +2858,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     </button>
                                     
                                     <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg text-xs text-amber-800 mt-2 leading-relaxed">
-                                        <b>Lưu ý (Cách 2):</b> Số tiền hạch toán cho mỗi công trình = (Tổng tiền / {paymentModal.globalStandardDays} ngày công chuẩn) × Số ngày trong khoảng (Từ ngày - Đến ngày).
+                                        <b>Lưu ý:</b> 
+                                        {isTechnical 
+                                            ? ` Số tiền hạch toán cho mỗi công trình = (Tổng tiền / ${paymentModal.globalStandardDays} ngày công chuẩn) × Số ngày trong khoảng (Từ ngày - Đến ngày).`
+                                            : ` Số tiền hạch toán cho mỗi công trình sẽ được chia theo tỷ lệ phần trăm (%) tương ứng.`
+                                        }
                                     </div>
                                 </div>
                             )}
@@ -2807,7 +2870,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     </div>
                     
                     <div className="p-4 bg-slate-50 flex justify-end gap-3 shrink-0 border-t border-slate-200">
-                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26 })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                        <button onClick={() => setPaymentModal({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26 })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
                             Hủy bỏ
                         </button>
                         <button onClick={handleCreatePaymentTransaction} className="px-5 py-2.5 text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 shadow-md shadow-orange-200 rounded-xl transition">
