@@ -291,16 +291,24 @@ export default function ApprovalWorkflow({
             items = parsed.items || [];
             paymentMethod = parsed.paymentMethod || 'tien_mat';
             orderPhase = parsed.orderPhase || (parsed.items && parsed.items[0] && parsed.items[0].note ? parsed.items[0].note.split(' | ')[1] : null) || parsed.phase || null;
-            
-            // Gom chung lại thành 1 mục đối với Đơn Vật Tư
+            // Gom chung lại thành 1 mục đối với tất cả các phiếu
+            let combinedContent = `Thanh toán ${item.doc_type}`;
             if (item.doc_type === 'Đơn Vật Tư') {
-                const combinedContent = orderPhase ? `Thanh toán ${orderPhase}` : 'Thanh toán Đơn Vật Tư';
-                items = [{
-                    content: combinedContent,
-                    amount: item.total_amount,
-                    note: orderPhase || ''
-                }];
+                combinedContent = orderPhase ? `Thanh toán ${orderPhase}` : 'Thanh toán Đơn Vật Tư';
+            } else if (items.length > 0) {
+                combinedContent = items.map(it => it.content).filter(Boolean).join('; ');
+                if (combinedContent.length > 150) {
+                    combinedContent = combinedContent.substring(0, 147) + '...';
+                }
+            } else {
+                combinedContent = item.reason ? `[${item.doc_type}] ${item.reason}` : `Thanh toán ${item.doc_type}`;
             }
+
+            items = [{
+                content: combinedContent,
+                amount: item.total_amount,
+                note: orderPhase || ''
+            }];
         } catch(e) {
             items = [{ content: item.reason, amount: item.total_amount }];
         }
