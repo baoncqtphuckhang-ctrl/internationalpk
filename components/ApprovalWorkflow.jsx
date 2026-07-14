@@ -200,6 +200,15 @@ export default function ApprovalWorkflow({
         if (dnttTotalAmount <= 0) return setFormError("Chưa nhập số tiền thanh toán! Vui lòng điền 'Thành tiền' ở phần A.");
         if (!dnttData.project) return setFormError("Vui lòng chọn Công trình!");
 
+        if (dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') {
+            const hasEmptySTK = dnttData.items.some(item => !item.bankAccountNumber || item.bankAccountNumber.trim() === '');
+            if (hasEmptySTK) return setFormError("Vui lòng nhập Số tài khoản (SỐ TK) cho tất cả các đối tượng!");
+        } else {
+            if (dnttData.paymentMethod === 'chuyen_khoan' && (!dnttData.bankAccountNumber || dnttData.bankAccountNumber.trim() === '')) {
+                return setFormError("Vui lòng nhập Số tài khoản trong phần Hình thức nhận tiền!");
+            }
+        }
+
         const payload = {
             doc_type: dnttData.docType,
             project_name: dnttData.project,
@@ -610,7 +619,7 @@ export default function ApprovalWorkflow({
                                     <div className="flex flex-col items-center p-4 border-2 border-dashed border-blue-200 rounded-2xl bg-blue-50/50">
                                         <p className="font-bold text-sm mb-2 text-blue-800">Mã QR Thanh Toán Tự Động (VietQR)</p>
                                         <img 
-                                            src={`https://img.vietqr.io/image/${getBankCodeForQR(dnttData.bankName)}-${dnttData.bankAccountNumber.trim()}-compact2.png?amount=${dnttTotalAmount}&addInfo=${encodeURIComponent(getTransferContent(dnttData).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D"))}&accountName=${encodeURIComponent(dnttData.bankAccountName || '')}`} 
+                                            src={`https://img.vietqr.io/image/${getBankCodeForQR(dnttData.bankName)}-${dnttData.bankAccountNumber.trim()}-compact2.png?amount=${dnttTotalAmount}&accountName=${encodeURIComponent(dnttData.bankAccountName || '')}`} 
                                             alt="VietQR Preview" 
                                             className="w-48 h-48 object-contain rounded-xl bg-white shadow-sm"
                                             onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
@@ -965,7 +974,7 @@ export default function ApprovalWorkflow({
                                                 </div>
                                                 
                                                 <div className="p-2 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 mb-6">
-                                                    <img src={`https://img.vietqr.io/image/${itemData.bankName?.split('-')[0]?.trim()}-${itemData.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${amount}&addInfo=${encodeURIComponent(qrTransferContent)}&accountName=${encodeURIComponent(itemData.bankAccountName || '')}`} alt="VietQR" className="w-56 h-56 object-contain rounded-xl bg-white mx-auto" />
+                                                    <img src={`https://img.vietqr.io/image/${itemData.bankName?.split('-')[0]?.trim()}-${itemData.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${amount}&accountName=${encodeURIComponent(itemData.bankAccountName || '')}`} alt="VietQR" className="w-56 h-56 object-contain rounded-xl bg-white mx-auto" />
                                                 </div>
                                             </>
                                         ) : (
@@ -974,7 +983,7 @@ export default function ApprovalWorkflow({
                                                 <div className="space-y-3">
                                                     {itemData.items.map((emp, index) => {
                                                         const isActive = activeQrIndex === index;
-                                                        const qrUrl = emp.bankAccountNumber && emp.bankName ? `https://img.vietqr.io/image/${emp.bankName?.split('-')[0]?.trim()}-${emp.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${emp.amount}&addInfo=${encodeURIComponent(qrTransferContent)}&accountName=${encodeURIComponent(emp.bankAccountName || '')}` : null;
+                                                        const qrUrl = emp.bankAccountNumber && emp.bankName ? `https://img.vietqr.io/image/${emp.bankName?.split('-')[0]?.trim()}-${emp.bankAccountNumber.replace(/\s/g, '')}-compact2.png?amount=${emp.amount}&accountName=${encodeURIComponent(emp.bankAccountName || '')}` : null;
                                                         return (
                                                             <div key={index} className="border border-slate-200 rounded-xl overflow-hidden">
                                                                 <div 

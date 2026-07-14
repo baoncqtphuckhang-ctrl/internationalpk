@@ -199,6 +199,34 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         queueMicrotask(() => { skipDraftSyncRef.current = false; });
     };
 
+    const applyDefaultAllocations = (allocations, period) => {
+        if (!allocations || allocations.length === 0) return [];
+        
+        const parts = period.split('-');
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10);
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        const N = allocations.length;
+        return allocations.map((alloc, idx) => {
+            const startDay = 1 + Math.floor((idx * daysInMonth) / N);
+            const endDay = Math.floor(((idx + 1) * daysInMonth) / N);
+            
+            const from_date = `${period}-${String(startDay).padStart(2, '0')}`;
+            const to_date = `${period}-${String(endDay).padStart(2, '0')}`;
+            
+            const diffDays = endDay - startDay + 1;
+            const ratio = Math.round((diffDays / daysInMonth) * 100);
+            
+            return {
+                ...alloc,
+                from_date,
+                to_date,
+                ratio
+            };
+        });
+    };
+
     const handleUpdateAllocation = (empId, idx, field, val, period) => {
         const isActive = period === selectedMonth && !viewingHistoryId;
 
@@ -208,6 +236,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                     if (currentPeriodAllocs[idx]) {
                         currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                        // Auto jump dates if ratio is 100%
+                        if (field === 'ratio' && val === 100) {
+                            const parts = period.split('-');
+                            const year = parseInt(parts[0], 10);
+                            const month = parseInt(parts[1], 10);
+                            const daysInMonth = new Date(year, month, 0).getDate();
+                            currentPeriodAllocs[idx].from_date = `${period}-01`;
+                            currentPeriodAllocs[idx].to_date = `${period}-${String(daysInMonth).padStart(2, '0')}`;
+                        }
                         // Auto calculate ratio if from_date or to_date changes
                         if (field === 'from_date' || field === 'to_date') {
                             const target = currentPeriodAllocs[idx];
@@ -240,6 +277,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                         if (currentPeriodAllocs[idx]) {
                             currentPeriodAllocs[idx] = { ...currentPeriodAllocs[idx], [field]: val };
+                            // Auto jump dates if ratio is 100%
+                            if (field === 'ratio' && val === 100) {
+                                const parts = period.split('-');
+                                const year = parseInt(parts[0], 10);
+                                const month = parseInt(parts[1], 10);
+                                const daysInMonth = new Date(year, month, 0).getDate();
+                                currentPeriodAllocs[idx].from_date = `${period}-01`;
+                                currentPeriodAllocs[idx].to_date = `${period}-${String(daysInMonth).padStart(2, '0')}`;
+                            }
                             // Auto calculate ratio if from_date or to_date changes
                             if (field === 'from_date' || field === 'to_date') {
                                 const target = currentPeriodAllocs[idx];
@@ -286,7 +332,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 if (emp.id === empId) {
                     const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                     currentPeriodAllocs.push(newRow);
-                    const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                    const updatedPeriodAllocs = applyDefaultAllocations(currentPeriodAllocs, period);
+                    const updatedAllocations = { ...emp.allocations, [period]: updatedPeriodAllocs };
                     return { ...emp, allocations: updatedAllocations };
                 }
                 return emp;
@@ -299,7 +346,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     if (emp.id === empId) {
                         const currentPeriodAllocs = [...(emp.allocations?.[period] || [])];
                         currentPeriodAllocs.push(newRow);
-                        const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                        const updatedPeriodAllocs = applyDefaultAllocations(currentPeriodAllocs, period);
+                        const updatedAllocations = { ...emp.allocations, [period]: updatedPeriodAllocs };
                         return { ...emp, allocations: updatedAllocations };
                     }
                     return emp;
@@ -325,7 +373,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             setEmployees(prev => prev.map(emp => {
                 if (emp.id === empId) {
                     const currentPeriodAllocs = (emp.allocations?.[period] || []).filter((_, i) => i !== idx);
-                    const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                    const updatedPeriodAllocs = applyDefaultAllocations(currentPeriodAllocs, period);
+                    const updatedAllocations = { ...emp.allocations, [period]: updatedPeriodAllocs };
                     return { ...emp, allocations: updatedAllocations };
                 }
                 return emp;
@@ -337,7 +386,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 const newEmps = monthData.employees.map(emp => {
                     if (emp.id === empId) {
                         const currentPeriodAllocs = (emp.allocations?.[period] || []).filter((_, i) => i !== idx);
-                        const updatedAllocations = { ...emp.allocations, [period]: currentPeriodAllocs };
+                        const updatedPeriodAllocs = applyDefaultAllocations(currentPeriodAllocs, period);
+                        const updatedAllocations = { ...emp.allocations, [period]: updatedPeriodAllocs };
                         return { ...emp, allocations: updatedAllocations };
                     }
                     return emp;
@@ -356,9 +406,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         }
     };
 
-    const activatePeriod = (periodId) => {
+    const activatePeriod = (periodId, skipSaveMonth = null) => {
         const prevMonth = selectedMonthRef.current;
-        if (prevMonth && prevMonth !== periodId && employeesRef.current.length > 0 && !historyRecordsRef.current[prevMonth]) {
+        if (prevMonth && prevMonth !== periodId && prevMonth !== skipSaveMonth && employeesRef.current.length > 0 && !historyRecordsRef.current[prevMonth]) {
             persistPeriodToDraft(prevMonth, employeesRef.current, globalStandardDaysRef.current);
         }
         setSelectedMonth(periodId);
@@ -534,13 +584,13 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     useEffect(() => {
-        if (!initialLoaded) return;
+        if (!initialLoaded || skipDraftSyncRef.current) return;
         const drafts = getDraftPeriods();
         if (drafts.length > 0 && !drafts.includes(selectedMonth) && !historyRecords[selectedMonth]) {
             activatePeriod(drafts[0]);
             setExpandedPeriods(prev => prev.length > 0 ? prev : [drafts[0]]);
         }
-    }, [historyRecords, draftRecords, initialLoaded]);
+    }, [historyRecords, draftRecords, initialLoaded, selectedMonth]);
 
     useEffect(() => {
         if (!initialLoaded) return;
@@ -797,6 +847,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 setDraftRecords(prev => {
                     const next = { ...prev };
                     delete next[finalPeriodName];
+                    try {
+                        localStorage.setItem('misa_draft_records', JSON.stringify(next));
+                    } catch (e) {}
                     return next;
                 });
                 setExpandedPeriods(prev => prev.filter(p => p !== finalPeriodName));
@@ -1118,10 +1171,13 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             title: 'Xóa kỳ lương nháp',
             message: `Bạn có chắc muốn XÓA VĨNH VIỄN kỳ lương nháp ${monthId} không? Các kỳ lương khác KHÔNG bị ảnh hưởng.`,
             onConfirm: async () => {
-                // Remove from draftRecords (independent - doesn't affect other periods)
+                skipDraftSyncRef.current = true;
                 setDraftRecords(prev => {
                     const next = { ...prev };
                     delete next[monthId];
+                    try {
+                        localStorage.setItem('misa_draft_records', JSON.stringify(next));
+                    } catch (e) {}
                     return next;
                 });
                 setCreatedPeriods(prev => {
@@ -1136,8 +1192,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 if (selectedMonth === monthId) {
                     const remaining = getDraftPeriods().filter(m => m !== monthId);
                     setExpandedPeriods(prev => prev.filter(p => p !== monthId));
-                    if (remaining.length > 0) activatePeriod(remaining[0]);
-                    else setSelectedMonth('');
+                    if (remaining.length > 0) {
+                        activatePeriod(remaining[0], monthId);
+                    } else {
+                        setSelectedMonth('');
+                        setEmployees([]);
+                        skipDraftSyncRef.current = false;
+                    }
+                } else {
+                    skipDraftSyncRef.current = false;
                 }
                 
                 setSystemModal({ isOpen: true, type: 'info', title: 'Thành công', message: 'Đã xóa kỳ lương nháp thành công!' });
@@ -2763,11 +2826,29 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             onClick={() => {
                                 setEmployees(prev => prev.map(emp => {
                                     if (emp.id === allocationModal.empId) {
+                                        const parts = allocationModal.month.split('-');
+                                        const year = parseInt(parts[0], 10);
+                                        const month = parseInt(parts[1], 10);
+                                        const daysInMonth = new Date(year, month, 0).getDate();
+                                        const startStr = `${allocationModal.month}-01`;
+                                        const endStr = `${allocationModal.month}-${String(daysInMonth).padStart(2, '0')}`;
+
+                                        const updatedAllocs = allocationModal.allocations.map(alloc => {
+                                            if (alloc.ratio === 100 && (!alloc.from_date || !alloc.to_date)) {
+                                                return {
+                                                    ...alloc,
+                                                    from_date: startStr,
+                                                    to_date: endStr
+                                                };
+                                            }
+                                            return alloc;
+                                        });
+
                                         return {
                                             ...emp,
                                             allocations: {
                                                 ...(emp.allocations || {}),
-                                                [allocationModal.month]: allocationModal.allocations
+                                                [allocationModal.month]: updatedAllocs
                                             }
                                         };
                                     }
