@@ -180,9 +180,14 @@ export default function Home() {
     const [dnttList, setDnttList] = useState([]);
     const [highlightedReqId, setHighlightedReqId] = useState(null);
 
-    const handleNavigateToHistoryWithId = (reqId) => {
+    const handleNavigateToHistoryWithId = (reqId, projectName) => {
         setHighlightedReqId(reqId);
-        setActiveTab('history');
+        if (projectName && projectName !== 'Chưa rõ') {
+            setSelectedProject(projectName);
+            setActiveTab('project-detail');
+        } else {
+            setActiveTab('history');
+        }
     };
     const [partnerDebts, setPartnerDebts] = useState([]);
     const [expectedInvoices, setExpectedInvoices] = useState([]);
@@ -1312,6 +1317,62 @@ export default function Home() {
         showToast('Đã xuất báo cáo chuyên nghiệp!');
     };
 
+    const adjustSalaryHistoryCashOnDelete = async (txData) => {
+        if (!txData || !txData.note) return;
+        
+        const isNotAccrued = txData.corresponding_account !== '3341' && txData.corresponding_account !== '3383';
+        if (!isNotAccrued) return;
+
+        const cleanNote = txData.note.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '');
+        const match = cleanNote.match(/\[(CHI LƯƠNG|CỘNG KHÁC|TĂNG CA)\]\s*(.+?)\s*-\s*Kỳ\s*([0-9]{4}-[0-9]{2})/i);
+        
+        if (match) {
+            const empName = match[2].trim();
+            const monthId = match[3].trim();
+            const refundAmount = Number(txData.debit) || 0;
+
+            if (refundAmount > 0) {
+                try {
+                    const { data: historyRec, error: fetchError } = await supabase
+                        .from('salary_history')
+                        .select('*')
+                        .eq('month_id', monthId)
+                        .single();
+
+                    if (!fetchError && historyRec && historyRec.employees_data) {
+                        let employeesData = historyRec.employees_data;
+                        if (typeof employeesData === 'string') {
+                            employeesData = JSON.parse(employeesData);
+                        }
+                        
+                        let updated = false;
+                        const newEmps = employeesData.map(emp => {
+                            if (emp.name && emp.name.trim() === empName) {
+                                const currentCash = Number(emp.cash) || 0;
+                                const newCash = Math.max(0, currentCash - refundAmount);
+                                updated = true;
+                                return { ...emp, cash: newCash };
+                            }
+                            return emp;
+                        });
+
+                        if (updated) {
+                            await supabase
+                                .from('salary_history')
+                                .update({ 
+                                    employees_data: newEmps,
+                                    timestamp: new Date().toISOString()
+                                })
+                                .eq('month_id', monthId);
+                        }
+                    }
+                } catch (e) {
+                    console.error('Error adjusting salary history cash on delete:', e);
+                }
+            }
+        }
+    };
+
     const handleDeleteTransaction = async (id) => {
         const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
         if (!isAuthorizer) {
@@ -1346,6 +1407,9 @@ export default function Home() {
         setIsLoading(true);
         try {
             const { data: txData } = await supabase.from('transactions').select('*').eq('id', id).single();
+            if (txData) {
+                await adjustSalaryHistoryCashOnDelete(txData);
+            }
 
             await moveToTrash('transactions', 'id', id);
             const { error } = await supabase.from('transactions').delete().eq('id', id);
@@ -2054,6 +2118,18 @@ export default function Home() {
                             }
                         }
                     } catch(e) {}
+                }
+            }
+
+            // If it is a transaction deletion request, fetch it and adjust salary history cash
+            if (request.original_table === 'transactions') {
+                try {
+                    const { data: txData } = await supabase.from('transactions').select('*').eq('id', request.record_id).single();
+                    if (txData) {
+                        await adjustSalaryHistoryCashOnDelete(txData);
+                    }
+                } catch (e) {
+                    console.error('Error fetching/adjusting transaction on delete approval:', e);
                 }
             }
 
@@ -3509,6 +3585,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                         onApprove={handleApproveDeleteRequest}
                         onReject={handleRejectDeleteRequest}
                         isLoading={isLoading}
+                        onNavigateToHistoryWithId={handleNavigateToHistoryWithId}
                     />
                 )}
 

@@ -197,24 +197,41 @@ export default function ApprovalWorkflow({
     const handleSubmit = async (e) => {
         if(e) e.preventDefault();
         setFormError('');
-        if (dnttTotalAmount <= 0) return setFormError("Chưa nhập số tiền thanh toán! Vui lòng điền 'Thành tiền' ở phần A.");
+
+        // Lọc bỏ những dòng không có số tiền hoặc số tiền <= 0
+        const activeItems = dnttData.items.filter(item => {
+            const amountVal = parseFloat(item.amount);
+            return !isNaN(amountVal) && amountVal > 0;
+        });
+
+        if (activeItems.length === 0) {
+            return setFormError("Chưa nhập số tiền thanh toán hoặc danh sách trống!");
+        }
+
+        const finalTotalAmount = activeItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
+
         if (!dnttData.project) return setFormError("Vui lòng chọn Công trình!");
 
-        if (dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') {
-            const hasEmptySTK = dnttData.items.some(item => !item.bankAccountNumber || item.bankAccountNumber.trim() === '');
+        const cleanedDnttData = {
+            ...dnttData,
+            items: activeItems
+        };
+
+        if (cleanedDnttData.docType === 'TTL' || cleanedDnttData.docType === 'DNTUCH') {
+            const hasEmptySTK = cleanedDnttData.items.some(item => !item.bankAccountNumber || item.bankAccountNumber.trim() === '');
             if (hasEmptySTK) return setFormError("Vui lòng nhập Số tài khoản (SỐ TK) cho tất cả các đối tượng!");
         } else {
-            if (dnttData.paymentMethod === 'chuyen_khoan' && (!dnttData.bankAccountNumber || dnttData.bankAccountNumber.trim() === '')) {
+            if (cleanedDnttData.paymentMethod === 'chuyen_khoan' && (!cleanedDnttData.bankAccountNumber || cleanedDnttData.bankAccountNumber.trim() === '')) {
                 return setFormError("Vui lòng nhập Số tài khoản trong phần Hình thức nhận tiền!");
             }
         }
 
         const payload = {
-            doc_type: dnttData.docType,
-            project_name: dnttData.project,
-            recipient: dnttData.recipient,
-            total_amount: dnttTotalAmount,
-            reason: JSON.stringify(dnttData)
+            doc_type: cleanedDnttData.docType,
+            project_name: cleanedDnttData.project,
+            recipient: cleanedDnttData.recipient,
+            total_amount: finalTotalAmount,
+            reason: JSON.stringify(cleanedDnttData)
         };
 
         if (editingId && onUpdateDNTT) {

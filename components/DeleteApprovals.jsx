@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Trash2, Check, X, ShieldAlert, Calendar, User, FileText, Building2 } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
 
-export default function DeleteApprovals({ deleteRequests = [], onApprove, onReject, isLoading }) {
+export default function DeleteApprovals({ deleteRequests = [], onApprove, onReject, isLoading, onNavigateToHistoryWithId }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, action: null, request: null });
 
     const getTableLabel = (tableName) => {
@@ -120,7 +120,16 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
                                 </thead>
                                 <tbody className="divide-y divide-slate-100 text-sm">
                                     {deleteRequests.map((req, index) => (
-                                        <tr key={req.id} className="hover:bg-slate-50/80 transition">
+                                        <tr 
+                                            key={req.id} 
+                                            onDoubleClick={() => {
+                                                if (onNavigateToHistoryWithId && (req.original_table === 'transactions' || req.original_table === 'approval_requests')) {
+                                                    onNavigateToHistoryWithId(req.record_id, getProjectName(req));
+                                                }
+                                            }}
+                                            className="hover:bg-slate-50/80 transition cursor-pointer select-none"
+                                            title="Đúp chuột để đi đến Chi tiết chi công trình và làm nổi bật dòng giao dịch này"
+                                        >
                                             <td className="py-4 px-4 text-center font-bold text-slate-400">{index + 1}</td>
                                             <td className="py-4 px-4 font-bold">
                                                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">

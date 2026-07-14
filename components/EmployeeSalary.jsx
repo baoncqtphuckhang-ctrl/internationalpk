@@ -649,9 +649,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 draftMap[m] = recordData;
                             }
                         } else {
-                            if (!historyMap[item.month_id] || new Date(recordData.timestamp) > new Date(historyMap[item.month_id].timestamp || 0)) {
-                                historyMap[item.month_id] = recordData;
-                            }
+                            // History records are finalized and DB is source of truth, always overwrite
+                            historyMap[item.month_id] = recordData;
                         }
                     });
                 }
@@ -661,6 +660,10 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
 
             setHistoryRecords(historyMap);
             setDraftRecords(draftMap);
+            try {
+                localStorage.setItem('misa_salary_history', JSON.stringify(historyMap));
+                localStorage.setItem('misa_draft_records', JSON.stringify(draftMap));
+            } catch (e) {}
 
             const draftKeys = Object.keys(draftMap).filter(m => !historyMap[m]);
             if (draftKeys.length > 0) {
@@ -738,7 +741,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             laptop_allowance: Number(newEmpData.laptop_allowance) || 0,
             insurance_salary: Number(newEmpData.insurance_salary) || 0,
             leave_balance: Number(newEmpData.leave_balance) || 0,
-            advance: 0, other_deductions: 0, other_additions: 0, cash: 0, notes: '', bank_account: '', bank_account_name: '', bank_name: '',
+            advance: 0, other_deductions: 0, other_additions: 0, overtime_pay: 0, cash: 0, notes: '', bank_account: '', bank_account_name: '', bank_name: '',
             attendance: { [selectedMonth]: getDefaultAttendance(y, m) },
             isDepartment: false
         };
@@ -947,7 +950,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     const handleCreatePaymentTransaction = async () => {
-        const { empName, department, code, bhxhCode, corresponding_account, recipient, note, allocations, globalStandardDays, monthId, actualSalary, companyBhxh, otherAdditions } = paymentModal;
+        const { empName, department, code, bhxhCode, corresponding_account, recipient, note, allocations, globalStandardDays, monthId, actualSalary, companyBhxh, otherAdditions, overtimePay = 0, otherAdditionsCode = '811', otherAdditionsAccount = '3341', overtimeCode = '6421', overtimeAccount = '3341' } = paymentModal;
         
         const isTechnical = department === 'KỸ THUẬT' || department === 'KỸ THUẬT GONDOLA';
         const stdDays = globalStandardDays || 26;
@@ -956,9 +959,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const baseNote = note || `[HẠCH TOÁN LƯƠNG] ${empName} - Kỳ ${monthId}`;
         const finalRecipient = recipient || empName;
 
-        const totalSalary = actualSalary + otherAdditions;
-        const validAllocs = allocations.filter(a => a.project_name);
+        const totalSalary = actualSalary;
+        const totalOther = otherAdditions;
+        const totalOvertime = overtimePay;
+        const totalOverall = totalSalary + totalOther + totalOvertime;
         
+        const validAllocs = allocations.filter(a => a.project_name);
         if (validAllocs.length === 0) return setSystemModal({isOpen: true, type: 'info', title: 'Lỗi', message: 'Vui lòng chọn ít nhất 1 công trình phân bổ!'});
         
         const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
@@ -974,6 +980,30 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     recipient: finalRecipient,
                     debit: totalSalary,
                     note: baseNote,
+                    created_by: currentUser.username
+                });
+            }
+            if (totalOther > 0) {
+                txsToInsert.push({
+                    project_name: validAllocs[0].project_name,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    code: otherAdditionsCode,
+                    corresponding_account: otherAdditionsAccount,
+                    recipient: finalRecipient,
+                    debit: totalOther,
+                    note: `[CỘNG KHÁC] ${empName} - Kỳ ${monthId}`,
+                    created_by: currentUser.username
+                });
+            }
+            if (totalOvertime > 0) {
+                txsToInsert.push({
+                    project_name: validAllocs[0].project_name,
+                    accounting_date: new Date().toISOString().split('T')[0],
+                    code: overtimeCode,
+                    corresponding_account: overtimeAccount,
+                    recipient: finalRecipient,
+                    debit: totalOvertime,
+                    note: `[TĂNG CA] ${empName} - Kỳ ${monthId}`,
                     created_by: currentUser.username
                 });
             }
@@ -994,6 +1024,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 const ratioVal = Number(a.ratio) || 0;
                 if (ratioVal > 0) {
                     const salaryAlloc = Math.round((totalSalary * ratioVal) / 100);
+                    const otherAlloc = Math.round((totalOther * ratioVal) / 100);
+                    const ovrAlloc = Math.round((totalOvertime * ratioVal) / 100);
                     const bhxhAlloc = Math.round((companyBhxh * ratioVal) / 100);
 
                     if (salaryAlloc > 0) {
@@ -1005,6 +1037,30 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             recipient: finalRecipient,
                             debit: salaryAlloc,
                             note: `${baseNote} (${ratioVal}%)`,
+                            created_by: currentUser.username
+                        });
+                    }
+                    if (otherAlloc > 0) {
+                        txsToInsert.push({
+                            project_name: a.project_name,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: otherAdditionsCode,
+                            corresponding_account: otherAdditionsAccount,
+                            recipient: finalRecipient,
+                            debit: otherAlloc,
+                            note: `[CỘNG KHÁC] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
+                            created_by: currentUser.username
+                        });
+                    }
+                    if (ovrAlloc > 0) {
+                        txsToInsert.push({
+                            project_name: a.project_name,
+                            accounting_date: new Date().toISOString().split('T')[0],
+                            code: overtimeCode,
+                            corresponding_account: overtimeAccount,
+                            recipient: finalRecipient,
+                            debit: ovrAlloc,
+                            note: `[TĂNG CA] ${empName} - Kỳ ${monthId} (${ratioVal}%)`,
                             created_by: currentUser.username
                         });
                     }
@@ -1035,6 +1091,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
                 
                 const salaryAlloc = Math.round((totalSalary / stdDays) * diffDays);
+                const otherAlloc = Math.round((totalOther / stdDays) * diffDays);
+                const ovrAlloc = Math.round((totalOvertime / stdDays) * diffDays);
                 const bhxhAlloc = Math.round((companyBhxh / stdDays) * diffDays);
 
                 if (salaryAlloc > 0) {
@@ -1046,6 +1104,30 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         recipient: finalRecipient,
                         debit: salaryAlloc,
                         note: `${baseNote} (${diffDays} ngày)`,
+                        created_by: currentUser.username
+                    });
+                }
+                if (otherAlloc > 0) {
+                    txsToInsert.push({
+                        project_name: a.project_name,
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        code: otherAdditionsCode,
+                        corresponding_account: otherAdditionsAccount,
+                        recipient: finalRecipient,
+                        debit: otherAlloc,
+                        note: `[CỘNG KHÁC] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
+                        created_by: currentUser.username
+                    });
+                }
+                if (ovrAlloc > 0) {
+                    txsToInsert.push({
+                        project_name: a.project_name,
+                        accounting_date: new Date().toISOString().split('T')[0],
+                        code: overtimeCode,
+                        corresponding_account: overtimeAccount,
+                        recipient: finalRecipient,
+                        debit: ovrAlloc,
+                        note: `[TĂNG CA] ${empName} - Kỳ ${monthId} (${diffDays} ngày)`,
                         created_by: currentUser.username
                     });
                 }
@@ -1381,8 +1463,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const adv = Number(emp.advance) || 0;
         const ded = Number(emp.other_deductions) || 0;
         const add = Number(emp.other_additions) || 0;
+        const ovr = Number(emp.overtime_pay) || 0;
         
-        const actual_receive_raw = total_actual_salary_8 - nld_total_9 - adv - ded + add;
+        const actual_receive_raw = total_actual_salary_8 - nld_total_9 - adv - ded + add + ovr;
         const actual_receive = Math.ceil(actual_receive_raw / 1000) * 1000;
         
         const cash = Number(emp.cash) || 0;
@@ -1453,7 +1536,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     const displayEmployees = viewingHistoryId && historyRecords[viewingHistoryId] ? historyRecords[viewingHistoryId].employees : employees;
-    const calculatedEmployees = viewingHistoryId && historyRecords[viewingHistoryId] ? displayEmployees : displayEmployees.map(e => calculateRow(e));
+    const calculatedEmployees = viewingHistoryId && historyRecords[viewingHistoryId] 
+        ? displayEmployees.map(e => calculateRow(e, viewingHistoryId, historyRecords[viewingHistoryId].globalStandardDays))
+        : displayEmployees.map(e => calculateRow(e));
 
     const totals = calculatedEmployees.reduce((acc, emp) => {
         if (emp.isDepartment) return acc;
@@ -1481,6 +1566,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         acc.advance += Number(emp.advance) || 0;
         acc.other_deductions += Number(emp.other_deductions) || 0;
         acc.other_additions += Number(emp.other_additions) || 0;
+        acc.overtime_pay += Number(emp.overtime_pay) || 0;
         acc.actual_receive += emp.calculated.actual_receive;
         acc.cash += Number(emp.cash) || 0;
         acc.remaining += emp.calculated.remaining;
@@ -1490,7 +1576,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         total_actual_salary_8: 0, insurance_salary: 0,
         dn_bhxh: 0, dn_bhyt: 0, dn_tnld: 0, dn_bhtn: 0, dn_total: 0,
         nld_bhxh: 0, nld_bhyt: 0, nld_bhtn: 0, nld_total_9: 0,
-        advance: 0, other_deductions: 0, other_additions: 0, actual_receive: 0, cash: 0, remaining: 0
+        advance: 0, other_deductions: 0, other_additions: 0, overtime_pay: 0, actual_receive: 0, cash: 0, remaining: 0
     });
 
     const fmt = (val) => val ? new Intl.NumberFormat('vi-VN').format(val) : '0';
@@ -1523,8 +1609,6 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             <th rowspan="2">TỔNG THU NHẬP<br/>(5)=(1)+(2)+(3)+(4)</th>
                             <th rowspan="2">NGÀY CÔNG THỰC TẾ<br/>(6)</th>
                             <th rowspan="2">CÔNG CHUẨN<br/>(7)</th>
-                            <th rowspan="2">TĂNG CA<br/>(GIỜ)</th>
-                            <th rowspan="2">LƯƠNG TĂNG CA</th>
                             <th rowspan="2">TỔNG LƯƠNG THỰC TẾ<br/>(8)</th>
                             <th rowspan="2">LƯƠNG ĐÓNG BHXH</th>
                             <th colspan="5">CÁC KHOẢN PHÍ TÍNH VÀO CHI PHÍ DN</th>
@@ -1532,7 +1616,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                             <th rowspan="2">TẠM ỨNG<br/>(10)</th>
                             <th rowspan="2">TRỪ KHÁC<br/>(11)</th>
                             <th rowspan="2">CỘNG KHÁC<br/>(12)</th>
-                            <th rowspan="2">THỰC LÃNH<br/>(8)-(9)-(10)-(11)+(12)</th>
+                            <th rowspan="2">TĂNG CA<br/>(13)</th>
+                            <th rowspan="2">THỰC LÃNH<br/>(8)-(9)-(10)-(11)+(12)+(13)</th>
                             <th rowspan="2">CHI TIỀN MẶT</th>
                             <th rowspan="2">CÒN LẠI</th>
                             <th rowspan="2">GHI CHÚ</th>
@@ -1592,6 +1677,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         <td class="text-right">${fmt(emp.advance)}</td>
                         <td class="text-right">${fmt(emp.other_deductions)}</td>
                         <td class="text-right">${fmt(emp.other_additions)}</td>
+                        <td class="text-right">${fmt(emp.overtime_pay)}</td>
                         <td class="text-right">${fmt(emp.calculated.actual_receive)}</td>
                         <td class="text-right">${fmt(emp.cash)}</td>
                         <td class="text-right">${fmt(emp.calculated.remaining)}</td>
@@ -1616,8 +1702,6 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <td class="text-right">${fmt(totals.total_income_5)}</td>
                 <td></td>
                 <td></td>
-                <td></td>
-                <td class="text-right">${fmt(totals.overtime_pay)}</td>
                 <td class="text-right">${fmt(totals.total_actual_salary_8)}</td>
                 <td class="text-right">${fmt(totals.insurance_salary)}</td>
                 <td class="text-right">${fmt(totals.dn_bhxh)}</td>
@@ -1632,6 +1716,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <td class="text-right">${fmt(totals.advance)}</td>
                 <td class="text-right">${fmt(totals.other_deductions)}</td>
                 <td class="text-right">${fmt(totals.other_additions)}</td>
+                <td class="text-right">${fmt(totals.overtime_pay)}</td>
                 <td class="text-right">${fmt(totals.actual_receive)}</td>
                 <td class="text-right">${fmt(totals.cash)}</td>
                 <td class="text-right">${fmt(totals.remaining)}</td>
@@ -1685,6 +1770,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             acc.advance += Number(emp.advance) || 0;
             acc.other_deductions += Number(emp.other_deductions) || 0;
             acc.other_additions += Number(emp.other_additions) || 0;
+            acc.overtime_pay += Number(emp.overtime_pay) || 0;
             acc.actual_receive += emp.calculated?.actual_receive || 0;
             acc.cash += Number(emp.cash) || 0;
             acc.remaining += emp.calculated?.remaining || 0;
@@ -1694,7 +1780,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             total_actual_salary_8: 0, insurance_salary: 0,
             dn_bhxh: 0, dn_bhyt: 0, dn_tnld: 0, dn_bhtn: 0, dn_total: 0,
             nld_bhxh: 0, nld_bhyt: 0, nld_bhtn: 0, nld_total_9: 0,
-            advance: 0, other_deductions: 0, other_additions: 0, actual_receive: 0, cash: 0, remaining: 0
+            advance: 0, other_deductions: 0, other_additions: 0, overtime_pay: 0, actual_receive: 0, cash: 0, remaining: 0
         });
         let localStt = 0;
         return (
@@ -1718,7 +1804,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TẠM ỨNG<br/><span className="text-[10px] text-slate-500">(10)</span></th>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">TRỪ KHÁC<br/><span className="text-[10px] text-slate-500">(11)</span></th>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-emerald-50 w-20">CỘNG KHÁC<br/><span className="text-[10px] text-slate-500">(12)</span></th>
-                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">THỰC LÃNH<br/><span className="text-[10px] text-slate-500">(8)-(9)-(10)-(11)+(12)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 bg-amber-50 w-20">TĂNG CA<br/><span className="text-[10px] text-slate-500">(13)</span></th>
+                <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">THỰC LÃNH<br/><span className="text-[10px] text-slate-500">(8)-(9)-(10)-(11)+(12)+(13)</span></th>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CHI TIỀN MẶT</th>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 w-24">CÒN LẠI</th>
                 <th rowSpan="2" className="border border-slate-300 p-1 text-center font-bold text-slate-700 min-w-[150px]">GHI CHÚ</th>
@@ -1846,6 +1933,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         <td className="border border-slate-300 p-0 bg-emerald-50/50">
                             <NumberInput value={emp.other_additions} onChange={(val) => handleChange(emp.id, 'other_additions', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right text-emerald-700" />
                         </td>
+                        <td className="border border-slate-300 p-0 bg-amber-50/50">
+                            <NumberInput value={emp.overtime_pay} onChange={(val) => handleChange(emp.id, 'overtime_pay', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right font-bold text-amber-700" />
+                        </td>
                         
                         <td className="border border-slate-300 p-1 px-2 text-right font-black text-blue-700 text-sm">{formatCurrency(emp.calculated.actual_receive).replace('₫', '')}</td>
                         
@@ -1899,9 +1989,14 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                         actualSalary: emp.calculated.total_actual_salary_8 || 0,
                                                         companyBhxh: emp.calculated.dn_total || 0,
                                                         otherAdditions: Number(emp.other_additions) || 0,
+                                                        overtimePay: Number(emp.overtime_pay) || 0,
                                                         remaining: emp.calculated.remaining || 0,
                                                         code: '6421', 
                                                         corresponding_account: '1111', 
+                                                        otherAdditionsCode: '811',
+                                                        otherAdditionsAccount: '1111',
+                                                        overtimeCode: '6421',
+                                                        overtimeAccount: '1111',
                                                         recipient: emp.name, 
                                                         note: `[CHI LƯƠNG] ${emp.name} - Kỳ ${targetPeriod}`, 
                                                         allocations: initialAllocs, 
@@ -1950,6 +2045,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.advance).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.other_deductions).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.other_additions).replace('₫', '')}</td>
+                <td className="border border-slate-700 p-2 text-right text-amber-300">{formatCurrency(periodTotals.overtime_pay).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-right text-blue-300 text-sm">{formatCurrency(periodTotals.actual_receive).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-right">{formatCurrency(periodTotals.cash).replace('₫', '')}</td>
                 <td className="border border-slate-700 p-2 text-right text-emerald-300">{formatCurrency(periodTotals.remaining).replace('₫', '')}</td>
@@ -2870,18 +2966,21 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             const validAllocs = paymentModal.allocations.filter(a => a.project_name);
             const hasProjects = validAllocs.length > 0;
             const totalRatio = validAllocs.reduce((sum, a) => sum + (Number(a.ratio) || 0), 0);
-            const totalSalary = paymentModal.actualSalary + paymentModal.otherAdditions;
+            const totalSalary = paymentModal.actualSalary;
+            const totalOther = paymentModal.otherAdditions;
+            const totalOvertime = paymentModal.overtimePay || 0;
+            const totalOverall = totalSalary + totalOther + totalOvertime;
             const companyBhxh = paymentModal.companyBhxh;
             
             return (
                 <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200 p-4">
-                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl overflow-hidden flex flex-col max-h-[95vh] pointer-events-auto">
+                    <div className="bg-white rounded-2xl shadow-2xl w-full max-w-6xl overflow-hidden flex flex-col max-h-[95vh] pointer-events-auto">
                         <div className="bg-slate-900 px-6 py-4 flex justify-between items-center shrink-0">
                             <div>
                                 <h3 className="text-xl font-bold text-white">Hạch toán Lương & Phụ Cấp</h3>
                                 <p className="text-slate-400 text-sm mt-1">Nhân viên: <span className="font-bold text-white">{paymentModal.empName}</span> - Kỳ: {paymentModal.monthId}</p>
                             </div>
-                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0})} className="text-slate-400 hover:text-white transition"><X /></button>
+                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '3341', otherAdditionsCode: '811', otherAdditionsAccount: '1111', overtimeCode: '6421', overtimeAccount: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, overtimePay: 0, remaining: 0})} className="text-slate-400 hover:text-white transition"><X /></button>
                         </div>
                         
                         <div className="p-6 overflow-y-auto custom-scrollbar space-y-6 bg-slate-50 flex-1">
@@ -2892,29 +2991,22 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 </div>
                             ) : (
                                 <>
-                                    {/* 2 CỘT: TỔNG THU NHẬP và BHXH CÔNG TY ĐÓNG */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                        {/* CỘT 1: TỔNG THU NHẬP */}
-                                        <div className="bg-white border-2 border-blue-200 rounded-xl overflow-hidden shadow-sm">
-                                            <div className="bg-blue-50 px-4 py-3 border-b border-blue-200 flex justify-between items-center">
-                                                <h4 className="font-black text-blue-800 text-base">1. TỔNG THU NHẬP</h4>
-                                                <span className="font-black text-blue-600 text-lg">{formatCurrency(totalSalary)} ₫</span>
+                                    {/* 4 CỘT: LƯƠNG & PHỤ CẤP, CỘNG KHÁC, TĂNG CA, BHXH */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                                        {/* CỘT 1: LƯƠNG & PHỤ CẤP */}
+                                        <div className="bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-blue-50 px-3 py-2 border-b border-blue-200 flex justify-between items-center">
+                                                <h4 className="font-black text-blue-800 text-[11px]">1. LƯƠNG & PHỤ CẤP</h4>
+                                                <span className="font-black text-blue-600 text-sm">{formatCurrency(totalSalary)} ₫</span>
                                             </div>
-                                            <div className="p-4 space-y-4">
+                                            <div className="p-3 space-y-3">
                                                 <div>
-                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Mã chi phí (Nợ)</label>
-                                                    <select value={paymentModal.code} onChange={e => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none">
-                                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                                        <option value="154">154 - Chi phí SXKD dở dang</option>
-                                                        <option value="3341">3341 - Phải trả người lao động</option>
-                                                    </select>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Mã chi</label>
+                                                    <input type="text" list="salary-code-list" value={paymentModal.code} onChange={e => setPaymentModal({...paymentModal, code: e.target.value})} className="w-full border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 focus:border-blue-500 outline-none text-xs" placeholder="Nhập/Chọn mã..." />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
-                                                    <select value={paymentModal.corresponding_account} onChange={e => setPaymentModal({...paymentModal, corresponding_account: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-blue-500 outline-none bg-amber-50">
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select value={paymentModal.corresponding_account} onChange={e => setPaymentModal({...paymentModal, corresponding_account: e.target.value})} className="w-full border border-slate-200 rounded md:px-2 md:py-1 font-bold text-slate-800 focus:border-blue-500 outline-none bg-amber-50 text-xs">
                                                         <option value="3341">3341 - Phải trả người lao động</option>
                                                         <option value="1111">1111 - Tiền mặt</option>
                                                         <option value="1121">1121 - Tiền gửi ngân hàng</option>
@@ -2923,33 +3015,89 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                             </div>
                                         </div>
 
-                                        {/* CỘT 2: BHXH CÔNG TY ĐÓNG */}
-                                        <div className="bg-white border-2 border-emerald-200 rounded-xl overflow-hidden shadow-sm">
-                                            <div className="bg-emerald-50 px-4 py-3 border-b border-emerald-200 flex justify-between items-center">
-                                                <h4 className="font-black text-emerald-800 text-base">2. BHXH CÔNG TY ĐÓNG</h4>
-                                                <span className="font-black text-emerald-600 text-lg">{formatCurrency(companyBhxh)} ₫</span>
+                                        {/* CỘT 2: CỘNG KHÁC */}
+                                        <div className="bg-white border border-purple-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-purple-50 px-3 py-2 border-b border-purple-200 flex justify-between items-center">
+                                                <h4 className="font-black text-purple-800 text-[11px]">2. CỘNG KHÁC</h4>
+                                                <span className="font-black text-purple-600 text-sm">{formatCurrency(totalOther)} ₫</span>
                                             </div>
-                                            <div className="p-4 space-y-4">
+                                            <div className="p-3 space-y-3">
                                                 <div>
-                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Mã chi phí (Nợ)</label>
-                                                    <select value={paymentModal.bhxhCode || paymentModal.code} onChange={e => setPaymentModal({...paymentModal, bhxhCode: e.target.value})} className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:border-emerald-500 outline-none">
-                                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
-                                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
-                                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
-                                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
-                                                        <option value="154">154 - Chi phí SXKD dở dang</option>
-                                                        <option value="3341">3341 - Phải trả người lao động</option>
-                                                    </select>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Mã chi</label>
+                                                    <input type="text" list="other-code-list" value={paymentModal.otherAdditionsCode || '811'} onChange={e => setPaymentModal({...paymentModal, otherAdditionsCode: e.target.value})} className="w-full border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 focus:border-purple-500 outline-none text-xs" placeholder="Nhập/Chọn mã..." />
                                                 </div>
                                                 <div>
-                                                    <label className="block text-xs font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
-                                                    <select disabled className="w-full border-2 border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-500 bg-slate-100 cursor-not-allowed appearance-none">
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select value={paymentModal.otherAdditionsAccount || paymentModal.corresponding_account} onChange={e => setPaymentModal({...paymentModal, otherAdditionsAccount: e.target.value})} className="w-full border border-slate-200 rounded md:px-2 md:py-1 font-bold text-slate-800 focus:border-purple-500 outline-none bg-amber-50 text-xs">
+                                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                                        <option value="1111">1111 - Tiền mặt</option>
+                                                        <option value="1121">1121 - Tiền gửi ngân hàng</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CỘT 3: TĂNG CA */}
+                                        <div className="bg-white border border-amber-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-amber-50 px-3 py-2 border-b border-amber-200 flex justify-between items-center">
+                                                <h4 className="font-black text-amber-800 text-[11px]">3. TĂNG CA</h4>
+                                                <span className="font-black text-amber-600 text-sm">{formatCurrency(totalOvertime)} ₫</span>
+                                            </div>
+                                            <div className="p-3 space-y-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Mã chi</label>
+                                                    <input type="text" list="salary-code-list" value={paymentModal.overtimeCode || paymentModal.code} onChange={e => setPaymentModal({...paymentModal, overtimeCode: e.target.value})} className="w-full border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 focus:border-amber-500 outline-none text-xs" placeholder="Nhập/Chọn mã..." />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select value={paymentModal.overtimeAccount || paymentModal.corresponding_account} onChange={e => setPaymentModal({...paymentModal, overtimeAccount: e.target.value})} className="w-full border border-slate-200 rounded md:px-2 md:py-1 font-bold text-slate-800 focus:border-amber-500 outline-none bg-amber-50 text-xs">
+                                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                                        <option value="1111">1111 - Tiền mặt</option>
+                                                        <option value="1121">1121 - Tiền gửi ngân hàng</option>
+                                                    </select>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* CỘT 4: BHXH CÔNG TY ĐÓNG */}
+                                        <div className="bg-white border border-emerald-200 rounded-xl overflow-hidden shadow-sm">
+                                            <div className="bg-emerald-50 px-3 py-2 border-b border-emerald-200 flex justify-between items-center">
+                                                <h4 className="font-black text-emerald-800 text-[11px]">4. BHXH ĐÓNG</h4>
+                                                <span className="font-black text-emerald-600 text-sm">{formatCurrency(companyBhxh)} ₫</span>
+                                            </div>
+                                            <div className="p-3 space-y-3">
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Mã chi</label>
+                                                    <input type="text" list="salary-code-list" value={paymentModal.bhxhCode || paymentModal.code} onChange={e => setPaymentModal({...paymentModal, bhxhCode: e.target.value})} className="w-full border border-slate-200 rounded px-2 py-1 font-bold text-slate-800 focus:border-emerald-500 outline-none text-xs" placeholder="Nhập/Chọn mã..." />
+                                                </div>
+                                                <div>
+                                                    <label className="block text-[10px] font-bold text-slate-500 mb-1">Tài khoản đối ứng (Có)</label>
+                                                    <select disabled className="w-full border border-slate-200 rounded md:px-2 md:py-1 font-bold text-slate-500 bg-slate-100 cursor-not-allowed appearance-none text-xs">
                                                         <option value="3383">3383 - Bảo hiểm xã hội</option>
                                                     </select>
                                                 </div>
                                             </div>
                                         </div>
                                     </div>
+
+                                    <datalist id="salary-code-list">
+                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác / Nhân viên</option>
+                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                    </datalist>
+
+                                    <datalist id="other-code-list">
+                                        <option value="811">811 - Chi phí khác</option>
+                                        <option value="6421">6421 - Chi phí nhân viên bán hàng</option>
+                                        <option value="6422">6422 - Chi phí nhân viên quản lý</option>
+                                        <option value="6427">6427 - Chi phí QLDN bằng tiền khác</option>
+                                        <option value="622">622 - Chi phí nhân công trực tiếp</option>
+                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                        <option value="3341">3341 - Phải trả người lao động</option>
+                                    </datalist>
 
                                     {/* BẢNG PHÂN BỔ CÔNG TRÌNH */}
                                     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -2965,7 +3113,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                     <tr>
                                                         <th className="py-2 px-4">Công trình</th>
                                                         <th className="py-2 px-4 text-center">Tỷ lệ / Ngày</th>
-                                                        <th className="py-2 px-4 text-right text-blue-800">Thu nhập (Nợ)</th>
+                                                        <th className="py-2 px-4 text-right text-blue-800">Tổng thu nhập</th>
                                                         <th className="py-2 px-4 text-right text-emerald-800">BHXH (Nợ)</th>
                                                     </tr>
                                                 </thead>
@@ -2978,7 +3126,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                         if (isRatioMode) {
                                                             const r = Number(a.ratio) || 0;
                                                             pctLabel = `${r}%`;
-                                                            sAlloc = Math.round((totalSalary * r) / 100);
+                                                            sAlloc = Math.round((totalOverall * r) / 100);
                                                             bAlloc = Math.round((companyBhxh * r) / 100);
                                                         } else {
                                                             const from = new Date(a.from_date);
@@ -2987,7 +3135,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                                 const diffDays = Math.ceil(Math.abs(to - from) / (1000 * 60 * 60 * 24)) + 1;
                                                                 pctLabel = `${diffDays} ngày`;
                                                                 const std = paymentModal.globalStandardDays || 26;
-                                                                sAlloc = Math.round((totalSalary / std) * diffDays);
+                                                                sAlloc = Math.round((totalOverall / std) * diffDays);
                                                                 bAlloc = Math.round((companyBhxh / std) * diffDays);
                                                             } else {
                                                                 pctLabel = "Lỗi ngày";
@@ -3006,7 +3154,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                                     })}
                                                     <tr className="bg-slate-100 font-black text-slate-900 border-t-2 border-slate-200">
                                                         <td className="py-2 px-4" colSpan={2}>TỔNG CỘNG HẠCH TOÁN</td>
-                                                        <td className="py-2 px-4 text-right text-blue-700 text-base">{formatCurrency(totalSalary)} ₫</td>
+                                                        <td className="py-2 px-4 text-right text-blue-700 text-base">{formatCurrency(totalOverall)} ₫</td>
                                                         <td className="py-2 px-4 text-right text-emerald-700 text-base">{formatCurrency(companyBhxh)} ₫</td>
                                                     </tr>
                                                 </tbody>
@@ -3029,7 +3177,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </div>
                         
                         <div className="p-4 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0 rounded-b-2xl">
-                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0})} className="px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', otherAdditionsCode: '811', otherAdditionsAccount: '3341', overtimeCode: '6427', overtimeAccount: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, overtimePay: 0, remaining: 0})} className="px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
                                 Hủy bỏ
                             </button>
                             <button 

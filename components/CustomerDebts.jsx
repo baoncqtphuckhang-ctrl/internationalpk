@@ -27,6 +27,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     const [searchTerm, setSearchTerm] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
     const [monthFilter, setMonthFilter] = useState('');
+    const [unissuedOnlyFilter, setUnissuedOnlyFilter] = useState(false);
     const [uploadingId, setUploadingId] = useState(null);
     const [confirmDelete, setConfirmDelete] = useState({ isOpen: false, debt: null });
     const [visibleColumns, setVisibleColumns] = useState(() => {
@@ -234,7 +235,14 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 matchMonth = d.invoiceDate && d.invoiceDate.includes(monthFilter);
             }
             
-            return matchProject && matchSearch && matchMonth;
+            let matchUnissued = true;
+            if (unissuedOnlyFilter) {
+                const hasInvoice = d.invoiceNo && d.invoiceNo.trim() !== '' && d.invoiceNo !== '-';
+                const isAdvance = d.phase.toLowerCase().includes('tạm ứng') || d.phase.toLowerCase().includes('tam ung');
+                matchUnissued = !hasInvoice && !isAdvance;
+            }
+            
+            return matchProject && matchSearch && matchMonth && matchUnissued;
         });
 
         if (monthFilter) {
@@ -254,7 +262,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             });
         }
         return filtered;
-    }, [debtData, searchTerm, projectFilter, monthFilter]);
+    }, [debtData, searchTerm, projectFilter, monthFilter, unissuedOnlyFilter]);
 
     const totalRemaining = filteredDebtData.reduce((sum, d) => sum + d.remainingAmount, 0);
 
@@ -632,6 +640,17 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 title="Lọc theo tháng hóa đơn"
                             />
                         </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                            <input
+                                type="checkbox"
+                                checked={unissuedOnlyFilter}
+                                onChange={(e) => setUnissuedOnlyFilter(e.target.checked)}
+                                className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-4 w-4 transition duration-150 ease-in-out cursor-pointer"
+                            />
+                            <span className="text-xs font-bold text-slate-600">Chỉ hiện hóa đơn chưa xuất chính (trừ tạm ứng)</span>
+                        </label>
                     </div>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">

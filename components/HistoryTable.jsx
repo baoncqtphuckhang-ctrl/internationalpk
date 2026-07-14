@@ -215,7 +215,10 @@ export default function HistoryTable({
 
     useEffect(() => {
         if (highlightedReqId && transactions.length > 0) {
-            const tx = transactions.find(t => t.note?.includes(`[ID:${highlightedReqId}]`));
+            const tx = transactions.find(t => 
+                (t.note && t.note.includes(`[ID:${highlightedReqId}]`)) || 
+                t.id.toString() === highlightedReqId.toString()
+            );
             if (tx) {
                 setTimeout(() => {
                     const el = document.getElementById('row-' + tx.id);

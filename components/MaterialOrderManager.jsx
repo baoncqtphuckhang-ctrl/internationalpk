@@ -1675,6 +1675,13 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                     <Eye size={11} /> {inv.number ? (inv.number.length > 5 ? inv.number.substring(0,5)+'..' : inv.number) : ('HĐ ' + (idx + 1))}
                                                                                 </a>
                                                                             ))}
+                                                                            <button 
+                                                                                onClick={(e) => { e.stopPropagation(); openInvoiceModal(order); }}
+                                                                                className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-md transition"
+                                                                                title="Thêm/Xóa/Sửa hóa đơn"
+                                                                            >
+                                                                                <Edit3 size={12} />
+                                                                            </button>
                                                                         </div>
                                                                     );
                                                                 })()}
