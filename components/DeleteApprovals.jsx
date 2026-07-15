@@ -123,8 +123,8 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
                                         <tr 
                                             key={req.id} 
                                             onDoubleClick={() => {
-                                                if (onNavigateToHistoryWithId && (req.original_table === 'transactions' || req.original_table === 'approval_requests')) {
-                                                    onNavigateToHistoryWithId(req.record_id, getProjectName(req));
+                                                if (onNavigateToHistoryWithId) {
+                                                    onNavigateToHistoryWithId(req.record_id, getProjectName(req), req.original_table);
                                                 }
                                             }}
                                             className="hover:bg-slate-50/80 transition cursor-pointer select-none"

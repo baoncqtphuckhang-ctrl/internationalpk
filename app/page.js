@@ -180,10 +180,26 @@ export default function Home() {
     const [dnttList, setDnttList] = useState([]);
     const [highlightedReqId, setHighlightedReqId] = useState(null);
 
-    const handleNavigateToHistoryWithId = (reqId, projectName) => {
+    const handleNavigateToHistoryWithId = (reqId, projectName, originalTable) => {
         setHighlightedReqId(reqId);
-        if (projectName && projectName !== 'Chưa rõ') {
-            setSelectedProject(projectName);
+        let actualProjectName = projectName;
+
+        if (originalTable === 'transactions') {
+            const tx = transactions.find(t => t.id === reqId);
+            if (tx && tx.project_name) actualProjectName = tx.project_name;
+        } else if (originalTable === 'approval_requests') {
+            const dntt = dnttList.find(d => d.id === reqId);
+            if (dntt && dntt.project_name) actualProjectName = dntt.project_name;
+        } else if (originalTable === 'incomes') {
+            const inc = incomes.find(i => i.id === reqId);
+            if (inc && inc.project_name) actualProjectName = inc.project_name;
+        } else if (originalTable === 'partner_debts') {
+            const debt = partnerDebts.find(d => d.id === reqId);
+            if (debt && debt.project_name) actualProjectName = debt.project_name;
+        }
+
+        if (actualProjectName && actualProjectName !== 'Chưa rõ' && actualProjectName !== 'không rõ') {
+            setSelectedProject(actualProjectName);
             setActiveTab('project-detail');
         } else {
             setActiveTab('history');
@@ -1746,7 +1762,7 @@ export default function Home() {
         if (!isAuthorizer) {
             const appReq = dnttList.find(a => a.id === id);
             const amount = appReq ? (appReq.total_amount || 0) : 0;
-            const recordName = `Phiếu DNTT số ${appReq?.code || ''} công trình ${appReq?.project || ''} (${formatCurrency(amount)} VNĐ)`;
+            const recordName = `Phiếu DNTT số ${appReq?.code || ''} công trình ${appReq?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
             const reason = window.prompt(`Nhập lý do đề nghị xóa phiếu DNTT ${appReq?.code || ''}:`);
             if (reason === null) return;
             if (!reason.trim()) return alert('Vui lòng nhập lý do!');
