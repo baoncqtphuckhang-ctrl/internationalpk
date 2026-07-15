@@ -180,16 +180,55 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const fetchInvoices = async () => {
         try {
-            const { data, error } = await supabase
+            const { data: dbData, error } = await supabase
                 .from('expected_invoices')
                 .select('*')
                 .order('created_at', { ascending: true });
             
             if (error) throw error;
-            if (data && data.length > 0) {
-                setInvoices(data);
+            
+            // Lấy dữ liệu từ localStorage để đồng bộ (nếu có)
+            const saved = localStorage.getItem('expected_invoices');
+            let localInvoices = [];
+            if (saved) {
+                try {
+                    localInvoices = JSON.parse(saved) || [];
+                } catch (e) {}
+            }
+
+            const dbDataNonNull = dbData || [];
+
+            // Tìm các dòng chỉ có ở local (chưa được lưu lên Supabase)
+            const localOnly = localInvoices.filter(local => 
+                !dbDataNonNull.some(db => db.id === local.id)
+            );
+
+            if (localOnly.length > 0) {
+                console.log('Syncing local expected invoices to Supabase:', localOnly.length);
+                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+                
+                const recordsToInsert = localOnly.map(local => {
+                    const rec = { ...local };
+                    if (!uuidRegex.test(rec.id)) {
+                        delete rec.id;
+                    }
+                    return rec;
+                });
+
+                const { data: insertedData, error: insertError } = await supabase
+                    .from('expected_invoices')
+                    .insert(recordsToInsert)
+                    .select();
+
+                if (insertError) {
+                    console.error('Failed to sync local invoices to Supabase on load:', insertError);
+                    setInvoices([...dbDataNonNull, ...localOnly]);
+                } else {
+                    console.log('Successfully synced local invoices:', insertedData?.length);
+                    setInvoices([...dbDataNonNull, ...(insertedData || [])]);
+                }
             } else {
-                loadFromLocal();
+                setInvoices(dbDataNonNull);
             }
         } catch (error) {
             console.warn('Supabase fetch failed. Falling back to localStorage.', error);
