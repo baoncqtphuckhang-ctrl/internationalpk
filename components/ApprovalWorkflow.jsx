@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw } from 'lucide-react';
 import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import ConfirmModal from './ConfirmModal';
@@ -106,7 +106,8 @@ export default function ApprovalWorkflow({
     onNavigateToProject,
     onNavigateToHistoryWithId,
     onUpdateDNTT,
-    deleteRequests = []
+    deleteRequests = [],
+    transactions = []
 }) {
     const [view, setView] = useState('list'); // 'list' hoặc 'create'
     const [editingId, setEditingId] = useState(null);
@@ -140,6 +141,33 @@ export default function ApprovalWorkflow({
         bankBranch: ''
     });
 
+    const suggestedRecipients = useMemo(() => {
+        if (!dnttData.project) return [];
+        const recipientsSet = new Set();
+
+        // 1. Lấy đối tượng từ danh sách giao dịch của công trình này
+        if (transactions && transactions.length > 0) {
+            transactions.forEach(t => {
+                if (t.project_name === dnttData.project && t.recipient) {
+                    const name = t.recipient.trim();
+                    if (name) recipientsSet.add(name);
+                }
+            });
+        }
+
+        // 2. Lấy đối tượng từ các phiếu DNTT đã có của công trình này
+        if (dnttList && dnttList.length > 0) {
+            dnttList.forEach(d => {
+                if (d.project_name === dnttData.project && d.recipient) {
+                    const name = d.recipient.trim();
+                    if (name) recipientsSet.add(name);
+                }
+            });
+        }
+
+        return Array.from(recipientsSet).sort((a, b) => a.localeCompare(b, 'vi'));
+    }, [dnttData.project, transactions, dnttList]);
+
     const resetDnttForm = () => {
         setDnttData({
             docType: 'DNTT',
@@ -159,7 +187,40 @@ export default function ApprovalWorkflow({
     const handleDnttChange = (e) => {
         if (!e || !e.target) return;
         const { name, value } = e.target;
-        setDnttData(prev => ({ ...prev, [name]: value }));
+        setDnttData(prev => {
+            const next = { ...prev, [name]: value };
+            
+            // Tự động điền thông tin tài khoản nếu chọn đối tượng đã từng nhập
+            if (name === 'recipient' && value.trim()) {
+                const targetName = value.trim().toLowerCase();
+                
+                // Tìm kiếm trong DNTT trước vì thường có đủ thông tin ngân hàng hơn
+                const foundDntt = dnttList.find(d => 
+                    d.recipient && d.recipient.trim().toLowerCase() === targetName &&
+                    d.bankAccountNumber && d.bankAccountNumber.trim() !== ''
+                );
+                
+                if (foundDntt) {
+                    next.bankAccountName = foundDntt.bankAccountName || '';
+                    next.bankAccountNumber = foundDntt.bankAccountNumber || '';
+                    next.bankName = foundDntt.bankName || '';
+                    next.bankBranch = foundDntt.bankBranch || '';
+                } else {
+                    // Tìm trong lịch sử giao dịch thực tế
+                    const foundTrans = transactions.find(t => 
+                        t.recipient && t.recipient.trim().toLowerCase() === targetName &&
+                        t.account_number && t.account_number.trim() !== ''
+                    );
+                    if (foundTrans) {
+                        next.bankAccountName = foundTrans.account_name || '';
+                        next.bankAccountNumber = foundTrans.account_number || '';
+                        next.bankName = foundTrans.bank_name || '';
+                        next.bankBranch = '';
+                    }
+                }
+            }
+            return next;
+        });
     };
 
     const handleDnttItemChange = (index, field, value) => { 
@@ -211,6 +272,7 @@ export default function ApprovalWorkflow({
         const finalTotalAmount = activeItems.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
         if (!dnttData.project) return setFormError("Vui lòng chọn Công trình!");
+        if (!dnttData.recipient || !dnttData.recipient.trim()) return setFormError("Vui lòng nhập Tên đối tượng thụ hưởng!");
 
         const cleanedDnttData = {
             ...dnttData,
@@ -538,7 +600,23 @@ export default function ApprovalWorkflow({
                         </div>
                     </div>
                     <div className="space-y-2 mb-4">
-                        <div className="flex"><span className="whitespace-nowrap mr-2 font-bold">Đối tượng:</span><input type="text" name="recipient" value={dnttData.recipient} onChange={handleDnttChange} className="flex-1 border-b border-dotted border-gray-400 outline-none bg-transparent" /></div>
+                        <div className="flex">
+                            <span className="whitespace-nowrap mr-2 font-bold">Đối tượng: <span className="text-red-500">*</span></span>
+                            <input 
+                                type="text" 
+                                name="recipient" 
+                                value={dnttData.recipient} 
+                                onChange={handleDnttChange} 
+                                list="project-recipients-list"
+                                className="flex-1 border-b border-dotted border-gray-400 outline-none bg-transparent" 
+                                placeholder="Nhập hoặc chọn đối tượng..."
+                            />
+                            <datalist id="project-recipients-list">
+                                {suggestedRecipients.map(r => (
+                                    <option key={r} value={r} />
+                                ))}
+                            </datalist>
+                        </div>
                         <div className="flex"><span className="whitespace-nowrap mr-2 font-bold">Công trình:</span>
                             <div className="flex-1 border-b border-dotted border-gray-400 relative group">
                                 <input type="text" value={dnttData.project} readOnly className="w-full outline-none bg-transparent cursor-pointer font-bold text-blue-700" placeholder="Chọn công trình..." />

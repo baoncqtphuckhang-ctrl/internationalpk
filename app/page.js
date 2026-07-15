@@ -2753,6 +2753,7 @@ export default function Home() {
                         usersList={usersList}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
+                        transactions={allowedTransactions}
                         onAddDNTT={handleAddDNTT}
                         onUpdateDNTT={handleUpdateDNTT}
                         onUpdateStatus={handleUpdateApprovalStatus}
