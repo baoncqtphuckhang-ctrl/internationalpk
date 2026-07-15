@@ -18,7 +18,8 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
     const [formData, setFormData] = useState({
         original_name: '',
         name: '',
-        contract_no: '',
+        main_contract: '',
+        sub_contracts: [],
         contract_value_after_tax: 0,
         advance_value: 0,
         address: '',
@@ -61,10 +62,22 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         const gc = details.generalContractor || '';
         const inv = details.investor || '';
         setEditingProject(p.name);
+        let main_contract = details.contractNo || '';
+        let sub_contracts = [];
+        
+        try {
+            if (details.contractNo && details.contractNo.startsWith('{')) {
+                const parsed = JSON.parse(details.contractNo);
+                main_contract = parsed.main_contract || '';
+                sub_contracts = parsed.sub_contracts || [];
+            }
+        } catch(e) {}
+
         setFormData({
             original_name: p.name,
             name: p.name,
-            contract_no: details.contractNo || '',
+            main_contract,
+            sub_contracts,
             contract_value_after_tax: details.contractValueAfterTax || 0,
             advance_value: details.advanceValue || 0,
             address: details.address || '',
@@ -92,7 +105,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         if (!saved) return;
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
+        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
     };
 
     const handleDelete = (projectName) => {
@@ -155,7 +168,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', contract_no: '', contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
+                        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -184,15 +197,16 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Số hợp đồng</label>
+                                <label className="block text-sm font-black text-slate-900">Hợp đồng chính</label>
                                 <input 
                                     type="text"
-                                    value={formData.contract_no}
-                                    onChange={(e) => setFormData({...formData, contract_no: e.target.value})}
+                                    value={formData.main_contract || ''}
+                                    onChange={(e) => setFormData({...formData, main_contract: e.target.value})}
                                     className="w-full p-3 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 text-slate-800"
-                                    placeholder="Ví dụ: HĐ-01/2026..."
+                                    placeholder="Ví dụ: HĐC-01/2026..."
                                 />
                             </div>
+
                             <div className="space-y-2 md:col-span-2">
                                 <label className="block text-sm font-black text-slate-900">Loại công trình</label>
                                 <select 
@@ -459,6 +473,150 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     <Plus size={16} /> Thêm Phụ Lục HĐ
                                 </button>
                             </div>
+                            
+                            <div className="md:col-span-2 border-t pt-4 mt-4">
+                                <h4 className="text-md font-bold text-slate-800 mb-4">Danh sách Hợp đồng phụ</h4>
+                                {formData.sub_contracts?.map((sc, scIndex) => (
+                                    <div key={scIndex} className="p-4 bg-slate-50 rounded-2xl border-2 border-slate-100 mb-4 space-y-4 relative">
+                                        <button 
+                                            type="button" 
+                                            onClick={() => {
+                                                const newList = [...formData.sub_contracts];
+                                                newList.splice(scIndex, 1);
+                                                setFormData({...formData, sub_contracts: newList});
+                                            }}
+                                            className="absolute right-4 top-4 p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                                            title="Xóa HĐ phụ này"
+                                        >
+                                            <Trash2 size={16}/>
+                                        </button>
+                                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-black text-slate-900">Số HĐ phụ *</label>
+                                                <input 
+                                                    type="text"
+                                                    value={sc.sub_contract_no || ''}
+                                                    onChange={(e) => {
+                                                        const newList = [...formData.sub_contracts];
+                                                        newList[scIndex] = { ...sc, sub_contract_no: e.target.value };
+                                                        setFormData({...formData, sub_contracts: newList});
+                                                    }}
+                                                    required
+                                                    className="w-full p-2.5 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 text-sm font-semibold"
+                                                    placeholder="Số HĐ phụ..."
+                                                />
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-black text-slate-900">Giá trị HĐ phụ (Trước thuế)</label>
+                                                <div className="relative flex items-center">
+                                                    <input 
+                                                        type="text"
+                                                        value={sc.value ? formatCurrency(sc.value) : ''}
+                                                        onChange={(e) => {
+                                                            const newList = [...formData.sub_contracts];
+                                                            newList[scIndex] = { ...sc, value: parseVietnameseNumber(e.target.value) };
+                                                            setFormData({...formData, sub_contracts: newList});
+                                                        }}
+                                                        className="w-full p-2.5 pr-12 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 text-sm font-semibold text-blue-700"
+                                                        placeholder="0"
+                                                    />
+                                                    <span className="absolute right-4 font-bold text-[10px] text-slate-400 pointer-events-none">VNĐ</span>
+                                                </div>
+                                            </div>
+                                            <div className="space-y-2">
+                                                <label className="block text-xs font-black text-slate-900">Giá trị Tạm ứng</label>
+                                                <div className="relative flex items-center">
+                                                    <input 
+                                                        type="text"
+                                                        value={sc.advance ? formatCurrency(sc.advance) : ''}
+                                                        onChange={(e) => {
+                                                            const newList = [...formData.sub_contracts];
+                                                            newList[scIndex] = { ...sc, advance: parseVietnameseNumber(e.target.value) };
+                                                            setFormData({...formData, sub_contracts: newList});
+                                                        }}
+                                                        className="w-full p-2.5 pr-12 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 text-sm font-semibold text-amber-600"
+                                                        placeholder="0"
+                                                    />
+                                                    <span className="absolute right-4 font-bold text-[10px] text-slate-400 pointer-events-none">VNĐ</span>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        {/* Phụ lục cho HĐ phụ */}
+                                        <div className="pl-6 border-l-2 border-indigo-100 space-y-3">
+                                            <h5 className="text-xs font-bold text-slate-600">Phụ lục của HĐ phụ: {sc.sub_contract_no || 'Chưa nhập số HĐ'}</h5>
+                                            {(sc.annexes || []).map((annex, axIndex) => (
+                                                <div key={axIndex} className="flex items-center gap-3 relative">
+                                                    <div className="flex-1 space-y-1">
+                                                        <input 
+                                                            type="text"
+                                                            value={annex.annex_no || ''}
+                                                            onChange={(e) => {
+                                                                const newList = [...formData.sub_contracts];
+                                                                const newAnnexes = [...(sc.annexes || [])];
+                                                                newAnnexes[axIndex] = { ...annex, annex_no: e.target.value };
+                                                                newList[scIndex] = { ...sc, annexes: newAnnexes };
+                                                                setFormData({...formData, sub_contracts: newList});
+                                                            }}
+                                                            className="w-full p-2 border-2 border-slate-200 rounded-lg outline-none focus:border-indigo-500 bg-white text-slate-800 text-xs font-semibold"
+                                                            placeholder="Số phụ lục..."
+                                                        />
+                                                    </div>
+                                                    <div className="flex-1 relative">
+                                                        <input 
+                                                            type="text"
+                                                            value={annex.value ? formatCurrency(annex.value) : ''}
+                                                            onChange={(e) => {
+                                                                const newList = [...formData.sub_contracts];
+                                                                const newAnnexes = [...(sc.annexes || [])];
+                                                                newAnnexes[axIndex] = { ...annex, value: parseVietnameseNumber(e.target.value) };
+                                                                newList[scIndex] = { ...sc, annexes: newAnnexes };
+                                                                setFormData({...formData, sub_contracts: newList});
+                                                            }}
+                                                            className="w-full p-2 pr-12 border-2 border-slate-200 rounded-lg outline-none focus:border-indigo-500 bg-white text-slate-800 text-xs font-semibold text-orange-600"
+                                                            placeholder="Giá trị trước thuế..."
+                                                        />
+                                                        <span className="absolute right-4 top-1/2 -translate-y-1/2 font-bold text-[9px] text-slate-400 pointer-events-none">VNĐ</span>
+                                                    </div>
+                                                    <button 
+                                                        type="button" 
+                                                        onClick={() => {
+                                                            const newList = [...formData.sub_contracts];
+                                                            const newAnnexes = [...(sc.annexes || [])];
+                                                            newAnnexes.splice(axIndex, 1);
+                                                            newList[scIndex] = { ...sc, annexes: newAnnexes };
+                                                            setFormData({...formData, sub_contracts: newList});
+                                                        }}
+                                                        className="p-2 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition"
+                                                        title="Xóa phụ lục này"
+                                                    >
+                                                        <Trash2 size={14}/>
+                                                    </button>
+                                                </div>
+                                            ))}
+                                            <button 
+                                                type="button"
+                                                onClick={() => {
+                                                    const newList = [...formData.sub_contracts];
+                                                    const newAnnexes = [...(sc.annexes || []), { annex_no: '', value: 0 }];
+                                                    newList[scIndex] = { ...sc, annexes: newAnnexes };
+                                                    setFormData({...formData, sub_contracts: newList});
+                                                }}
+                                                className="text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 text-[11px] bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-lg transition"
+                                            >
+                                                <Plus size={14} /> Thêm Phụ Lục cho HĐ phụ
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                                <button 
+                                    type="button"
+                                    onClick={() => setFormData({...formData, sub_contracts: [...(formData.sub_contracts || []), { sub_contract_no: '', value: 0, advance: 0, annexes: [] }]})}
+                                    className="text-indigo-600 hover:text-indigo-700 font-bold flex items-center gap-1 text-sm bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-lg transition"
+                                >
+                                    <Plus size={16} /> Thêm Hợp Đồng Phụ
+                                </button>
+                            </div>
                             <div className="md:col-span-2 flex justify-between gap-3 pt-6 mt-2 border-t">
                                 {editingProject && currentUser?.role?.toUpperCase() === 'ADMIN' ? (
                                     <button type="button" onClick={() => handleDelete(editingProject)} className="px-6 py-2.5 rounded-xl font-bold text-red-500 hover:bg-red-50 transition flex items-center gap-2"><Trash2 size={18}/> XÓA</button>
@@ -544,7 +702,30 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                 </div>
                                             </td>
                                             <td className="p-4 text-sm text-slate-500 max-w-[200px] truncate" title={details.address}>{details.address || '---'}</td>
-                                            <td className="p-4 font-mono text-sm text-slate-500">{details.contractNo || '---'}</td>
+                                            <td className="p-4 font-mono text-sm text-slate-500">
+                                                {(() => {
+                                                    if (!details.contractNo) return '---';
+                                                    try {
+                                                        if (details.contractNo.startsWith('{')) {
+                                                            const parsed = JSON.parse(details.contractNo);
+                                                            const parts = [];
+                                                            if (parsed.main_contract) parts.push(`Chính: ${parsed.main_contract}`);
+                                                            if (parsed.sub_contracts && parsed.sub_contracts.length > 0) {
+                                                                parsed.sub_contracts.forEach((sc, i) => {
+                                                                    let scText = `Phụ ${i + 1}: ${sc.sub_contract_no}`;
+                                                                    if (sc.annexes && sc.annexes.length > 0) {
+                                                                        const axNos = sc.annexes.map(a => a.annex_no).filter(Boolean).join(', ');
+                                                                        if (axNos) scText += ` (PL: ${axNos})`;
+                                                                    }
+                                                                    parts.push(scText);
+                                                                });
+                                                            }
+                                                            return parts.length > 0 ? parts.map((p, i) => <div key={i}>{p}</div>) : '---';
+                                                        }
+                                                    } catch(e) {}
+                                                    return details.contractNo;
+                                                })()}
+                                            </td>
                                             <td className="p-4 text-sm font-semibold text-slate-600">
                                                 {details.chtName ? (
                                                     <div className="flex flex-col gap-1">
@@ -556,8 +737,8 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                     </div>
                                                 ) : '---'}
                                             </td>
-                                            <td className="p-4 text-right text-sm font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</td>
-                                            <td className="p-4 text-right text-sm font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0))} VNĐ</td>
+                                            <td className="p-4 text-right text-sm font-bold text-blue-700">{formatCurrency(details.totalContractAndPlhd)} VNĐ</td>
+                                            <td className="p-4 text-right text-sm font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0) + (details.subContractsAnnexesTotal || 0))} VNĐ</td>
                                             <td className="p-4 text-right text-sm font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</td>
                                             <td className="p-4 text-center">
                                                 <span className={`text-sm px-2 py-1 rounded-full font-black ${isCompleted ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
@@ -679,15 +860,38 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                         )}
                                         <div className="flex justify-between border-b border-slate-50 pb-2">
                                             <span className="text-slate-400 flex items-center gap-1"><FileText size={14}/> Số HĐ:</span>
-                                            <span className="font-bold text-slate-700">{details.contractNo || '---'}</span>
+                                            <span className="font-bold text-slate-700">
+                                                {(() => {
+                                                    if (!details.contractNo) return '---';
+                                                    try {
+                                                        if (details.contractNo.startsWith('{')) {
+                                                            const parsed = JSON.parse(details.contractNo);
+                                                            const parts = [];
+                                                            if (parsed.main_contract) parts.push(`Chính: ${parsed.main_contract}`);
+                                                            if (parsed.sub_contracts && parsed.sub_contracts.length > 0) {
+                                                                parsed.sub_contracts.forEach((sc, i) => {
+                                                                    let scText = `Phụ ${i + 1}: ${sc.sub_contract_no}`;
+                                                                    if (sc.annexes && sc.annexes.length > 0) {
+                                                                        const axNos = sc.annexes.map(a => a.annex_no).filter(Boolean).join(', ');
+                                                                        if (axNos) scText += ` (PL: ${axNos})`;
+                                                                    }
+                                                                    parts.push(scText);
+                                                                });
+                                                            }
+                                                            return parts.length > 0 ? parts.join(' | ') : '---';
+                                                        }
+                                                    } catch(e) {}
+                                                    return details.contractNo;
+                                                })()}
+                                            </span>
                                         </div>
                                         <div className="flex justify-between border-b border-slate-50 pb-2">
                                             <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị HĐ:</span>
-                                            <span className="font-bold text-blue-700">{formatCurrency(details.contractValueAfterTax)} VNĐ</span>
+                                            <span className="font-bold text-blue-700">{formatCurrency(details.totalContractAndPlhd)} VNĐ</span>
                                         </div>
                                         <div className="flex justify-between border-b border-slate-50 pb-2">
                                             <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
-                                            <span className="font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0))} VNĐ</span>
+                                            <span className="font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0) + (details.subContractsAnnexesTotal || 0))} VNĐ</span>
                                         </div>
                                         <div className="flex justify-between">
                                             <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>

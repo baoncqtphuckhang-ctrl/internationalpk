@@ -1252,8 +1252,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 return debt.invoice_no || <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>;
             case 'invoiceDate':
                 return debt.invoice_date || '-';
-            case 'contractNo':
-                return debt.contractNo || '-';
+            case 'contractNo': {
+                if (!debt.contractNo) return '-';
+                try {
+                    if (debt.contractNo.startsWith('{')) {
+                        const parsed = JSON.parse(debt.contractNo);
+                        const parts = [];
+                        if (parsed.main_contract) parts.push(`Chính: ${parsed.main_contract}`);
+                        if (parsed.sub_contract_1) parts.push(`Phụ 1: ${parsed.sub_contract_1}`);
+                        if (parsed.sub_contract_2) parts.push(`Phụ 2: ${parsed.sub_contract_2}`);
+                        if (parsed.sub_contract_annex) parts.push(`PL HĐ phụ: ${parsed.sub_contract_annex}`);
+                        return parts.length > 0 ? parts.join(' | ') : '-';
+                    }
+                } catch(e) {}
+                return debt.contractNo;
+            }
             case 'voucherNo':
                 return debt.voucher_no || '-';
             default:

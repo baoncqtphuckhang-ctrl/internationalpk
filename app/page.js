@@ -603,13 +603,32 @@ export default function Home() {
             const plhdArray = p.plhds || [];
             const extraPlhdTotal = plhdArray.reduce((sum, val) => sum + (parseFloat(val) || 0), 0);
             const debtToCollect = p.debt_to_collect || 0;
+
+            let subContractsTotal = 0;
+            let subContractsAdvance = 0;
+            let subContractsAnnexesTotal = 0;
+            try {
+                if (p.contract_no && p.contract_no.startsWith('{')) {
+                    const parsed = JSON.parse(p.contract_no);
+                    if (parsed.sub_contracts) {
+                        parsed.sub_contracts.forEach(sc => {
+                            subContractsTotal += (Number(sc.value) || 0);
+                            const scAnnexSum = (sc.annexes || []).reduce((sum, ax) => sum + (Number(ax.value) || 0), 0);
+                            subContractsTotal += scAnnexSum;
+                            subContractsAnnexesTotal += scAnnexSum;
+                            subContractsAdvance += (Number(sc.advance) || 0);
+                        });
+                    }
+                }
+            } catch(e) {}
             
             details[p.name] = { 
                 contractValueAfterTax: p.contract_value_after_tax,
-                advanceValue: p.advance_value,
+                advanceValue: (p.advance_value || 0) + subContractsAdvance,
                 debtToCollect: debtToCollect,
                 extraPlhdTotal: extraPlhdTotal,
-                totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal,
+                subContractsAnnexesTotal: subContractsAnnexesTotal,
+                totalContractAndPlhd: (p.contract_value_after_tax || 0) + debtToCollect + extraPlhdTotal + subContractsTotal,
                 contractNo: p.contract_no,
                 address: p.address || '',
                 chtName: p.cht_name || '',
@@ -1099,7 +1118,10 @@ export default function Home() {
         try {
             const projectPayload = {
                 name: (data.name || '').trim(),
-                contract_no: data.contract_no || '',
+                contract_no: JSON.stringify({
+                    main_contract: data.main_contract || '',
+                    sub_contracts: data.sub_contracts || []
+                }),
                 contract_value_after_tax: Number(data.contract_value_after_tax) || 0,
                 advance_value: Number(data.advance_value) || 0,
                 debt_to_collect: Number(data.debt_to_collect) || 0,
