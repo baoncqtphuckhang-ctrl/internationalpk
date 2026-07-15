@@ -116,7 +116,8 @@ export default function HistoryTable({
     highlightedReqId,
     setHighlightedReqId,
     onRequestDelete,
-    deleteRequests = []
+    deleteRequests = [],
+    dnttList = []
 }) {
     const [confirmState, setConfirmState] = useState({
         isOpen: false,
@@ -215,10 +216,28 @@ export default function HistoryTable({
 
     useEffect(() => {
         if (highlightedReqId && transactions.length > 0) {
-            const tx = transactions.find(t => 
-                (t.note && t.note.toLowerCase().includes(`[id:${highlightedReqId.toLowerCase()}]`)) || 
-                t.id.toString() === highlightedReqId.toString()
-            );
+            const tx = transactions.find(t => {
+                if (t.id.toString() === highlightedReqId.toString()) return true;
+                if (t.note && t.note.toLowerCase().includes(`[id:${highlightedReqId.toLowerCase()}]`)) return true;
+                if (dnttList && dnttList.length > 0) {
+                    const dntt = dnttList.find(d => d.id.toString() === highlightedReqId.toString());
+                    if (dntt) {
+                        if (dntt.code && t.note && t.note.toLowerCase().includes(dntt.code.toLowerCase())) return true;
+                        const tAmount = Number(t.debit) || Number(t.credit) || 0;
+                        const dAmount = Number(dntt.total_amount) || 0;
+                        if (
+                            t.project_name === dntt.project_name &&
+                            Math.abs(tAmount - dAmount) < 10 &&
+                            (!dntt.recipient || !t.recipient ||
+                             t.recipient.toLowerCase().includes(dntt.recipient.toLowerCase()) ||
+                             dntt.recipient.toLowerCase().includes(t.recipient.toLowerCase()))
+                        ) {
+                            return true;
+                        }
+                    }
+                }
+                return false;
+            });
             if (tx) {
                 let attempts = 0;
                 const highlightInterval = setInterval(() => {
@@ -226,14 +245,14 @@ export default function HistoryTable({
                     if (el) {
                         clearInterval(highlightInterval);
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        el.classList.add('!bg-amber-200', 'animate-pulse', 'transition-all', 'duration-1000');
+                        el.classList.add('!bg-yellow-300', 'animate-pulse', 'transition-all', 'duration-1000');
                         setTimeout(() => {
-                            el.classList.remove('!bg-amber-200', 'animate-pulse');
+                            el.classList.remove('!bg-yellow-300', 'animate-pulse');
                             if (setHighlightedReqId) setHighlightedReqId(null);
-                        }, 5000);
+                        }, 10000);
                     }
                     attempts++;
-                    if (attempts > 20) {
+                    if (attempts > 30) {
                         clearInterval(highlightInterval);
                         if (setHighlightedReqId) setHighlightedReqId(null);
                     }
@@ -242,7 +261,7 @@ export default function HistoryTable({
                 if (setHighlightedReqId) setHighlightedReqId(null);
             }
         }
-    }, [highlightedReqId, transactions, setHighlightedReqId]);
+    }, [highlightedReqId, transactions, setHighlightedReqId, dnttList]);
 
     const handleSort = (key, direction) => {
         setSortConfig({ key, direction });
