@@ -216,21 +216,28 @@ export default function HistoryTable({
     useEffect(() => {
         if (highlightedReqId && transactions.length > 0) {
             const tx = transactions.find(t => 
-                (t.note && t.note.includes(`[ID:${highlightedReqId}]`)) || 
+                (t.note && t.note.toLowerCase().includes(`[id:${highlightedReqId.toLowerCase()}]`)) || 
                 t.id.toString() === highlightedReqId.toString()
             );
             if (tx) {
-                setTimeout(() => {
+                let attempts = 0;
+                const highlightInterval = setInterval(() => {
                     const el = document.getElementById('row-' + tx.id);
                     if (el) {
+                        clearInterval(highlightInterval);
                         el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                        el.classList.add('bg-yellow-200', 'transition-all', 'duration-1000');
+                        el.classList.add('!bg-amber-200', 'animate-pulse', 'transition-all', 'duration-1000');
                         setTimeout(() => {
-                            el.classList.remove('bg-yellow-200');
+                            el.classList.remove('!bg-amber-200', 'animate-pulse');
                             if (setHighlightedReqId) setHighlightedReqId(null);
-                        }, 3000);
+                        }, 5000);
                     }
-                }, 300);
+                    attempts++;
+                    if (attempts > 20) {
+                        clearInterval(highlightInterval);
+                        if (setHighlightedReqId) setHighlightedReqId(null);
+                    }
+                }, 100);
             } else {
                 if (setHighlightedReqId) setHighlightedReqId(null);
             }
