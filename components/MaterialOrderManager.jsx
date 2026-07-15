@@ -180,6 +180,59 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         };
     };
 
+    const checkAndNotifyFullyReceived = async (order, newOrderItems) => {
+        try {
+            const { isFullyReceived: wasFullyReceived } = getDeliveryProgress(order);
+            const mockUpdatedOrder = { ...order, items: newOrderItems };
+            const { isFullyReceived: isNowFullyReceived } = getDeliveryProgress(mockUpdatedOrder);
+
+            if (!wasFullyReceived && isNowFullyReceived) {
+                const notificationTitle = `Đơn hàng đã nhận đủ`;
+                const notificationMessage = `Đơn hàng vật tư "${order.order_phase || 'Không rõ đợt'}" của công trình "${order.project_name}" đã được nhận đủ hàng.`;
+                const notificationType = 'material_order_fully_received';
+                const sourceTable = 'material_orders';
+                const sourceId = `${order.id}:fully_received`;
+
+                const notificationRows = [
+                    { recipient_role: 'QS', recipient_username: null },
+                    { recipient_role: 'KẾ TOÁN', recipient_username: null },
+                    { recipient_role: 'ADMIN', recipient_username: null }
+                ].map(r => ({
+                    recipient_role: r.recipient_role,
+                    recipient_username: r.recipient_username,
+                    title: notificationTitle,
+                    message: notificationMessage,
+                    type: notificationType,
+                    source_table: sourceTable,
+                    source_id: sourceId,
+                    project_name: order.project_name || null,
+                    created_by: currentUser?.username || null,
+                    is_read: false
+                }));
+
+                const { data: existingNotifications } = await supabase
+                    .from('notifications')
+                    .select('id, recipient_role')
+                    .eq('source_table', sourceTable)
+                    .eq('source_id', sourceId);
+
+                const existingRoles = new Set((existingNotifications || []).map(n => n.recipient_role));
+                const rowsToInsert = notificationRows.filter(r => !existingRoles.has(r.recipient_role));
+
+                if (rowsToInsert.length > 0) {
+                    const { error: notifError } = await supabase
+                        .from('notifications')
+                        .insert(rowsToInsert);
+                    if (notifError) {
+                        console.error('Failed to insert fully received notifications:', notifError);
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error in checkAndNotifyFullyReceived:', error);
+        }
+    };
+
     // Filters logic
     const filteredOrders = allOrders.filter(order => {
         const matchesSearch = 
@@ -528,6 +581,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
 
             if (whError) throw whError;
 
+            // Gửi thông báo nhận đủ hàng nếu đạt điều kiện
+            await checkAndNotifyFullyReceived(order, newOrderItems);
+
             showToast('Lưu hàng về & Nhập kho thành công!');
             
             // Clear input
@@ -669,6 +725,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 .insert([warehousePayload]);
 
             if (whError) throw whError;
+
+            // Gửi thông báo nhận đủ hàng nếu đạt điều kiện
+            await checkAndNotifyFullyReceived(order, newOrderItems);
 
             showToast('Đã sửa đợt nhận hàng thành công!');
             setEditReceiveModal({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null, oldItem: null });
