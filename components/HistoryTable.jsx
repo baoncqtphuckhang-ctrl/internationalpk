@@ -216,7 +216,8 @@ export default function HistoryTable({
 
     useEffect(() => {
         if (highlightedReqId && transactions.length > 0) {
-            const tx = transactions.find(t => {
+            // 1. Strict matching
+            let tx = transactions.find(t => {
                 if (t.id.toString() === highlightedReqId.toString()) return true;
                 if (t.note && t.note.toLowerCase().includes(`[id:${highlightedReqId.toLowerCase()}]`)) return true;
                 if (dnttList && dnttList.length > 0) {
@@ -230,7 +231,8 @@ export default function HistoryTable({
                             Math.abs(tAmount - dAmount) < 10 &&
                             (!dntt.recipient || !t.recipient ||
                              t.recipient.toLowerCase().includes(dntt.recipient.toLowerCase()) ||
-                             dntt.recipient.toLowerCase().includes(t.recipient.toLowerCase()))
+                             dntt.recipient.toLowerCase().includes(t.recipient.toLowerCase()) ||
+                             t.recipient.toLowerCase().replace(/đ/g, 'd') === dntt.recipient.toLowerCase().replace(/đ/g, 'd'))
                         ) {
                             return true;
                         }
@@ -238,6 +240,22 @@ export default function HistoryTable({
                 }
                 return false;
             });
+
+            // 2. Fallback matching: If strict match fails, match by project and amount
+            if (!tx && dnttList && dnttList.length > 0) {
+                const dntt = dnttList.find(d => d.id.toString() === highlightedReqId.toString());
+                if (dntt) {
+                    tx = transactions.find(t => {
+                        const tAmount = Number(t.debit) || Number(t.credit) || 0;
+                        const dAmount = Number(dntt.total_amount) || 0;
+                        return (
+                            t.project_name === dntt.project_name &&
+                            Math.abs(tAmount - dAmount) < 10
+                        );
+                    });
+                }
+            }
+
             if (tx) {
                 let attempts = 0;
                 const highlightInterval = setInterval(() => {
