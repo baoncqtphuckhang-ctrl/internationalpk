@@ -27,9 +27,11 @@ export default function PartnerDebts({
         project_name: projects[0]?.name || '',
         partner_name: '',
         debt_type: 'CẦN THU',
-        amount: '',
+        amount_before_tax: '',
+        vat_rate: '8',
         note: ''
     });
+    const [editingId, setEditingId] = useState(null);
     
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
@@ -55,22 +57,65 @@ export default function PartnerDebts({
         
         if (!formData.project_name) return setFormError('Vui lòng chọn công trình!');
         if (!formData.partner_name.trim()) return setFormError('Vui lòng nhập tên đối tượng / tổ đội!');
-        if (!formData.amount || parseFloat(formData.amount) <= 0) return setFormError('Số tiền phải lớn hơn 0!');
+        if (!formData.amount_before_tax || parseFloat(formData.amount_before_tax) <= 0) return setFormError('Số tiền trước thuế phải lớn hơn 0!');
         
+        const preTax = parseFloat(formData.amount_before_tax);
+        const vatRate = parseFloat(formData.vat_rate) || 0;
+        const vatAmount = preTax * (vatRate / 100);
+        const totalAmount = preTax + vatAmount;
+
+        const payloadNote = `[PRE_TAX:${preTax}][VAT_RATE:${vatRate}] ${formData.note}`;
+
         onAddDebt({
-            ...formData,
-            amount: parseFloat(formData.amount),
+            id: editingId, // will be undefined if new
+            project_name: formData.project_name,
+            partner_name: formData.partner_name,
+            debt_type: formData.debt_type,
+            amount: totalAmount,
+            note: payloadNote,
             status: 'CHƯA XONG'
         });
         
         setShowAddForm(false);
+        setEditingId(null);
         setFormData({
             project_name: projects[0]?.name || '',
             partner_name: '',
             debt_type: 'CẦN THU',
-            amount: '',
+            amount_before_tax: '',
+            vat_rate: '8',
             note: ''
         });
+    };
+
+    const handleEditDebt = (debt) => {
+        let preTax = debt.amount;
+        let vatRate = 0;
+        let cleanNote = debt.note || '';
+
+        // Extract from note if exists: [PRE_TAX:1000][VAT_RATE:8]
+        const preTaxMatch = cleanNote.match(/\[PRE_TAX:([0-9.]+)\]/);
+        const vatRateMatch = cleanNote.match(/\[VAT_RATE:([0-9.]+)\]/);
+        
+        if (preTaxMatch) {
+            preTax = preTaxMatch[1];
+            cleanNote = cleanNote.replace(preTaxMatch[0], '');
+        }
+        if (vatRateMatch) {
+            vatRate = vatRateMatch[1];
+            cleanNote = cleanNote.replace(vatRateMatch[0], '');
+        }
+        
+        setFormData({
+            project_name: debt.project_name,
+            partner_name: debt.partner_name,
+            debt_type: debt.debt_type,
+            amount_before_tax: preTax,
+            vat_rate: vatRate,
+            note: cleanNote.trim()
+        });
+        setEditingId(debt.id);
+        setShowAddForm(true);
     };
 
     const removeAccents = (str) => {
@@ -224,17 +269,28 @@ export default function PartnerDebts({
                                 <input type="text" name="partner_name" value={formData.partner_name} onChange={handleFormChange} placeholder="Nhập tên..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold focus:border-blue-500 outline-none" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền (VNĐ)</label>
-                                <input type="number" name="amount" value={formData.amount} onChange={handleFormChange} placeholder="0" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold text-red-600 focus:border-blue-500 outline-none" />
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền (Trước thuế)</label>
+                                <input type="number" name="amount_before_tax" value={formData.amount_before_tax} onChange={handleFormChange} placeholder="0" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold text-red-600 focus:border-blue-500 outline-none" />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Thuế VAT (%)</label>
+                                <input type="number" name="vat_rate" value={formData.vat_rate} onChange={handleFormChange} placeholder="8" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold focus:border-blue-500 outline-none" />
                             </div>
                         </div>
                         <div>
+                            <div className="mb-2 text-right">
+                                <span className="text-xs text-slate-500 font-bold uppercase">Số tiền thực tế (Sau thuế): </span>
+                                <span className="text-lg font-black text-blue-600">{formatCurrency((parseFloat(formData.amount_before_tax) || 0) * (1 + (parseFloat(formData.vat_rate) || 0) / 100))} VNĐ</span>
+                            </div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ghi Chú</label>
                             <input type="text" name="note" value={formData.note} onChange={handleFormChange} placeholder="Lý do ghi nhận công nợ..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 focus:border-blue-500 outline-none" />
                         </div>
-                        <div className="flex justify-end pt-2">
+                        <div className="flex justify-end pt-2 gap-2">
+                            <button type="button" onClick={() => { setShowAddForm(false); setEditingId(null); }} className="bg-slate-200 hover:bg-slate-300 text-slate-700 px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 transition">
+                                <X size={18} /> Hủy
+                            </button>
                             <button type="submit" disabled={isLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold flex items-center gap-2 shadow-lg disabled:opacity-50">
-                                <Save size={18} /> Lưu Công Nợ
+                                <Save size={18} /> {editingId ? 'Cập Nhật' : 'Lưu Công Nợ'}
                             </button>
                         </div>
                     </form>
@@ -345,6 +401,13 @@ export default function PartnerDebts({
                                         </td>
                                         <td className="p-4 text-center">
                                             <div className="flex items-center justify-center gap-2">
+                                                <button 
+                                                    onClick={() => handleEditDebt(debt)}
+                                                    className="text-blue-600 hover:bg-blue-50 p-1.5 rounded-lg transition"
+                                                    title="Sửa công nợ"
+                                                >
+                                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
+                                                </button>
                                                 {debt.status === 'CHƯA XONG' && (
                                                     <button 
                                                         onClick={() => setConfirmDebtModal({ isOpen: true, debt })}

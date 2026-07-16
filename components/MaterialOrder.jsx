@@ -1,11 +1,11 @@
 'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
     ClipboardList, Plus, Trash2, Edit3, Edit2, Printer, 
     Download, Save, X, Search, MapPin, Briefcase, 
-    User, Calendar, Info, Check, Copy
+    User, Calendar, Info, Check, Copy, Eye, EyeOff
 } from 'lucide-react';
 import { formatCurrency, formatDateVN, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -103,6 +103,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [selectedProjectFilter, setSelectedProjectFilter] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [isCustomCompany, setIsCustomCompany] = useState(false);
+    const recipientInputRef = useRef(null);
+
+
 
     const moveRecordsToTrash = async (tableName, records = []) => {
         const validRecords = records.filter(Boolean);
@@ -126,6 +129,12 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     };
 
     const [allTemplates, setAllTemplates] = useState({});
+    const [showPriceCols, setShowPriceCols] = useState(true);
+    const [showNonEmptyOnly, setShowNonEmptyOnly] = useState(false);
+    const [isCustomCategory, setIsCustomCategory] = useState(false);
+    const categoryInputRef = useRef(null);
+    const [isCustomOrderCompany, setIsCustomOrderCompany] = useState(false);
+    const orderCompanyInputRef = useRef(null);
 
     // Form state
     const [formData, setFormData] = useState({
@@ -136,11 +145,30 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         address: '',
         category: '',
         company: '',
+        order_company: 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG',
         recipient: '',
         categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
         show_signature: true,
         configVersionId: ''
     });
+
+    const projectPersonnel = useMemo(() => {
+        if (!formData?.project_name || !projects) return [];
+        const proj = projects.find(p => p.name === formData.project_name);
+        if (!proj) return [];
+
+        const names = (proj.cht_name || '').split(',').map(s => s.trim()).filter(Boolean);
+        const phones = (proj.cht_phone || '').split(',').map(s => s.trim()).filter(Boolean);
+
+        return names.map((name, index) => {
+            let phone = phones[index] || '';
+            if (!phone && usersList) {
+                const u = usersList.find(user => user.name === name);
+                if (u?.phone) phone = u.phone;
+            }
+            return { name, phone };
+        });
+    }, [formData?.project_name, projects, usersList]);
 
     const updateFormDataForProject = (projectName, templatesMap = allTemplates) => {
         const proj = projects.find(p => p.name === projectName);
@@ -399,6 +427,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 }
             }
             payload.items[0]._price_batch = pbName;
+            payload.items[0]._order_company = formData.order_company || '';
         }
 
         try {
@@ -588,8 +617,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             order_phase: nextPhase,
             order_date: new Date().toISOString().split('T')[0],
             address: firstProj.address || '',
-            category: '',
+            category: 'SƠN NƯỚC',
             company: '',
+            order_company: 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG',
             recipient: recipient,
             categories: template,
             show_signature: true,
@@ -598,10 +628,21 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         setView('create');
     };
 
+    const openDetail = (order) => {
+        setSelectedOrder(order);
+        setView('detail');
+    };
+
     const openEdit = (order) => {
         let pb = '';
         if (order.items && order.items.length > 0 && order.items[0]._price_batch) {
             pb = order.items[0]._price_batch;
+        }
+        let orderCompany = 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG';
+        if (order.items && order.items.length > 0 && order.items[0]._order_company) {
+            orderCompany = order.items[0]._order_company;
+        } else if (order.order_company) {
+            orderCompany = order.order_company;
         }
         setFormData({
             id: order.id,
@@ -611,6 +652,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             address: order.address,
             category: order.category,
             company: order.company,
+            order_company: orderCompany,
             recipient: order.recipient,
             categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
             show_signature: order.show_signature !== undefined ? order.show_signature : true,
@@ -675,8 +717,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.colorCode || ''}</td>
                         <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt;">${it.unit}</td>
                         <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${qty}</td>
-                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price ? formatCurrency(price) : ''}</td>
-                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price && qty ? formatCurrency(price * qty) : ''}</td>
+                        ${showPriceCols ? `<td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price ? formatCurrency(price) : ''}</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">${price && qty ? formatCurrency(price * qty) : ''}</td>` : ''}
                     </tr>
                 `;
             });
@@ -712,13 +754,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <col width="100" style="width: 100pt;" />
                         <col width="100" style="width: 100pt;" />
                         <col width="100" style="width: 100pt;" />
-                        <col width="100" style="width: 100pt;" />
-                        <col width="120" style="width: 120pt;" />
+                        ${showPriceCols ? `<col width="100" style="width: 100pt;" />
+                        <col width="120" style="width: 120pt;" />` : ''}
                     </colgroup>
                     
                     <!-- TITLE -->
                     <tr style="height: 55px;">
-                        <td colspan="7" style="text-align: center; vertical-align: middle; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman';">
+                        <td colspan="${showPriceCols ? 7 : 5}" style="text-align: center; vertical-align: middle; font-weight: bold; font-size: 16pt; font-family: 'Times New Roman';">
                             ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC ${orderData.order_phase.toUpperCase()}
                         </td>
                     </tr>
@@ -728,7 +770,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
                             DỰ ÁN :
                         </td>
-                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #1d4ed8; vertical-align: middle;">
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #1d4ed8; vertical-align: middle;">
                             ${orderData.project_name.toUpperCase()}
                         </td>
                     </tr>
@@ -736,7 +778,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
                             ĐỊA CHỈ :
                         </td>
-                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; vertical-align: middle;">
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; vertical-align: middle;">
                             ${(orderData.address || '').toUpperCase()}
                         </td>
                     </tr>
@@ -744,12 +786,23 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
                             HẠNG MỤC :
                         </td>
-                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
                             ${(orderData.category || '').toUpperCase()}
                         </td>
                     </tr>
                     <tr style="height: 35px;">
-                        <td colspan="7" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #334155; vertical-align: middle;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            CÔNG TY ĐẶT HÀNG :
+                        </td>
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #000000; vertical-align: middle;">
+                            ${(orderData.items?.[0]?._order_company || orderData.order_company || 'CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK').toUpperCase()}
+                        </td>
+                    </tr>
+                    <tr style="height: 35px;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
+                            NHÀ CUNG CẤP :
+                        </td>
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #000000; vertical-align: middle;">
                             ${(orderData.company || '').toUpperCase()}
                         </td>
                     </tr>
@@ -757,11 +810,11 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
                             NGƯỜI NHẬN HÀNG :
                         </td>
-                        <td colspan="5" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #0f172a; vertical-align: middle;">
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; color: #0f172a; vertical-align: middle;">
                             ${(orderData.recipient || '').toUpperCase()}
                         </td>
                     </tr>
-                    <tr style="height: 20px;"><td colspan="7"></td></tr>
+                    <tr style="height: 20px;"><td colspan="${showPriceCols ? 7 : 5}"></td></tr>
                     
                     <!-- TABLE HEADERS -->
                     <tr style="background-color: #e6e6e6; height: 45px;">
@@ -770,20 +823,20 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Mã màu</th>
                         <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">DVT</th>
                         <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Số lượng</th>
-                        <th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Đơn giá</th>
-                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Thành tiền</th>
+                        ${showPriceCols ? `<th width="100" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Đơn giá</th>
+                        <th width="120" style="border: 1px solid #000; font-weight: bold; text-align: center; vertical-align: middle; font-size: 13pt; font-family: 'Times New Roman';">Thành tiền</th>` : ''}
                     </tr>
                     
                     ${rowsHtml}
                     
-                    <tr style="height: 40px;">
+                    ${showPriceCols ? `<tr style="height: 40px;">
                         <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
                         <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
                             ${formatCurrency(orderItems.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
                         </td>
-                    </tr>
+                    </tr>` : ''}
                     
-                    <tr style="height: 30px;"><td colspan="7"></td></tr>
+                    <tr style="height: 30px;"><td colspan="${showPriceCols ? 7 : 5}"></td></tr>
                     
                     <!-- SIGNATURE BLOCK -->
                     <tr>
@@ -1175,13 +1228,87 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Hạng mục thi công</label>
-                                <input 
-                                    type="text"
-                                    value={formData.category}
-                                    onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-yellow-50 focus:bg-white font-bold text-slate-800 transition"
+                                <select
+                                    value={["SƠN NƯỚC", "THẠCH CAO"].includes(formData.category) ? formData.category : (formData.category === '' ? 'SƠN NƯỚC' : 'custom')}
+                                    onChange={(e) => {
+                                        if (e.target.value === 'custom') {
+                                            setIsCustomCategory(true);
+                                            setFormData({ ...formData, category: '' });
+                                            setTimeout(() => {
+                                                if (categoryInputRef.current) categoryInputRef.current.focus();
+                                            }, 50);
+                                        } else {
+                                            setIsCustomCategory(false);
+                                            setFormData({ ...formData, category: e.target.value });
+                                        }
+                                    }}
+                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
+                                >
+                                    <option value="SƠN NƯỚC">SƠN NƯỚC (SN)</option>
+                                    <option value="THẠCH CAO">THẠCH CAO (TC)</option>
+                                    <option value="custom">Khác (Nhập tay)...</option>
+                                </select>
+                                {(isCustomCategory || !["SƠN NƯỚC", "THẠCH CAO", ""].includes(formData.category)) && (
+                                    <input 
+                                        ref={categoryInputRef}
+                                        type="text"
+                                        value={formData.category}
+                                        onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+                                        placeholder="Nhập tên hạng mục khác..."
+                                        className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
+                                        required
+                                    />
+                                )}
+                            </div>
+
+                            <div className="space-y-2">
+                                <label className="block text-xs font-black text-slate-900 uppercase">Công ty đặt hàng</label>
+                                <select
+                                    value={
+                                        isCustomOrderCompany ? "custom" : (
+                                            [
+                                                "CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG",
+                                                "CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK"
+                                            ].includes(formData.order_company) ? formData.order_company : (formData.order_company === '' ? '' : 'custom')
+                                        )
+                                    }
+                                    onChange={(e) => {
+                                        if (e.target.value === 'custom') {
+                                            setIsCustomOrderCompany(true);
+                                            setFormData({ ...formData, order_company: '' });
+                                            setTimeout(() => {
+                                                if (orderCompanyInputRef.current) {
+                                                    orderCompanyInputRef.current.focus();
+                                                }
+                                            }, 50);
+                                        } else {
+                                            setIsCustomOrderCompany(false);
+                                            setFormData({ ...formData, order_company: e.target.value });
+                                        }
+                                    }}
+                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                     required
-                                />
+                                >
+                                    <option value="">-- Chọn công ty đặt hàng --</option>
+                                    <option value="CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG">CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG</option>
+                                    <option value="CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK">CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK</option>
+                                    <option value="custom">Khác (Nhập tay)...</option>
+                                </select>
+                                {(isCustomOrderCompany || ![
+                                    "CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG",
+                                    "CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK",
+                                    ""
+                                ].includes(formData.order_company)) && (
+                                    <input 
+                                        ref={orderCompanyInputRef}
+                                        type="text"
+                                        value={formData.order_company}
+                                        onChange={(e) => setFormData({ ...formData, order_company: e.target.value })}
+                                        placeholder="Nhập tên công ty đặt hàng khác..."
+                                        className="w-full mt-2 p-3.5 border-2 border-blue-200 rounded-2xl outline-none focus:border-blue-500 bg-white font-medium text-slate-800 transition animate-in slide-in-from-top-2"
+                                        required
+                                    />
+                                )}
                             </div>
 
                             {projects.find(p => p.name === formData.project_name)?.project_type !== 'TỔNG THẦU MUA HỘ' && (
@@ -1253,37 +1380,36 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Gợi ý người nhận hàng từ danh sách</label>
                                 <select 
+                                    value={projectPersonnel.some(p => (p.phone ? `${p.name} (SĐT: ${p.phone})` : p.name) === formData.recipient) ? formData.recipient : (formData.recipient === '' ? '' : 'custom')}
                                     onChange={(e) => {
                                         const val = e.target.value;
                                         if (val === 'custom') {
                                             setFormData({ ...formData, recipient: '' });
+                                            setTimeout(() => {
+                                                if (recipientInputRef.current) {
+                                                    recipientInputRef.current.focus();
+                                                }
+                                            }, 50);
                                         } else if (val) {
                                             setFormData({ ...formData, recipient: val });
                                         }
                                     }}
                                     className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
                                 >
-                                    <option value="">-- Chọn nhân sự gợi ý --</option>
-                                    {usersList && usersList.length > 0 ? (
-                                        usersList.map(u => (
-                                            <option key={u.id} value={`${u.name} (SĐT: ${u.phone || ''})`}>
-                                                {u.name} {u.phone ? `- SĐT: ${u.phone}` : ''}
-                                            </option>
-                                        ))
-                                    ) : (
-                                        [...new Set(projects.filter(p => p.cht_name).map(p => p.cht_phone ? `${p.cht_name} (SĐT: ${p.cht_phone})` : p.cht_name))].map((val, idx) => (
-                                            <option key={idx} value={val}>
-                                                {val}
-                                            </option>
-                                        ))
-                                    )}
-                                    <option value="custom">Tự nhập người nhận khác...</option>
+                                    <option value="">-- Chọn nhân sự gợi ý (CHT, GS) --</option>
+                                    {projectPersonnel.map((p, idx) => (
+                                        <option key={idx} value={p.phone ? `${p.name} (SĐT: ${p.phone})` : p.name}>
+                                            {p.name} {p.phone ? `- SĐT: ${p.phone}` : ''}
+                                        </option>
+                                    ))}
+                                    <option value="custom">Khác (Nhập tay nếu là công nhân...)</option>
                                 </select>
                             </div>
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Người nhận hàng & SĐT thực tế</label>
                                 <input 
+                                    ref={recipientInputRef}
                                     type="text"
                                     value={formData.recipient}
                                     onChange={(e) => setFormData({ ...formData, recipient: e.target.value })}
@@ -1493,44 +1619,79 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
             {/* PRINT PREVIEW / DETAIL VIEW */}
             {view === 'detail' && selectedOrder && (
-                <div className="space-y-6">
-                    <header className="mb-6 flex flex-wrap justify-between items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm print:hidden">
-                        <div>
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <ClipboardList className="text-blue-600" /> Xem Chi Tiết Đơn Đặt Hàng
-                            </h3>
-                            <p className="text-slate-500 text-sm mt-0.5">Dưới đây là bản xem trước của đơn đặt hàng chuẩn in A4.</p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                            <button 
-                                onClick={() => window.print()}
-                                className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-2xl font-bold transition flex items-center gap-2 shadow-md shadow-blue-600/20"
-                            >
-                                <Printer size={18} /> In Phiếu
-                            </button>
-                            <button 
-                                onClick={() => handleExportExcel(selectedOrder)}
-                                className="bg-green-600 hover:bg-green-700 text-white px-5 py-2.5 rounded-2xl font-bold transition flex items-center gap-2 shadow-md shadow-green-600/20"
-                            >
-                                <Download size={18} /> Xuất Excel
-                            </button>
-                            <button 
-                                onClick={() => openEdit(selectedOrder)}
-                                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-2.5 rounded-2xl font-bold transition flex items-center gap-2"
-                            >
-                                <Edit3 size={18} /> Sửa Đơn
-                            </button>
-                            <button 
-                                onClick={() => setView('list')}
-                                className="p-2.5 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
-                    </header>
+                <div className="fixed inset-0 z-[100] flex flex-col items-center justify-start overflow-y-auto bg-black/60 backdrop-blur-sm p-4 sm:p-8 print:p-0 print:bg-white print:block">
+                    <style>{`
+                        @media print {
+                            @page { size: A4 portrait; margin: 10mm 12mm; }
+                            body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+                            body * { visibility: hidden; }
+                            .print-area, .print-area * { visibility: visible; }
+                            .print-area { 
+                                position: absolute; 
+                                left: 0; 
+                                top: 0; 
+                                width: 100%; 
+                                border: none !important; 
+                                box-shadow: none !important; 
+                                margin: 0; 
+                                padding: 0 !important; 
+                                min-height: 265mm !important;
+                                height: auto !important;
+                                display: flex !important;
+                                flex-direction: column !important;
+                                justify-content: space-between !important;
+                            }
+                        }
+                    `}</style>
+                    <div className="w-full max-w-[1050px] animate-in zoom-in-95 duration-200 relative mt-4 print:mt-0 print:w-auto">
+                        <header className="mb-4 flex flex-wrap justify-between items-center gap-4 bg-white p-4 rounded-2xl border border-slate-200 shadow-lg print:hidden">
+                            <div>
+                                <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                    <ClipboardList className="text-blue-600" /> Bản in xem trước
+                                </h3>
+                            </div>
+                            <div className="flex flex-wrap gap-2 items-center">
+                                <div className="flex items-center gap-3 bg-slate-50 p-1.5 rounded-xl border border-slate-200 mr-2">
+                                    <label className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-white rounded-lg cursor-pointer text-sm font-semibold text-slate-700 transition shadow-sm">
+                                        <input type="checkbox" checked={!showPriceCols} onChange={e => setShowPriceCols(!e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
+                                        Ẩn giá & tiền
+                                    </label>
+                                    <label className="flex items-center gap-1.5 px-2 py-1.5 hover:bg-white rounded-lg cursor-pointer text-sm font-semibold text-slate-700 transition shadow-sm border-l border-slate-200 pl-3">
+                                        <input type="checkbox" checked={showNonEmptyOnly} onChange={e => setShowNonEmptyOnly(e.target.checked)} className="rounded text-blue-600 focus:ring-blue-500" />
+                                        Chỉ in hàng
+                                    </label>
+                                </div>
+                                <button 
+                                    onClick={() => {
+                                        setTimeout(() => window.print(), 300);
+                                    }}
+                                    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-md"
+                                >
+                                    <Printer size={18} /> In Phiếu
+                                </button>
+                                <button 
+                                    onClick={() => handleExportExcel(selectedOrder)}
+                                    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-md"
+                                >
+                                    <Download size={18} /> Xuất Excel
+                                </button>
+                                <button 
+                                    onClick={() => { setView('create'); setSelectedOrder(null); setShowNonEmptyOnly(false); }}
+                                    className="bg-slate-100 text-slate-600 hover:bg-slate-200 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2"
+                                >
+                                    <Edit3 size={18} /> Sửa Đơn
+                                </button>
+                                <button 
+                                    onClick={() => { setView('list'); setSelectedOrder(null); setShowNonEmptyOnly(false); }}
+                                    className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition ml-2"
+                                >
+                                    <X size={20} />
+                                </button>
+                            </div>
+                        </header>
 
-                    {/* DỰ ÁN PREVIEW SIMULATOR */}
-                    <div className="print-area bg-white border-2 border-slate-200 shadow-2xl rounded-3xl overflow-hidden p-8 md:p-16 font-['Times_New_Roman',_serif] text-[16px] text-black print:border-none print:shadow-none print:p-0 w-full max-w-[800px] mx-auto min-h-[1050px] flex flex-col justify-between">
+                        {/* DỰ ÁN PREVIEW SIMULATOR */}
+                        <div className="print-area bg-white shadow-2xl rounded-sm p-8 md:p-12 font-['Times_New_Roman',_serif] text-[16px] text-black w-full max-w-[950px] min-h-[1340px] flex flex-col justify-between mx-auto">
                         
                         <div>
                             {/* SHEET TITLE */}
@@ -1554,8 +1715,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
                                     <span className="font-bold break-words">{selectedOrder.category.toUpperCase()}</span>
                                 </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 text-slate-700">
-                                    <span className="font-semibold text-slate-800 break-words">{selectedOrder.company.toUpperCase()}</span>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">CÔNG TY ĐẶT HÀNG :</span>
+                                    <span className="font-bold text-black break-words">{(selectedOrder.items?.[0]?._order_company || selectedOrder.order_company || 'CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK').toUpperCase()}</span>
+                                </div>
+                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NHÀ CUNG CẤP :</span>
+                                    <span className="font-bold text-black break-words">{selectedOrder.company.toUpperCase()}</span>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
                                     <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NGƯỜI NHẬN HÀNG :</span>
@@ -1573,48 +1739,60 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                             <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">Mã màu</th>
                                             <th className="border border-black p-2.5 text-center w-20 font-bold text-[15px]">DVT</th>
                                             <th className="border border-black p-2.5 text-center w-24 font-bold text-[15px]">Số lượng</th>
-                                            <th className="border border-black p-2.5 text-center w-32 font-bold text-[15px]">Đơn giá</th>
-                                            <th className="border border-black p-2.5 text-right w-36 font-bold text-[15px]">Thành tiền</th>
+                                            {showPriceCols && <th className="border border-black p-2.5 text-center w-32 font-bold text-[15px] relative group">
+                                                Đơn giá
+                                                <button onClick={() => setShowPriceCols(false)} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded print:hidden" title="Ẩn cột này"><EyeOff size={14} /></button>
+                                            </th>}
+                                            {showPriceCols && <th className="border border-black p-2.5 text-right w-36 font-bold text-[15px]">Thành tiền</th>}
                                         </tr>
                                     </thead>
                                     <tbody>
-                                        {(Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).map((cat, catIdx) => (
-                                            <React.Fragment key={catIdx}>
-                                                {/* CATEGORY HEADER ROW */}
-                                                <tr>
-                                                    <td colSpan="7" className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black bg-slate-50">
-                                                        {cat.name}
-                                                    </td>
-                                                </tr>
+                                        {(() => {
+                                            const categoriesToRender = (Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).map(cat => ({
+                                                ...cat,
+                                                items: showNonEmptyOnly 
+                                                    ? cat.items.filter(item => (parseFloat(item.quantity) || 0) > 0) 
+                                                    : cat.items
+                                            })).filter(cat => cat.items.length > 0);
 
-                                                {/* CATEGORY ITEMS */}
-                                                {cat.items.map((item, itemIdx) => (
-                                                    <tr key={itemIdx}>
-                                                        <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
-                                                        <td className="border border-black p-2 pl-4">{item.name}</td>
-                                                        <td className="border border-black p-2 text-center">{item.colorCode || ''}</td>
-                                                        <td className="border border-black p-2 text-center">{item.unit}</td>
-                                                        <td className="border border-black p-2 text-center font-bold">
-                                                            {item.quantity || '-'}
-                                                        </td>
-                                                        <td className="border border-black p-2 text-right pr-4">
-                                                            {item.price ? formatCurrency(item.price) : '-'}
-                                                        </td>
-                                                        <td className="border border-black p-2 text-right pr-4 font-bold text-blue-800">
-                                                            {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
+                                            return categoriesToRender.map((cat, catIdx) => (
+                                                <React.Fragment key={catIdx}>
+                                                    {/* CATEGORY HEADER ROW */}
+                                                    <tr>
+                                                        <td colSpan={showPriceCols ? "7" : "5"} className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black bg-slate-50">
+                                                            {cat.name}
                                                         </td>
                                                     </tr>
-                                                ))}
-                                            </React.Fragment>
-                                        ))}
-                                        <tr>
+
+                                                    {/* CATEGORY ITEMS */}
+                                                    {cat.items.map((item, itemIdx) => (
+                                                        <tr key={itemIdx}>
+                                                            <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
+                                                            <td className="border border-black p-2 pl-4">{item.name}</td>
+                                                            <td className="border border-black p-2 text-center">{item.colorCode || ''}</td>
+                                                            <td className="border border-black p-2 text-center">{item.unit}</td>
+                                                            <td className="border border-black p-2 text-center font-bold">
+                                                                {item.quantity || '-'}
+                                                            </td>
+                                                            {showPriceCols && <td className="border border-black p-2 text-right pr-4">
+                                                                {item.price ? formatCurrency(item.price) : '-'}
+                                                            </td>}
+                                                            {showPriceCols && <td className="border border-black p-2 text-right pr-4 font-bold text-blue-800">
+                                                                {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
+                                                            </td>}
+                                                        </tr>
+                                                    ))}
+                                                </React.Fragment>
+                                            ));
+                                        })()}
+                                        {showPriceCols && <tr>
                                             <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
                                                 Tổng cộng:
                                             </td>
                                             <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
                                                 {formatCurrency((Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
                                             </td>
-                                        </tr>
+                                        </tr>}
                                     </tbody>
                                 </table>
                             </div>
@@ -1653,6 +1831,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         </div>
                     </div>
                 </div>
+            </div>
             )}
 
             {/* SQL CODE POPUP MODAL */}

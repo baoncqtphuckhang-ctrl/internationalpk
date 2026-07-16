@@ -12,7 +12,8 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
     const [selectedIds, setSelectedIds] = useState([]);
     const [filters, setFilters] = useState({ type: '', date: '' });
 
-    const getTableName = (table) => {
+    const getTableName = (itemOrTable) => {
+        const table = typeof itemOrTable === 'object' ? itemOrTable.original_table : itemOrTable;
         const map = {
             'approval_requests': 'Phiếu phê duyệt',
             'material_orders': 'Đơn đặt hàng vật tư',
@@ -25,6 +26,14 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
             'users': 'Tài khoản nhân sự',
             'expected_invoices': 'Hóa đơn dự kiến'
         };
+        if (typeof itemOrTable === 'object' && table === 'approval_requests') {
+            try {
+                const data = typeof itemOrTable.record_data === 'string' ? JSON.parse(itemOrTable.record_data) : itemOrTable.record_data;
+                if (data?.doc_type === 'Đơn Vật Tư') {
+                    return 'Đơn đặt hàng vật tư';
+                }
+            } catch(e) {}
+        }
         return map[table] || table;
     };
 
@@ -467,7 +476,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                             </td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{item.deleted_by}</td>
                                             <td className="p-4 text-sm font-medium text-slate-700">{getRequesterName(item) || '-'}</td>
-                                            <td className="p-4 text-sm font-medium text-slate-600">{getTableName(item.original_table)}</td>
+                                            <td className="p-4 text-sm font-medium text-slate-600">{getTableName(item)}</td>
                                             <td className="p-4 text-sm text-slate-500 max-w-sm">
                                                 {renderContent(item)}
                                             </td>

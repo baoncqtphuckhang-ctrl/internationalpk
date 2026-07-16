@@ -5,13 +5,17 @@ import ConfirmModal from '@/components/ConfirmModal';
 export default function DeleteApprovals({ deleteRequests = [], onApprove, onReject, isLoading, onNavigateToHistoryWithId }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, action: null, request: null });
 
-    const getTableLabel = (tableName) => {
+    const getTableLabel = (req) => {
+        const tableName = req.original_table;
         switch (tableName) {
             case 'transactions':
                 return 'Giao dịch Chi/Thu';
             case 'incomes':
                 return 'Doanh thu';
             case 'approval_requests':
+                if (req.record_name?.includes('Đơn đặt hàng vật tư') || req.record_name?.includes('Đơn vật tư') || req.record_name?.includes('Đơn Vật Tư')) {
+                    return 'Đơn vật tư';
+                }
                 return 'Phiếu DNTT';
             case 'partner_debts':
                 return 'Công nợ Nhà cung cấp';
@@ -133,7 +137,7 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
                                             <td className="py-4 px-4 text-center font-bold text-slate-400">{index + 1}</td>
                                             <td className="py-4 px-4 font-bold">
                                                 <span className="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold bg-slate-100 text-slate-800 border border-slate-200">
-                                                    {getTableLabel(req.original_table)}
+                                                    {getTableLabel(req)}
                                                 </span>
                                             </td>
                                             <td className="py-4 px-4 font-black text-slate-800">

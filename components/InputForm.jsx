@@ -296,24 +296,20 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     }, [type, formData.phase, formData.actual_received_amount, formData.deduction_amount, selectedPhaseStats, editData]);
 
     const projectRecipients = useMemo(() => {
-        if (!formData.project_name) return [];
-        const recipients = new Set();
-        if (incomes) {
-            incomes.forEach(i => {
-                if (i.project_name === formData.project_name && i.recipient) {
-                    recipients.add(i.recipient);
-                }
-            });
-        }
-        if (transactions) {
-            transactions.forEach(t => {
-                if (t.project_name === formData.project_name && t.recipient) {
-                    recipients.add(t.recipient);
-                }
-            });
-        }
-        return Array.from(recipients);
-    }, [formData.project_name, incomes, transactions]);
+        if (!formData.project_name || !projects) return ['Khác'];
+        const proj = projects.find(p => p.name === formData.project_name);
+        if (!proj) return ['Khác'];
+        
+        let personnel = [];
+        try {
+            if (proj.cht_name) {
+                personnel = proj.cht_name.split(',').map(s => s.trim()).filter(Boolean);
+            }
+        } catch(e) {}
+        
+        return [...personnel, 'Khác'];
+    }, [formData.project_name, projects]);
+
 
 
 

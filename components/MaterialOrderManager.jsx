@@ -9,6 +9,7 @@ import {
     DollarSign, Tag, Info, PieChart, Trash2, ChevronDown, ChevronUp, Truck, Package, CheckSquare, Upload, Save, Camera, Edit3, RotateCcw, X, Plus
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import ConfirmModal from './ConfirmModal';
 
 const STATUS_LABELS = {
     'Draft': { label: 'Nháp', color: 'bg-slate-50 text-slate-500 border-slate-100', icon: Info },
@@ -58,9 +59,20 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [matchedRequest, setMatchedRequest] = useState(null);
     const [isStatsView, setIsStatsView] = useState(false);
+    const [hidePriceForPrint, setHidePriceForPrint] = useState(false);
     
     // Modal state
-    const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
+    const [confirmModal, setConfirmModal] = useState({ 
+        isOpen: false, 
+        message: '', 
+        onConfirm: null,
+        type: 'danger',
+        title: 'Xác nhận',
+        requirePassword: false,
+        requireReason: false,
+        reasonLabel: 'Lý do',
+        reasonPlaceholder: 'Nhập lý do...'
+    });
     
     // Receiving items state
     const [expandedOrderId, setExpandedOrderId] = useState(null);
@@ -302,26 +314,40 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         if (!isAuthorizer) {
             const order = orders.find(o => o.id === orderId);
             const recordName = `Đơn hàng vật tư ${order?.order_code || ''} công trình ${order?.project_name || ''}`;
-            const reason = window.prompt(`Nhập lý do đề nghị xóa đơn đặt hàng ${order?.order_code || ''}:`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
             
-            setIsLoading(true);
-            supabase.from('delete_requests').insert([{
-                original_table: 'material_orders',
-                record_id: orderId,
-                record_name: recordName,
-                requested_by: currentUser?.username || 'unknown',
-                reason: reason.trim(),
-                status: 'pending'
-            }]).then(({ error }) => {
-                setIsLoading(false);
-                if (error) {
-                    alert('Lỗi khi gửi đề nghị xóa: ' + error.message);
-                } else {
-                    alert('Đã gửi đề nghị xóa đơn đặt hàng tới Admin/QS Trưởng!');
-                    if (refreshData) refreshData();
-                    fetchOrders();
+            setConfirmModal({
+                isOpen: true,
+                title: 'Đề nghị xóa đơn đặt hàng',
+                message: `Gửi đề nghị admin/QS trưởng xóa đơn đặt hàng ${order?.order_code || ''} của công trình ${order?.project_name || ''}.`,
+                type: 'info',
+                requireReason: true,
+                reasonLabel: 'Lý do đề nghị xóa',
+                reasonPlaceholder: 'Ví dụ: Nhập sai thông tin, thay đổi nhà cung cấp...',
+                confirmText: 'Gửi đề nghị',
+                onConfirm: (reason) => {
+                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                    if (!reason || !reason.trim()) {
+                        showToast('Vui lòng nhập lý do!', 'error');
+                        return;
+                    }
+                    setIsLoading(true);
+                    supabase.from('delete_requests').insert([{
+                        original_table: 'material_orders',
+                        record_id: orderId,
+                        record_name: recordName,
+                        requested_by: currentUser?.username || 'unknown',
+                        reason: reason.trim(),
+                        status: 'pending'
+                    }]).then(({ error }) => {
+                        setIsLoading(false);
+                        if (error) {
+                            showToast('Lỗi khi gửi đề nghị xóa: ' + error.message, 'error');
+                        } else {
+                            showToast('Đã gửi đề nghị xóa đơn đặt hàng tới Admin/QS Trưởng!');
+                            if (refreshData) refreshData();
+                            fetchOrders();
+                        }
+                    });
                 }
             });
             return;
@@ -329,9 +355,15 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         
         setConfirmModal({
             isOpen: true,
+            title: 'Xác nhận xóa',
+            type: 'danger',
             requirePassword: true,
             message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Dữ liệu này, cùng với Lịch sử chi tiền (nếu có) sẽ được chuyển vào thùng rác.',
-            onConfirm: async () => {
+            onConfirm: async (pwd) => {
+                if (pwd !== adminPassword) {
+                    showToast('Mật khẩu không đúng!', 'error');
+                    return;
+                }
                 setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
@@ -440,10 +472,11 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         
         setConfirmModal({
             isOpen: true,
-            requirePassword: false,
+            title: 'Xác nhận hoàn tác',
+            type: 'warning',
             message: 'Bạn có chắc chắn muốn hoàn tác trạng thái đơn hàng này về "Chờ QS duyệt" không?',
             onConfirm: async () => {
-                setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null });
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
                 try {
                     const { error } = await supabase
@@ -2118,7 +2151,11 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                             {/* DETAIL VIEW (WITH PRINT & COST ALLOCATION) */}
                             <div className="space-y-6">
                                 {/* ACTION BUTTONS */}
-                                <div className="flex justify-end gap-3 no-print">
+                                <div className="flex justify-end items-center gap-3 no-print">
+                                    <label className="flex items-center gap-2 cursor-pointer bg-slate-50 border border-slate-200 px-4 py-2.5 rounded-2xl text-xs font-bold text-slate-600 transition hover:bg-slate-100">
+                                        <input type="checkbox" checked={hidePriceForPrint} onChange={(e) => setHidePriceForPrint(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500" />
+                                        Ẩn Đơn giá & Thành tiền
+                                    </label>
                                     <button 
                                         onClick={handlePrint}
                                         className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2.5 rounded-2xl text-xs font-black transition flex items-center gap-2 shadow-lg shadow-indigo-600/15 cursor-pointer"
@@ -2220,8 +2257,8 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                         <th className="px-3 py-3 border-r border-black text-center w-20">Mã màu</th>
                                         <th className="px-3 py-3 border-r border-black text-center w-16">DVT</th>
                                         <th className="px-3 py-3 border-r border-black text-center w-16">Số lượng</th>
-                                        <th className="px-3 py-3 border-r border-black text-right w-24">Đơn giá</th>
-                                        <th className="px-3 py-3 border-r border-black text-right w-28">Thành tiền</th>
+                                        <th className={`px-3 py-3 border-r border-black text-right w-24 ${hidePriceForPrint ? 'print:hidden' : ''}`}>Đơn giá</th>
+                                        <th className={`px-3 py-3 border-r border-black text-right w-28 ${hidePriceForPrint ? 'print:hidden' : ''}`}>Thành tiền</th>
                                         <th className="px-3 py-3 w-[16%]">Ghi chú</th>
                                     </tr>
                                 </thead>
@@ -2277,10 +2314,10 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-medium">{it.colorCode || '-'}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center">{it.unit}</td>
                                                                 <td className="px-4 py-2.5 border-r border-black text-center font-bold">{qty}</td>
-                                                                <td className="px-4 py-2.5 border-r border-black text-right">
+                                                                <td className={`px-4 py-2.5 border-r border-black text-right ${hidePriceForPrint ? 'print:hidden' : ''}`}>
                                                                     {formatCurrency(unitPrice)}
                                                                 </td>
-                                                                <td className="px-4 py-2.5 border-r border-black text-right font-bold text-blue-800">
+                                                                <td className={`px-4 py-2.5 border-r border-black text-right font-bold text-blue-800 ${hidePriceForPrint ? 'print:hidden' : ''}`}>
                                                                     {formatCurrency(finalAllocated)}
                                                                 </td>
                                                                 <td className="px-4 py-2.5 text-xs text-slate-500">{note}</td>
@@ -2293,7 +2330,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                     })()}
 
                                     {/* Grand Total Row */}
-                                    <tr className="font-bold border-t-2 border-black text-base">
+                                    <tr className={`font-bold border-t-2 border-black text-base ${hidePriceForPrint ? 'print:hidden' : ''}`}>
                                         <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng:</td>
                                         <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-blue-800">
                                             {formatCurrency(
@@ -2358,57 +2395,19 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     </div>
 )}
 
-            {/* Custom Confirm Modal */}
-            {confirmModal.isOpen && (
-                <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-[150] p-4 animate-in fade-in duration-200">
-                    <div className="bg-white rounded-3xl p-7 w-full max-w-sm shadow-2xl animate-in zoom-in-95 duration-200">
-                        <div className="w-16 h-16 rounded-2xl bg-red-50 text-red-500 flex items-center justify-center mx-auto mb-5 shadow-sm border border-red-100">
-                            <Trash2 size={32} />
-                        </div>
-                        <h3 className="text-2xl font-black text-slate-800 text-center mb-2">Xác nhận xóa</h3>
-                        <p className="text-slate-500 text-[15px] text-center mb-6 leading-relaxed px-2">
-                            {confirmModal.message}
-                        </p>
-                        
-                        {confirmModal.requirePassword && (
-                            <div className="mb-6">
-                                <label className="block text-xs font-bold text-slate-700 mb-1">Mật khẩu xác nhận:</label>
-                                <input 
-                                    type="password" 
-                                    id="deletePasswordInput"
-                                    className="w-full bg-slate-50 border border-slate-300 rounded-xl px-3 py-2 text-sm outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500" 
-                                    placeholder="Nhập mật khẩu..." 
-                                    autoFocus
-                                />
-                            </div>
-                        )}
-
-                        <div className="flex gap-3">
-                            <button 
-                                onClick={() => setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null })}
-                                className="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold py-3.5 px-4 rounded-xl transition"
-                            >
-                                Hủy bỏ
-                            </button>
-                            <button 
-                                onClick={() => {
-                                    if (confirmModal.requirePassword) {
-                                        const pwd = document.getElementById('deletePasswordInput')?.value;
-                                        if (pwd !== adminPassword) {
-                                            showToast('Mật khẩu không đúng!', 'error');
-                                            return;
-                                        }
-                                    }
-                                    confirmModal.onConfirm();
-                                }}
-                                className="flex-1 bg-red-600 hover:bg-red-700 text-white font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-red-600/20 transition"
-                            >
-                                Xóa vĩnh viễn
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <ConfirmModal 
+                isOpen={confirmModal.isOpen} 
+                message={confirmModal.message} 
+                onConfirm={confirmModal.onConfirm} 
+                onCancel={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} 
+                type={confirmModal.type}
+                title={confirmModal.title}
+                requirePassword={confirmModal.requirePassword}
+                requireReason={confirmModal.requireReason}
+                reasonLabel={confirmModal.reasonLabel}
+                reasonPlaceholder={confirmModal.reasonPlaceholder}
+                confirmText={confirmModal.confirmText}
+            />
 
             {/* Edit Receive Modal */}
             {editReceiveModal.isOpen && (

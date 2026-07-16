@@ -1417,28 +1417,42 @@ export default function Home() {
             const tx = transactions.find(t => t.id === id);
             const amount = tx ? (tx.debit || tx.credit || 0) : 0;
             const recordName = `Giao dịch ngày ${formatDateVN(tx?.accounting_date)} — ${tx?.note || ''} (${formatCurrency(amount)} VNĐ)`;
-            const reason = window.prompt(`Nhập lý do đề nghị xóa giao dịch: ${tx?.note || ''}`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
             
-            setIsLoading(true);
-            try {
-                const { error } = await supabase.from('delete_requests').insert([{
-                    original_table: 'transactions',
-                    record_id: id,
-                    record_name: recordName,
-                    requested_by: currentUser?.username || 'unknown',
-                    reason: reason.trim(),
-                    status: 'pending'
-                }]);
-                if (error) throw error;
-                showToast('Đã gửi đề nghị xóa giao dịch!');
-                fetchData();
-            } catch (err) {
-                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
-            } finally {
-                setIsLoading(false);
-            }
+            setConfirmModal({
+                isOpen: true,
+                title: 'Đề nghị xóa giao dịch chi',
+                message: `Gửi đề nghị admin/QS trưởng xóa giao dịch chi của công trình ${tx?.project_name || ''}, ngày ${formatDateVN(tx?.accounting_date)}, số tiền ${formatCurrency(amount)} VNĐ.`,
+                type: 'info',
+                requireReason: true,
+                reasonLabel: 'Lý do đề nghị xóa',
+                reasonPlaceholder: 'Ví dụ: Nhập sai số tiền, trùng dòng, thay đổi diễn giải...',
+                confirmText: 'Gửi đề nghị',
+                onConfirm: async (reason) => {
+                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                    if (!reason || !reason.trim()) {
+                        showToast('Vui lòng nhập lý do!', 'error');
+                        return;
+                    }
+                    setIsLoading(true);
+                    try {
+                        const { error } = await supabase.from('delete_requests').insert([{
+                            original_table: 'transactions',
+                            record_id: id,
+                            record_name: recordName,
+                            requested_by: currentUser?.username || 'unknown',
+                            reason: reason.trim(),
+                            status: 'pending'
+                        }]);
+                        if (error) throw error;
+                        showToast('Đã gửi đề nghị xóa giao dịch!');
+                        fetchData();
+                    } catch (err) {
+                        showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                }
+            });
             return;
         }
 
@@ -1575,28 +1589,42 @@ export default function Home() {
             const inc = incomes.find(i => i.id === id);
             const amount = inc ? (inc.post_tax_amount || inc.amount || 0) : 0;
             const recordName = `Khoản thu đợt ${inc?.phase || ''} công trình ${inc?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
-            const reason = window.prompt(`Nhập lý do đề nghị xóa khoản thu đợt ${inc?.phase || ''} công trình ${inc?.project_name || ''}:`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
             
-            setIsLoading(true);
-            try {
-                const { error } = await supabase.from('delete_requests').insert([{
-                    original_table: 'incomes',
-                    record_id: id,
-                    record_name: recordName,
-                    requested_by: currentUser?.username || 'unknown',
-                    reason: reason.trim(),
-                    status: 'pending'
-                }]);
-                if (error) throw error;
-                showToast('Đã gửi đề nghị xóa khoản thu!');
-                fetchData();
-            } catch (err) {
-                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
-            } finally {
-                setIsLoading(false);
-            }
+            setConfirmModal({
+                isOpen: true,
+                title: 'Đề nghị xóa khoản thu',
+                message: `Gửi đề nghị admin/QS trưởng xóa khoản thu đợt ${inc?.phase || ''} của công trình ${inc?.project_name || ''} với số tiền ${formatCurrency(amount)} VNĐ.`,
+                type: 'info',
+                requireReason: true,
+                reasonLabel: 'Lý do đề nghị xóa',
+                reasonPlaceholder: 'Ví dụ: Nhập sai đợt thanh toán, trùng dòng, thay đổi số tiền...',
+                confirmText: 'Gửi đề nghị',
+                onConfirm: async (reason) => {
+                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                    if (!reason || !reason.trim()) {
+                        showToast('Vui lòng nhập lý do!', 'error');
+                        return;
+                    }
+                    setIsLoading(true);
+                    try {
+                        const { error } = await supabase.from('delete_requests').insert([{
+                            original_table: 'incomes',
+                            record_id: id,
+                            record_name: recordName,
+                            requested_by: currentUser?.username || 'unknown',
+                            reason: reason.trim(),
+                            status: 'pending'
+                        }]);
+                        if (error) throw error;
+                        showToast('Đã gửi đề nghị xóa khoản thu!');
+                        fetchData();
+                    } catch (err) {
+                        showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                }
+            });
             return;
         }
 
@@ -1759,88 +1787,106 @@ export default function Home() {
 
     const handleDeleteApproval = async (id) => {
         const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        const appReq = dnttList.find(a => a.id === id);
+        const isMaterial = appReq?.doc_type === 'Đơn Vật Tư';
+        const typeLabel = isMaterial ? 'đơn đặt hàng vật tư' : 'phiếu DNTT';
+        const typeLabelCap = isMaterial ? 'Đơn đặt hàng vật tư' : 'Phiếu DNTT';
+
         if (!isAuthorizer) {
-            const appReq = dnttList.find(a => a.id === id);
             const amount = appReq ? (appReq.total_amount || 0) : 0;
-            const recordName = `Phiếu DNTT số ${appReq?.code || ''} công trình ${appReq?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
-            const reason = window.prompt(`Nhập lý do đề nghị xóa phiếu DNTT ${appReq?.code || ''}:`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
+            const recordName = `${typeLabelCap} số ${appReq?.code || ''} công trình ${appReq?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
             
-            setIsLoading(true);
-            try {
-                const { error } = await supabase.from('delete_requests').insert([{
-                    original_table: 'approval_requests',
-                    record_id: id,
-                    record_name: recordName,
-                    requested_by: currentUser?.username || 'unknown',
-                    reason: reason.trim(),
-                    status: 'pending'
-                }]);
-                if (error) throw error;
-                showToast('Đã gửi đề nghị xóa phiếu DNTT!');
-                fetchData();
-            } catch (err) {
-                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
-            } finally {
-                setIsLoading(false);
-            }
+            setConfirmModal({
+                isOpen: true,
+                title: `Đề nghị xóa ${typeLabel}`,
+                message: `Gửi đề nghị admin/QS trưởng xóa ${typeLabel} ${appReq?.code || ''} của công trình ${appReq?.project_name || ''} với số tiền ${formatCurrency(amount)} VNĐ.`,
+                type: 'info',
+                requireReason: true,
+                reasonLabel: 'Lý do đề nghị xóa',
+                reasonPlaceholder: 'Ví dụ: Nhập sai số tiền, trùng phiếu, thay đổi thông tin...',
+                confirmText: 'Gửi đề nghị',
+                onConfirm: async (reason) => {
+                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                    if (!reason || !reason.trim()) {
+                        showToast('Vui lòng nhập lý do!', 'error');
+                        return;
+                    }
+                    setIsLoading(true);
+                    try {
+                        const { error } = await supabase.from('delete_requests').insert([{
+                            original_table: 'approval_requests',
+                            record_id: id,
+                            record_name: recordName,
+                            requested_by: currentUser?.username || 'unknown',
+                            reason: reason.trim(),
+                            status: 'pending'
+                        }]);
+                        if (error) throw error;
+                        showToast(`Đã gửi đề nghị xóa ${typeLabel}!`);
+                        fetchData();
+                    } catch (err) {
+                        showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                }
+            });
             return;
         }
 
         setConfirmModal({
             isOpen: true,
-            message: 'Bạn có chắc chắn muốn chuyển phiếu này và toàn bộ dữ liệu (giao dịch, đơn hàng) liên quan vào thùng rác?',
+            message: `Bạn có chắc chắn muốn chuyển ${typeLabel} này và toàn bộ dữ liệu (giao dịch, đơn hàng) liên quan vào thùng rác?`,
             onConfirm: async () => {
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
-        try {
-            // 1. Xóa các giao dịch liên quan trong bảng transactions
-            await moveToTrash('transactions', 'note', `%[ID:${id}]%`, true);
-            const { error: transError } = await supabase.from('transactions').delete().ilike('note', `%[ID:${id}]%`);
-            if (transError) throw transError;
-
-            // 2. Xóa đơn đặt hàng vật tư liên quan (đồng bộ)
-            const dntt = dnttList.find(d => d.id === id);
-            if (dntt && dntt.doc_type === 'Đơn Vật Tư') {
                 try {
-                    const r = JSON.parse(dntt.reason);
-                    if (r.date && r.project) {
-                        // TODO: Trashing material_orders might require complex query, skipped or simplify by not intercepting this specific nested delete.
-                        // Actually, I can intercept with 3 conditions? We don't have multiple conditions in moveToTrash. Let's just delete it directly or leave it hard deleted, as it's just a generated order representation.
-                        const { data: moData } = await supabase.from('material_orders')
-                            .select('id, company, recipient, order_phase')
-                            .eq('project_name', r.project)
-                            .eq('order_date', r.date);
-                            
-                        if (moData && moData.length > 0) {
-                            for (const m of moData) {
-                                const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === dntt.recipient || m.recipient === dntt.recipient;
-                                const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
-                                if (matchRecipient && matchPhase) {
-                                    await moveToTrash('material_orders', 'id', m.id);
-                                    await supabase.from('material_orders').delete().eq('id', m.id);
+                    // 1. Xóa các giao dịch liên quan trong bảng transactions
+                    await moveToTrash('transactions', 'note', `%[ID:${id}]%`, true);
+                    const { error: transError } = await supabase.from('transactions').delete().ilike('note', `%[ID:${id}]%`);
+                    if (transError) throw transError;
+
+                    // 2. Xóa đơn đặt hàng vật tư liên quan (đồng bộ)
+                    const dntt = dnttList.find(d => d.id === id);
+                    if (dntt && dntt.doc_type === 'Đơn Vật Tư') {
+                        try {
+                            const r = JSON.parse(dntt.reason);
+                            if (r.date && r.project) {
+                                // TODO: Trashing material_orders might require complex query, skipped or simplify by not intercepting this specific nested delete.
+                                // Actually, I can intercept with 3 conditions? We don't have multiple conditions in moveToTrash. Let's just delete it directly or leave it hard deleted, as it's just a generated order representation.
+                                const { data: moData } = await supabase.from('material_orders')
+                                    .select('id, company, recipient, order_phase')
+                                    .eq('project_name', r.project)
+                                    .eq('order_date', r.date);
+                                    
+                                if (moData && moData.length > 0) {
+                                    for (const m of moData) {
+                                        const matchRecipient = m.company === r.recipient || m.recipient === r.recipient || m.company === dntt.recipient || m.recipient === dntt.recipient;
+                                        const matchPhase = r.orderPhase ? m.order_phase === r.orderPhase : true;
+                                        if (matchRecipient && matchPhase) {
+                                            await moveToTrash('material_orders', 'id', m.id);
+                                            await supabase.from('material_orders').delete().eq('id', m.id);
+                                        }
+                                    }
                                 }
                             }
-                        }
+                        } catch(e) {}
                     }
-                } catch(e) {}
-            }
 
-            // 3. Xóa phiếu phê duyệt
-            await moveToTrash('approval_requests', 'id', id);
-            const { error: appError } = await supabase.from('approval_requests').delete().eq('id', id);
-            if (appError) throw appError;
+                    // 3. Xóa phiếu phê duyệt
+                    await moveToTrash('approval_requests', 'id', id);
+                    const { error: appError } = await supabase.from('approval_requests').delete().eq('id', id);
+                    if (appError) throw appError;
 
-            showToast('Đã chuyển phiếu vào thùng rác!');
-            logActivity('Xóa', 'Đề nghị thanh toán', `Xóa phiếu và dữ liệu đồng bộ (ID: ${id})`);
-            fetchData();
-        } catch (error) {
-            console.error(error);
-            showToast('Lỗi khi xóa dữ liệu!', 'error');
-        } finally {
-            setIsLoading(false);
-        }
+                    showToast(`Đã chuyển ${typeLabel} vào thùng rác!`);
+                    logActivity('Xóa', typeLabelCap, `Xóa ${typeLabel} và dữ liệu đồng bộ (ID: ${id})`);
+                    fetchData();
+                } catch (error) {
+                    console.error(error);
+                    showToast('Lỗi khi xóa dữ liệu!', 'error');
+                } finally {
+                    setIsLoading(false);
+                }
             }
         });
     };
@@ -2025,18 +2071,52 @@ export default function Home() {
         setIsLoading(true);
         try {
             const payloadArray = Array.isArray(debtPayload) ? debtPayload : [debtPayload];
-            const dataToInsert = payloadArray.map(p => ({
-                ...p,
-                created_by: currentUser.username
-            }));
-            const { error } = await supabase.from('partner_debts').insert(dataToInsert);
-            if (error) throw error;
-            showToast('Đã ghi nhận công nợ mới!');
-            logActivity('Thêm', 'Công nợ', `Tạo mới ${payloadArray.length} công nợ`, payloadArray[0]?.project_name);
+            
+            for (const p of payloadArray) {
+                if (p.id) {
+                    const { error } = await supabase.from('partner_debts').update({
+                        project_name: p.project_name,
+                        partner_name: p.partner_name,
+                        debt_type: p.debt_type,
+                        amount: p.amount,
+                        note: p.note
+                    }).eq('id', p.id);
+                    if (error) throw error;
+                    logActivity('Cập nhật', 'Công nợ', `Cập nhật công nợ ID ${p.id}`, p.project_name);
+                } else {
+                    const { data: newDebt, error } = await supabase.from('partner_debts').insert([{
+                        project_name: p.project_name,
+                        partner_name: p.partner_name,
+                        debt_type: p.debt_type,
+                        amount: p.amount,
+                        note: p.note,
+                        status: p.status || 'CHƯA XONG',
+                        created_by: currentUser.username
+                    }]).select().single();
+                    if (error) throw error;
+                    logActivity('Thêm', 'Công nợ', `Tạo mới công nợ`, p.project_name);
+
+                    if (newDebt && newDebt.debt_type === 'CẦN TRẢ') {
+                        const dnttPayload = {
+                            doc_type: 'Đề nghị thanh toán',
+                            project_name: newDebt.project_name,
+                            recipient: newDebt.partner_name,
+                            total_amount: newDebt.amount,
+                            reason: `[THANH TOÁN CÔNG NỢ] ${newDebt.note || ''}`,
+                            status: 'WAITING',
+                            created_by: currentUser.username
+                        };
+                        const { error: dnttErr } = await supabase.from('approval_requests').insert([dnttPayload]);
+                        if (dnttErr) console.error('Failed to create DNTT for debt:', dnttErr);
+                    }
+                }
+            }
+
+            showToast('Đã lưu công nợ!');
             fetchData();
         } catch (error) {
             console.error('Error adding debt:', error.message || error);
-            showToast('Lỗi khi thêm công nợ: ' + (error.message || JSON.stringify(error)), 'error');
+            showToast('Lỗi khi lưu công nợ: ' + (error.message || JSON.stringify(error)), 'error');
         } finally {
             setIsLoading(false);
         }
@@ -2083,28 +2163,42 @@ export default function Home() {
             const debt = partnerDebts.find(d => d.id === id);
             const amount = debt ? (debt.amount || 0) : 0;
             const recordName = `Công nợ NCC ${debt?.partner_name || ''} công trình ${debt?.project_name || ''} (${formatCurrency(amount)} VNĐ)`;
-            const reason = window.prompt(`Nhập lý do đề nghị xóa công nợ NCC ${debt?.partner_name || ''}:`);
-            if (reason === null) return;
-            if (!reason.trim()) return alert('Vui lòng nhập lý do!');
             
-            setIsLoading(true);
-            try {
-                const { error } = await supabase.from('delete_requests').insert([{
-                    original_table: 'partner_debts',
-                    record_id: id,
-                    record_name: recordName,
-                    requested_by: currentUser?.username || 'unknown',
-                    reason: reason.trim(),
-                    status: 'pending'
-                }]);
-                if (error) throw error;
-                showToast('Đã gửi đề nghị xóa công nợ!');
-                fetchData();
-            } catch (err) {
-                showToast('Lỗi khi gửi đề nghị xóa!', 'error');
-            } finally {
-                setIsLoading(false);
-            }
+            setConfirmModal({
+                isOpen: true,
+                title: 'Đề nghị xóa công nợ',
+                message: `Gửi đề nghị admin/QS trưởng xóa công nợ NCC ${debt?.partner_name || ''} công trình ${debt?.project_name || ''} (${formatCurrency(amount)} VNĐ).`,
+                type: 'info',
+                requireReason: true,
+                reasonLabel: 'Lý do đề nghị xóa',
+                reasonPlaceholder: 'Ví dụ: Nhập sai số tiền công nợ, đổi nhà cung cấp...',
+                confirmText: 'Gửi đề nghị',
+                onConfirm: async (reason) => {
+                    setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                    if (!reason || !reason.trim()) {
+                        showToast('Vui lòng nhập lý do!', 'error');
+                        return;
+                    }
+                    setIsLoading(true);
+                    try {
+                        const { error } = await supabase.from('delete_requests').insert([{
+                            original_table: 'partner_debts',
+                            record_id: id,
+                            record_name: recordName,
+                            requested_by: currentUser?.username || 'unknown',
+                            reason: reason.trim(),
+                            status: 'pending'
+                        }]);
+                        if (error) throw error;
+                        showToast('Đã gửi đề nghị xóa công nợ!');
+                        fetchData();
+                    } catch (err) {
+                        showToast('Lỗi khi gửi đề nghị xóa!', 'error');
+                    } finally {
+                        setIsLoading(false);
+                    }
+                }
+            });
             return;
         }
 

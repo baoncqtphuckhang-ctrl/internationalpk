@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { AlertTriangle, Trash2, Info } from 'lucide-react';
+import { AlertTriangle, Trash2, Info, MessageSquare } from 'lucide-react';
 
 export default function ConfirmModal({
     isOpen,
@@ -75,17 +75,26 @@ export default function ConfirmModal({
                     )}
 
                     {requireReason && (
-                        <div className="mt-5 text-left">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">{reasonLabel}</label>
-                            <textarea
-                                value={reason}
-                                onChange={(e) => setReason(e.target.value)}
-                                placeholder={reasonPlaceholder}
-                                rows={4}
-                                className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 focus:border-blue-500 focus:bg-white outline-none transition-colors resize-none"
-                                autoFocus
-                            />
-                            <p className="mt-2 text-[11px] font-semibold text-slate-400">Bắt buộc nhập để admin/QS trưởng biết lý do xử lý.</p>
+                        <div className="mt-6 text-left">
+                            <label className="flex items-center gap-2 text-xs font-bold text-slate-600 uppercase mb-3">
+                                <MessageSquare size={14} className="text-blue-500" />
+                                {reasonLabel}
+                            </label>
+                            <div className="relative group">
+                                <div className="absolute -inset-0.5 bg-gradient-to-r from-blue-500 to-indigo-500 rounded-xl blur opacity-0 group-focus-within:opacity-30 transition duration-300"></div>
+                                <textarea
+                                    value={reason}
+                                    onChange={(e) => setReason(e.target.value)}
+                                    placeholder={reasonPlaceholder}
+                                    rows={4}
+                                    className="relative w-full bg-slate-50/80 backdrop-blur-sm border-2 border-slate-200/80 rounded-xl px-4 py-3 text-sm font-semibold text-slate-700 placeholder-slate-400 focus:border-blue-500 focus:bg-white outline-none transition-all duration-300 resize-none shadow-inner"
+                                    autoFocus
+                                />
+                            </div>
+                            <p className="mt-2.5 text-[11px] font-semibold text-slate-400 flex items-center gap-1.5">
+                                <Info size={12} className="text-amber-500" />
+                                Bắt buộc nhập để admin/QS trưởng biết lý do xử lý.
+                            </p>
                         </div>
                     )}
                 </div>

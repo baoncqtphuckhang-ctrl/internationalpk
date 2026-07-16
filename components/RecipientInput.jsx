@@ -7,6 +7,7 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
     const [inputValue, setInputValue] = useState(value || '');
     const [isTypingNew, setIsTypingNew] = useState(false);
     const wrapperRef = useRef(null);
+    const inputRef = useRef(null);
 
     useEffect(() => {
         setInputValue(value || '');
@@ -47,6 +48,14 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
     };
 
     const handleSelect = (item) => {
+        if (item === 'Khác') {
+            onChange('');
+            setInputValue('');
+            setIsOpen(false);
+            setIsTypingNew(true);
+            setTimeout(() => inputRef.current?.focus(), 10);
+            return;
+        }
         onChange(item);
         setInputValue(item);
         setIsOpen(false);
@@ -70,6 +79,7 @@ export default function RecipientInput({ value, onChange, errorCls, placeholder 
         <div ref={wrapperRef} className="relative">
             <div className="relative">
                 <input
+                    ref={inputRef}
                     type="text"
                     value={inputValue}
                     onChange={(e) => {
