@@ -458,7 +458,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isPayable = ['331', '334', '338'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
-            const isHoSoRecovery = formData.code === '6413';
+            const isRecoveryViaReceivable = isBothCode && formData.corresponding_account?.startsWith('131');
+            const isHoSoRecovery = formData.code === '6413' && !isRecoveryViaReceivable;
             
             const isPayOnly = isMaterialOrEquipment || isPayable;
             const isBoth = !isPayOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable);
@@ -495,13 +496,15 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const categoryPrefix = isVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
             
             const debts = [];
-            const isHoSoRecovery = data.code === '6413';
+            const isSpecialReceivableRecovery = ['6413', '6418'].includes(data.code) && data.corresponding_account?.startsWith('131');
+            const isHoSoRecovery = data.code === '6413' && !isSpecialReceivableRecovery;
 
             if (mode === 'BOTH' && !isHoSoRecovery) {
                 let partnerNameThu = data.recipient || 'Đối tác/Nhà cung cấp';
                 let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
                 if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
                 else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
+                if (isSpecialReceivableRecovery) debtNote = `${debtNote} [${data.code}/131]`;
 
                 debts.push({
                     project_name: data.project_name,
@@ -522,7 +525,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 });
             }
             
-            if (!isHoSoRecovery) {
+            if (!isHoSoRecovery || isSpecialReceivableRecovery) {
                 const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
 
                 debts.push({

@@ -65,6 +65,43 @@ const normalizeRoleName = (value) => {
         .trim();
 };
 
+const mojibakePattern = /(Ã\S|Ä|Å|Æ|áº|á»|Â)/;
+const mojibakeArtifacts = /Ã\S|Ä|Å|Æ|áº|á»|Â|¤|¥|§|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿/g;
+
+const scoreMojibake = (value = '') => (value.match(mojibakeArtifacts) || []).length;
+
+const repairMojibakeText = (value) => {
+    if (!value || !mojibakePattern.test(value) || typeof TextDecoder === 'undefined') return value;
+    try {
+        const bytes = Uint8Array.from(value, char => char.charCodeAt(0) & 0xff);
+        const decoded = new TextDecoder('utf-8').decode(bytes);
+        return scoreMojibake(decoded) < scoreMojibake(value) ? decoded : value;
+    } catch {
+        return value;
+    }
+};
+
+const repairMojibakeInElement = (root) => {
+    if (!root || typeof document === 'undefined') return;
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach(node => {
+        const repaired = repairMojibakeText(node.nodeValue);
+        if (repaired !== node.nodeValue) node.nodeValue = repaired;
+    });
+
+    const attrs = ['placeholder', 'title', 'aria-label', 'alt', 'value'];
+    root.querySelectorAll?.('*').forEach(el => {
+        attrs.forEach(attr => {
+            const current = el.getAttribute?.(attr);
+            if (!current) return;
+            const repaired = repairMojibakeText(current);
+            if (repaired !== current) el.setAttribute(attr, repaired);
+        });
+    });
+};
+
 const MOCK_USERS = [
     { id: 'u1', username: 'admin', password: '0000', role: ROLES.ADMIN, name: 'Quản trị hệ thống', isLocked: false },
     { id: 'u2', username: 'giamdoc', password: '1', role: ROLES.GIAMDOC, name: 'Giám Đốc', isLocked: false },
@@ -130,6 +167,32 @@ export default function Home() {
     useEffect(() => {
         setIsClient(true);
     }, []);
+
+    useEffect(() => {
+        if (!isClient || typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
+
+        repairMojibakeInElement(document.body);
+        const observer = new MutationObserver((mutations) => {
+            mutations.forEach(mutation => {
+                if (mutation.type === 'characterData') {
+                    const repaired = repairMojibakeText(mutation.target.nodeValue);
+                    if (repaired !== mutation.target.nodeValue) mutation.target.nodeValue = repaired;
+                    return;
+                }
+                mutation.addedNodes.forEach(node => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const repaired = repairMojibakeText(node.nodeValue);
+                        if (repaired !== node.nodeValue) node.nodeValue = repaired;
+                    } else if (node.nodeType === Node.ELEMENT_NODE) {
+                        repairMojibakeInElement(node);
+                    }
+                });
+            });
+        });
+
+        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+        return () => observer.disconnect();
+    }, [isClient]);
 
 
 
@@ -2067,6 +2130,30 @@ export default function Home() {
         }
     };
 
+    const isDebtDone = (status) => status === 'ĐÃ XONG';
+
+    const buildDebtSettlementTransaction = (debtObj, correspondingAccount = '') => {
+        const note = debtObj.note || '';
+        const isSpecialReceivableRecovery = debtObj.debt_type === 'CẦN THU' && /\[(6413|6418)\/131\]/.test(note);
+        const isHoSoRecovery = !isSpecialReceivableRecovery && (note.includes('Thu lại (Hồ sơ)') || note.includes('6413'));
+        const resolvedCode = isSpecialReceivableRecovery
+            ? '622'
+            : (isHoSoRecovery ? '6413' : (debtObj.debt_type === 'CẦN THU' ? '511' : (note.includes('[VẬT TƯ]') ? '621' : '622')));
+        const resolvedCorresponding = correspondingAccount || (isSpecialReceivableRecovery ? '6418' : (isHoSoRecovery ? '131' : '1121'));
+
+        return {
+            project_name: debtObj.project_name,
+            code: resolvedCode,
+            credit: debtObj.debt_type === 'CẦN THU' ? debtObj.amount : 0,
+            debit: debtObj.debt_type === 'CẦN TRẢ' ? debtObj.amount : 0,
+            note: `[THANH TOÁN CÔNG NỢ] ${note}`,
+            recipient: debtObj.partner_name,
+            corresponding_account: resolvedCorresponding,
+            accounting_date: new Date().toISOString().split('T')[0],
+            created_by: currentUser?.username || 'System'
+        };
+    };
+
     const handleAddDebt = async (debtPayload) => {
         setIsLoading(true);
         try {
@@ -2095,6 +2182,12 @@ export default function Home() {
                     }]).select().single();
                     if (error) throw error;
                     logActivity('Thêm', 'Công nợ', `Tạo mới công nợ`, p.project_name);
+
+                    if (newDebt && isDebtDone(newDebt.status)) {
+                        const transData = buildDebtSettlementTransaction(newDebt);
+                        const { error: transError } = await supabase.from('transactions').insert([transData]);
+                        if (transError) throw transError;
+                    }
 
                     if (newDebt && newDebt.debt_type === 'CẦN TRẢ') {
                         const dnttPayload = {
@@ -2128,23 +2221,8 @@ export default function Home() {
             const id = typeof debtOrId === 'object' ? debtOrId.id : debtOrId;
             const debtObj = typeof debtOrId === 'object' ? debtOrId : debts.find(d => d.id === id);
 
-            if (newStatus === 'ĐÃ XONG' && debtObj.status !== 'ĐÃ XONG') {
-                const isHoSoRecovery = (debtObj.note || '').includes('Thu lại (Hồ sơ)') || (debtObj.note || '').includes('6413');
-                const resolvedCode = isHoSoRecovery
-                    ? '6413'
-                    : (debtObj.debt_type === 'CẦN THU' ? '511' : (debtObj.note?.includes('[VẬT TƯ]') ? '621' : '622'));
-                const resolvedCorresponding = correspondingAccount || (isHoSoRecovery ? '131' : '1121');
-                const transData = {
-                    project_name: debtObj.project_name,
-                    code: resolvedCode,
-                    credit: debtObj.debt_type === 'CẦN THU' ? debtObj.amount : 0,
-                    debit: debtObj.debt_type === 'CẦN TRẢ' ? debtObj.amount : 0,
-                    note: `[THANH TOÁN CÔNG NỢ] ${debtObj.note || ''}`,
-                    recipient: debtObj.partner_name,
-                    corresponding_account: resolvedCorresponding,
-                    accounting_date: new Date().toISOString().split('T')[0],
-                    created_by: currentUser?.username || 'System'
-                };
+            if (isDebtDone(newStatus) && !isDebtDone(debtObj.status)) {
+                const transData = buildDebtSettlementTransaction(debtObj, correspondingAccount);
                 const { error: transError } = await supabase.from('transactions').insert([transData]);
                 if (transError) throw transError;
             }
