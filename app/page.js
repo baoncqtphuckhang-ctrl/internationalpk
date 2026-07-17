@@ -65,8 +65,8 @@ const normalizeRoleName = (value) => {
         .trim();
 };
 
-const mojibakePattern = /(Ã\S|Ä|Å|Æ|áº|á»|Â)/;
-const mojibakeArtifacts = /Ã\S|Ä|Å|Æ|áº|á»|Â|¤|¥|§|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿/g;
+const mojibakePattern = /(Ã|Ä|Å|Æ|áº|á»)/;
+const mojibakeArtifacts = /Ã|Ä|Å|Æ|áº|á»|¤|¥|§|©|ª|«|¬|®|¯|°|±|²|³|´|µ|¶|·|¸|¹|º|»|¼|½|¾|¿/g;
 
 const scoreMojibake = (value = '') => (value.match(mojibakeArtifacts) || []).length;
 
@@ -91,7 +91,7 @@ const repairMojibakeInElement = (root) => {
         if (repaired !== node.nodeValue) node.nodeValue = repaired;
     });
 
-    const attrs = ['placeholder', 'title', 'aria-label', 'alt', 'value'];
+    const attrs = ['placeholder', 'title', 'aria-label', 'alt'];
     root.querySelectorAll?.('*').forEach(el => {
         attrs.forEach(attr => {
             const current = el.getAttribute?.(attr);
