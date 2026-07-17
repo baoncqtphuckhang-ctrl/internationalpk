@@ -5,6 +5,10 @@ import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
 
 const CUSTOMER_DEBT_COLUMN_STORAGE_KEY = 'cbpro_expected_customer_debt_visible_columns_v2';
+const EXPECTED_INVOICES_STORAGE_KEY = 'expected_invoices';
+const EXPECTED_INVOICES_BACKUP_KEY = 'expected_invoices_backups_v1';
+const EXPECTED_INVOICES_QUARANTINE_KEY = 'expected_invoices_quarantine_v1';
+const MAX_EXPECTED_INVOICE_BACKUPS = 30;
 const DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS = {
     stt: true,
     name: true,
@@ -93,6 +97,76 @@ const dedupeExpectedInvoices = (rows = []) => {
         }
     });
     return Array.from(seen.values());
+};
+
+const getExpectedInvoiceStats = (rows = []) => {
+    const safeRows = Array.isArray(rows) ? rows : [];
+    return safeRows.reduce((stats, row) => {
+        const hasTeamName = Boolean(String(row?.teamName || '').trim());
+        const hasTeamValue = Number(row?.teamValue || 0) !== 0;
+        const hasAdvance = Number(row?.accumulatedAdvance || 0) !== 0;
+        if (hasTeamName || hasTeamValue || hasAdvance) stats.teamRows += 1;
+        if (hasTeamValue) stats.nonzeroTeamRows += 1;
+        stats.totalRows += 1;
+        return stats;
+    }, { totalRows: 0, teamRows: 0, nonzeroTeamRows: 0 });
+};
+
+const shouldBlockExpectedInvoiceOverwrite = (previousRows = [], nextRows = []) => {
+    const previous = getExpectedInvoiceStats(previousRows);
+    const next = getExpectedInvoiceStats(nextRows);
+
+    const totalDropped = previous.totalRows >= 10 && next.totalRows <= previous.totalRows * 0.75 && previous.totalRows - next.totalRows >= 5;
+    const teamDropped = previous.teamRows >= 5 && next.teamRows <= previous.teamRows * 0.75 && previous.teamRows - next.teamRows >= 3;
+    const valueDropped = previous.nonzeroTeamRows >= 3 && next.nonzeroTeamRows <= previous.nonzeroTeamRows * 0.5;
+
+    return totalDropped || teamDropped || valueDropped;
+};
+
+const saveExpectedInvoiceBackup = (rows = [], reason = 'auto') => {
+    if (typeof window === 'undefined' || !Array.isArray(rows) || rows.length === 0) return;
+
+    try {
+        const backups = JSON.parse(localStorage.getItem(EXPECTED_INVOICES_BACKUP_KEY) || '[]');
+        const nextBackup = {
+            id: `${Date.now()}_${reason}`,
+            reason,
+            created_at: new Date().toISOString(),
+            stats: getExpectedInvoiceStats(rows),
+            rows
+        };
+
+        const nextBackups = [nextBackup, ...backups];
+        for (let keep = MAX_EXPECTED_INVOICE_BACKUPS; keep >= 3; keep -= 3) {
+            try {
+                localStorage.setItem(EXPECTED_INVOICES_BACKUP_KEY, JSON.stringify(nextBackups.slice(0, keep)));
+                return;
+            } catch (error) {
+                if (keep <= 3) throw error;
+            }
+        }
+    } catch (error) {
+        console.warn('Không thể tạo backup expected_invoices:', error);
+    }
+};
+
+const quarantineExpectedInvoices = (previousRows = [], nextRows = [], reason = 'suspicious_overwrite') => {
+    if (typeof window === 'undefined') return;
+
+    try {
+        const quarantines = JSON.parse(localStorage.getItem(EXPECTED_INVOICES_QUARANTINE_KEY) || '[]');
+        const record = {
+            id: `${Date.now()}_${reason}`,
+            reason,
+            created_at: new Date().toISOString(),
+            previousStats: getExpectedInvoiceStats(previousRows),
+            nextStats: getExpectedInvoiceStats(nextRows),
+            rows: nextRows
+        };
+        localStorage.setItem(EXPECTED_INVOICES_QUARANTINE_KEY, JSON.stringify([record, ...quarantines].slice(0, 10)));
+    } catch (error) {
+        console.warn('Không thể lưu quarantine expected_invoices:', error);
+    }
 };
 
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
@@ -234,7 +308,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (error) throw error;
             
             // Lấy dữ liệu từ localStorage để đồng bộ (nếu có)
-            const saved = localStorage.getItem('expected_invoices');
+            const saved = localStorage.getItem(EXPECTED_INVOICES_STORAGE_KEY);
             let localInvoices = [];
             if (saved) {
                 try {
@@ -249,10 +323,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             // Merge for display only; do not push local rows to DB on page load.
             const mergedInvoices = dedupeExpectedInvoices([...normalizedDbData, ...localInvoices]);
+            if (shouldBlockExpectedInvoiceOverwrite(localInvoices, mergedInvoices)) {
+                quarantineExpectedInvoices(localInvoices, mergedInvoices, 'suspicious_fetch_merge');
+                showToast?.('Đã giữ bản dữ liệu tổ đội cũ vì dữ liệu tải mới bị thiếu bất thường.', 'error');
+                setInvoices(localInvoices);
+                return;
+            }
+
             setInvoices(mergedInvoices);
         } catch (error) {
             console.warn('Supabase fetch failed. Falling back to localStorage.', error);
-            const saved = localStorage.getItem('expected_invoices');
+            const saved = localStorage.getItem(EXPECTED_INVOICES_STORAGE_KEY);
             if (saved) {
                 try {
                     setInvoices(dedupeExpectedInvoices(JSON.parse(saved)));
@@ -273,7 +354,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }, []);
 
     function loadFromLocal() {
-        const saved = localStorage.getItem('expected_invoices');
+        const saved = localStorage.getItem(EXPECTED_INVOICES_STORAGE_KEY);
         if (saved) {
             try {
                 setInvoices(JSON.parse(saved));
@@ -285,7 +366,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     useEffect(() => {
         if (isLoaded) {
-            localStorage.setItem('expected_invoices', JSON.stringify(invoices));
+            const saved = localStorage.getItem(EXPECTED_INVOICES_STORAGE_KEY);
+            let previousInvoices = [];
+            if (saved) {
+                try {
+                    previousInvoices = JSON.parse(saved) || [];
+                } catch (e) {}
+            }
+
+            const normalizedInvoices = dedupeExpectedInvoices(invoices);
+            if (shouldBlockExpectedInvoiceOverwrite(previousInvoices, normalizedInvoices)) {
+                quarantineExpectedInvoices(previousInvoices, normalizedInvoices);
+                showToast?.('Đã chặn ghi đè dữ liệu tổ đội bất thường. Bản cũ vẫn được giữ an toàn.', 'error');
+                return;
+            }
+
+            saveExpectedInvoiceBackup(previousInvoices, 'before_local_save');
+            localStorage.setItem(EXPECTED_INVOICES_STORAGE_KEY, JSON.stringify(normalizedInvoices));
         }
     }, [invoices, isLoaded]);
 
@@ -575,11 +672,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
         try {
             const ids = deletePeriodState.periodInvoices.map(inv => inv.id);
-            for (const id of ids) {
-                await supabase
+            const dbIds = ids.filter(isSupabaseUuid);
+            await moveExpectedInvoicesToTrash(deletePeriodState.periodInvoices);
+
+            if (dbIds.length > 0) {
+                const { error } = await supabase
                     .from('expected_invoices')
                     .delete()
-                    .eq('id', id);
+                    .in('id', dbIds);
+                if (error) throw error;
             }
             setInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
             if (showToast) showToast('Đã xóa toàn bộ dữ liệu trong kỳ!', 'success');

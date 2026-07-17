@@ -49,6 +49,8 @@ const getCommonNotes = (type, phase, code) => {
     return [];
 };
 
+const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
+
 export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome, deleteRequests = [] }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
@@ -108,7 +110,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     }
                     return editData.invoice_date || '';
                 })(),
-                corresponding_account: editData.corresponding_account || '',
+                corresponding_account: getAccountCodeOnly(editData.corresponding_account) || '',
                 code: editData.code || '',
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
@@ -190,7 +192,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             setIsCustomCode(editData.code && !EXPENSE_CATEGORIES.find(c => c.code === editData.code));
             
             const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "131 - Công nợ phải thu", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
-            setIsCustomAccount(editData.corresponding_account && !commonAccounts.includes(editData.corresponding_account));
+            const accountCode = getAccountCodeOnly(editData.corresponding_account);
+            setIsCustomAccount(accountCode && !commonAccounts.some(acc => getAccountCodeOnly(acc) === accountCode));
             
             const rawNote = (() => {
                 if (editData.note) {
@@ -459,16 +462,18 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const isPayable = ['331', '334', '338'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
             const isRecoveryViaReceivable = isBothCode && formData.corresponding_account?.startsWith('131');
-            const isHoSoRecovery = formData.code === '6413' && !isRecoveryViaReceivable;
+            const isBothCodeWithDebtAccount = isBothCode && ['131', '331'].some(acc => formData.corresponding_account?.startsWith(acc));
+            const isHoSoRecovery = formData.code === '6413' && !isRecoveryViaReceivable && !formData.corresponding_account?.startsWith('331');
             
-            const isPayOnly = isMaterialOrEquipment || isPayable;
-            const isBoth = !isPayOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable);
+            const isPayOnly = isMaterialOrEquipment || (isPayable && !isBothCodeWithDebtAccount);
+            const isReceiveOnly = isRecoveryViaReceivable && !isBothCodeWithDebtAccount;
+            const isBoth = !isPayOnly && !isReceiveOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable);
 
-            if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0 && !editData) {
+            if ((isBoth || isPayOnly || isReceiveOnly) && parseFloat(formData.debit) > 0 && !editData) {
                 setDebtConfirmModal({
                     isOpen: true,
                     data: formData,
-                    mode: isBoth ? 'BOTH' : 'PAY_ONLY',
+                    mode: isReceiveOnly ? 'RECEIVE_ONLY' : (isBoth ? 'BOTH' : 'PAY_ONLY'),
                     thuStatus: 'CHƯA XONG',
                     chiStatus: 'CHƯA XONG'
                 });
@@ -497,20 +502,28 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             
             const debts = [];
             const isSpecialReceivableRecovery = ['6413', '6418'].includes(data.code) && data.corresponding_account?.startsWith('131');
-            const isHoSoRecovery = data.code === '6413' && !isSpecialReceivableRecovery;
+            const isHoSoRecovery = data.code === '6413' && !isSpecialReceivableRecovery && !data.corresponding_account?.startsWith('331');
+            const isManualTaxExpense = ['6413', '621', '6418'].includes(data.code);
+            const debtAmount = isManualTaxExpense
+                ? (parseFloat(data.post_tax_amount) || parseFloat(data.debit) || 0)
+                : (parseFloat(data.debit) || parseFloat(data.amount) || 0);
+            const debtTraceMarker = isManualTaxExpense
+                ? ` [INFO_ONLY] [CP:${data.code}] [PRETAX:${parseFloat(data.debit) || 0}]`
+                : ' [INFO_ONLY]';
 
-            if (mode === 'BOTH' && !isHoSoRecovery) {
+            if ((mode === 'BOTH' || mode === 'RECEIVE_ONLY') && !isHoSoRecovery) {
                 let partnerNameThu = data.recipient || 'Đối tác/Nhà cung cấp';
                 let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
                 if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
                 else if (data.code === '6413') debtNote = `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`;
                 if (isSpecialReceivableRecovery) debtNote = `${debtNote} [${data.code}/131]`;
+                debtNote = `${debtNote}${debtTraceMarker}`;
 
                 debts.push({
                     project_name: data.project_name,
                     partner_name: partnerNameThu,
                     debt_type: 'CẦN THU',
-                    amount: parseFloat(data.debit) || 0,
+                    amount: debtAmount,
                     status: thuStatus,
                     note: debtNote
                 });
@@ -519,22 +532,24 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     project_name: data.project_name,
                     partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
                     debt_type: 'CẦN THU',
-                    amount: parseFloat(data.debit) || 0,
+                    amount: debtAmount,
                     status: thuStatus,
-                    note: `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`
+                    note: `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}${debtTraceMarker}`
                 });
             }
             
-            if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+            if (mode !== 'RECEIVE_ONLY' && (!isHoSoRecovery || isSpecialReceivableRecovery)) {
                 const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
 
                 debts.push({
                     project_name: data.project_name,
                     partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
                     debt_type: 'CẦN TRẢ',
-                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                    amount: debtAmount,
                     status: chiStatus,
-                    note: debtNoteChi
+                    note: `${debtNoteChi}${debtTraceMarker}`,
+                    skip_auto_dntt: isManualTaxExpense || isVatTu,
+                    source_code: data.code
                 });
             }
             onAddDebt(debts);
@@ -584,6 +599,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         }`;
 
     const labelCls = 'block text-sm font-bold text-slate-700 mb-1';
+    const manualTaxExpenseCodes = ['6413', '621', '6418'];
+    const expenseUsesManualTax = type === 'EXPENSE' && manualTaxExpenseCodes.includes(formData.code);
     const errorMsg = (field) => errors[field] ? (
         <span className="flex items-center gap-1 text-red-500 text-xs mt-1 font-medium">
             <AlertCircle size={12} /> {errors[field]}
@@ -768,6 +785,31 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     />
                                     {errorMsg('debit')}
                                 </div>
+                                {expenseUsesManualTax && (
+                                    <>
+                                        <div>
+                                            <label className={labelCls}>VAT</label>
+                                            <input
+                                                type="text"
+                                                value={(formData.vat_amount !== undefined && formData.vat_amount !== null && formData.vat_amount !== '') ? formatCurrency(formData.vat_amount) : ''}
+                                                onChange={(e) => handleChange('vat_amount', parseVietnameseNumber(e.target.value))}
+                                                placeholder="Nhập VAT..."
+                                                className={`${inputCls('vat_amount')} font-bold text-slate-600`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Số tiền chi sau thuế</label>
+                                            <input
+                                                type="text"
+                                                value={(formData.post_tax_amount !== undefined && formData.post_tax_amount !== null && formData.post_tax_amount !== '') ? formatCurrency(formData.post_tax_amount) : ''}
+                                                onChange={(e) => handleChange('post_tax_amount', parseVietnameseNumber(e.target.value))}
+                                                placeholder="Nhập số tiền sau thuế..."
+                                                className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
+                                            />
+                                            {errorMsg('post_tax_amount')}
+                                        </div>
+                                    </>
+                                )}
                                 {/* Số hóa đơn */}
                                 <div>
                                     <label className={labelCls}>
@@ -813,16 +855,16 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         className={inputCls('corresponding_account')}
                                     >
                                         <option value="">-- Để trống --</option>
-                                        <option value="111 - Tiền mặt">111 - Tiền mặt</option>
-                                        <option value="112 - Tiền gửi NH">112 - Tiền gửi NH</option>
-                                        <option value="131 - Công nợ phải thu">131 - Công nợ phải thu</option>
-                                        <option value="141 - Tạm ứng">141 - Tạm ứng</option>
-                                        <option value="152 - Nguyên liệu, vật liệu">152 - Nguyên liệu, vật liệu</option>
-                                        <option value="154 - Chi phí SXKD dở dang">154 - Chi phí SXKD dở dang</option>
-                                        <option value="331 - Phải trả người bán">331 - Phải trả người bán</option>
-                                        <option value="334 - Phải trả người lao động">334 - Phải trả người lao động</option>
-                                        <option value="338 - Phải trả khác">338 - Phải trả khác</option>
-                                        <option value="642 - Chi phí QLDN">642 - Chi phí QLDN</option>
+                                        <option value="111">111 - Tiền mặt</option>
+                                        <option value="112">112 - Tiền gửi NH</option>
+                                        <option value="131">131 - Công nợ phải thu</option>
+                                        <option value="141">141 - Tạm ứng</option>
+                                        <option value="152">152 - Nguyên liệu, vật liệu</option>
+                                        <option value="154">154 - Chi phí SXKD dở dang</option>
+                                        <option value="331">331 - Phải trả người bán</option>
+                                        <option value="334">334 - Phải trả người lao động</option>
+                                        <option value="338">338 - Phải trả khác</option>
+                                        <option value="642">642 - Chi phí QLDN</option>
                                         <option value="Khác">Khác...</option>
                                     </select>
                                     {isCustomAccount && (
@@ -1421,7 +1463,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         
                         <div className="p-8">
                             <div className="space-y-6">
-                                {debtConfirmModal.mode === 'BOTH' && (
+                                {(debtConfirmModal.mode === 'BOTH' || debtConfirmModal.mode === 'RECEIVE_ONLY') && (
                                     <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                         <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Công nợ đã thu hay chưa?</label>
                                         <div className="flex gap-3">
@@ -1451,7 +1493,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     </div>
                                 )}
                                 
-                                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                                {debtConfirmModal.mode !== 'RECEIVE_ONLY' && <div className="bg-slate-50 p-5 rounded-2xl border border-slate-100">
                                     <label className="block text-sm font-bold text-slate-700 mb-3 uppercase tracking-wider">Công nợ đã chi hay chưa?</label>
                                     <div className="flex gap-3">
                                         <button
@@ -1477,7 +1519,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             CHƯA CHI
                                         </button>
                                     </div>
-                                </div>
+                                </div>}
                             </div>
 
                             <div className="flex flex-col gap-3 mt-8">

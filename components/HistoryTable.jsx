@@ -98,6 +98,8 @@ function TableFilter({ title, options = [], selectedValues, onToggle, onSelectAl
     );
 }
 
+const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
+
 export default function HistoryTable({ 
     transactions, 
     selectedProject, 
@@ -438,8 +440,8 @@ export default function HistoryTable({
                                 <td style="text-align:center;border:1px solid #aaa;padding:4px">${formatDateVN(t.invoice_date)}</td>
                                 <td style="border:1px solid #aaa;padding:4px;font-family:monospace">${t.invoice_no || '-'}</td>
                                 <td style="white-space:normal;text-align:left;border:1px solid #aaa;padding:4px;max-width:300px;word-wrap:break-word">${t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '') || ''}</td>
-                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#1d4ed8">${t.code || ''}</td>
-                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#475569">${t.corresponding_account || '-'}</td>
+                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#1d4ed8">${getAccountCodeOnly(t.code) || ''}</td>
+                                <td style="text-align:center;font-weight:bold;border:1px solid #aaa;padding:4px;color:#475569">${getAccountCodeOnly(t.corresponding_account) || '-'}</td>
                                 <td style="color:#dc2626;text-align:right;border:1px solid #aaa;padding:4px">${t.debit > 0 ? formatCurrency(t.debit).replace('₫', '') : ''}</td>
                                 <td style="color:#16a34a;text-align:right;border:1px solid #aaa;padding:4px">${t.credit > 0 ? formatCurrency(t.credit).replace('₫', '') : ''}</td>
                                 <td style="font-weight:bold;color:${(t.credit - t.debit) >= 0 ? '#15803d' : '#b91c1c'};text-align:right;border:1px solid #aaa;padding:4px">
@@ -599,8 +601,8 @@ export default function HistoryTable({
                                     <td className="p-3 border-r border-slate-100 min-w-[200px] max-w-[300px]" title={t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '')}>
                                         <div className="line-clamp-3 break-words whitespace-normal leading-relaxed">{t.note?.replace(/\[ID:[a-zA-Z0-9-]+\]\s*/g, '')}</div>
                                     </td>
-                                    <td className="p-3 border-r border-slate-100 font-bold text-blue-700">{t.code}</td>
-                                    <td className="p-3 border-r border-slate-100 font-bold text-slate-600">{t.corresponding_account || '-'}</td>
+                                    <td className="p-3 border-r border-slate-100 font-bold text-blue-700">{getAccountCodeOnly(t.code)}</td>
+                                    <td className="p-3 border-r border-slate-100 font-bold text-slate-600">{getAccountCodeOnly(t.corresponding_account) || '-'}</td>
                                     <td className="p-3 border-r border-slate-100 text-right text-red-600 font-medium">{t.debit > 0 ? formatCurrency(t.debit) : ''}</td>
                                     <td className="p-3 border-r border-slate-100 text-right text-green-600 font-medium">{t.credit > 0 ? formatCurrency(t.credit) : ''}</td>
                                     <td className={`p-3 border-r border-slate-100 text-right font-bold ${(t.credit - t.debit) >= 0 ? 'text-green-700' : 'text-red-700'}`}>

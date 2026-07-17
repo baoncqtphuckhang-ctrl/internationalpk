@@ -1099,18 +1099,36 @@ export default function Home() {
         setIsLoading(true);
         try {
             if (type === 'EXPENSE' || type === 'OFFICE_INCOME') {
+                const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
                 const payload = {
-                    project_name: data.project_name, accounting_date: data.accounting_date, invoice_date: data.invoice_date || null, invoice_no: data.invoice_no || '', recipient: data.recipient || '', corresponding_account: type === 'OFFICE_INCOME' ? (data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) : (data.corresponding_account || ''), code: type === 'OFFICE_INCOME' ? (data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) : data.code, debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit, note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''), created_by: data.creator || currentUser.username
+                    project_name: data.project_name, accounting_date: data.accounting_date, invoice_date: data.invoice_date || null, invoice_no: data.invoice_no || '', recipient: data.recipient || '', corresponding_account: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) : getAccountCodeOnly(data.corresponding_account || ''), code: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) : getAccountCodeOnly(data.code), debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit, note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''), created_by: data.creator || currentUser.username
                 };
+                const shouldCreateRecoveryRow = type === 'EXPENSE' && ['6413', '6418'].includes(String(data.code || ''));
+                const recoveryPayload = shouldCreateRecoveryRow ? {
+                    ...payload,
+                    code: payload.corresponding_account || getAccountCodeOnly(data.corresponding_account || ''),
+                    corresponding_account: '111',
+                    debit: 0,
+                    credit: data.debit || 0,
+                    note: `[Thu] ${data.note || ''}`.trim()
+                } : null;
+
                 if (editId) {
                     if (type === 'EXPENSE') { payload.credit = 0; payload.debit = data.debit || 0; }
                     const { data: updatedRow, error } = await supabase.from('transactions').update(payload).eq('id', editId).select().single();
                     if (error) throw error;
                     if (updatedRow) setTransactions(prev => prev.map(t => t.id === editId ? { ...updatedRow, code: updatedRow.code ? updatedRow.code.toString().trim().replace(',', '.') : updatedRow.code } : t));
                 } else {
-                    const { data: newRow, error } = await supabase.from('transactions').insert([payload]).select().single();
+                    const rowsToInsert = recoveryPayload ? [payload, recoveryPayload] : [payload];
+                    const { data: newRows, error } = await supabase.from('transactions').insert(rowsToInsert).select();
                     if (error) throw error;
-                    if (newRow) setTransactions(prev => [{ ...newRow, code: newRow.code ? newRow.code.toString().trim().replace(',', '.') : newRow.code }, ...prev]);
+                    if (newRows?.length) {
+                        const normalizedRows = newRows.map(row => ({
+                            ...row,
+                            code: row.code ? row.code.toString().trim().replace(',', '.') : row.code
+                        }));
+                        setTransactions(prev => [...normalizedRows, ...prev]);
+                    }
                 }
             } else {
                 const isReal = type === 'INCOME_REAL';
@@ -2145,20 +2163,34 @@ export default function Home() {
 
     const isDebtDone = (status) => status === 'ĐÃ XONG';
 
+    const isInformationalDebtNote = (note = '') => {
+        const value = String(note || '');
+        return value.includes('[INFO_ONLY]')
+            || /\[CP:[^\]]+\]/.test(value)
+            || /\[(6413|6418)\/(131|331)\]/.test(value)
+            || value.includes('Thanh toán chi phí -')
+            || value.includes('Thu lại (Hồ sơ)')
+            || value.includes('Thu lại (Bảo hiểm)');
+    };
+
     const buildDebtSettlementTransaction = (debtObj, correspondingAccount = '') => {
         const note = debtObj.note || '';
         const isSpecialReceivableRecovery = debtObj.debt_type === 'CẦN THU' && /\[(6413|6418)\/131\]/.test(note);
         const isHoSoRecovery = !isSpecialReceivableRecovery && (note.includes('Thu lại (Hồ sơ)') || note.includes('6413'));
-        const resolvedCode = isSpecialReceivableRecovery
+        const sourceCodeFromMarker = note.match(/\[CP:([^\]]+)\]/)?.[1] || note.match(/\[(6413|6418)\/131\]/)?.[1] || (isHoSoRecovery ? '6413' : (note.includes('[VẬT TƯ]') ? '621' : ''));
+        const sourceExpenseCode = ['621', '6413', '6418'].includes(sourceCodeFromMarker) ? sourceCodeFromMarker : '';
+        const preTaxFromMarker = Number(note.match(/\[PRETAX:([^\]]+)\]/)?.[1] || 0);
+        const settlementAmount = sourceExpenseCode && preTaxFromMarker > 0 ? preTaxFromMarker : debtObj.amount;
+        const resolvedCode = sourceExpenseCode
             ? '622'
-            : (isHoSoRecovery ? '6413' : (debtObj.debt_type === 'CẦN THU' ? '511' : (note.includes('[VẬT TƯ]') ? '621' : '622')));
-        const resolvedCorresponding = correspondingAccount || (isSpecialReceivableRecovery ? '6418' : (isHoSoRecovery ? '131' : '1121'));
+            : (debtObj.debt_type === 'CẦN THU' ? '511' : (note.includes('[VẬT TƯ]') ? '621' : '622'));
+        const resolvedCorresponding = correspondingAccount || (sourceExpenseCode || '1121');
 
         return {
             project_name: debtObj.project_name,
             code: resolvedCode,
-            credit: debtObj.debt_type === 'CẦN THU' ? debtObj.amount : 0,
-            debit: debtObj.debt_type === 'CẦN TRẢ' ? debtObj.amount : 0,
+            credit: debtObj.debt_type === 'CẦN THU' ? settlementAmount : 0,
+            debit: debtObj.debt_type === 'CẦN TRẢ' ? settlementAmount : 0,
             note: `[THANH TOÁN CÔNG NỢ] ${note}`,
             recipient: debtObj.partner_name,
             corresponding_account: resolvedCorresponding,
@@ -2196,13 +2228,19 @@ export default function Home() {
                     if (error) throw error;
                     logActivity('Thêm', 'Công nợ', `Tạo mới công nợ`, p.project_name);
 
-                    if (newDebt && isDebtDone(newDebt.status)) {
+                    if (newDebt && isDebtDone(newDebt.status) && !isInformationalDebtNote(newDebt.note)) {
                         const transData = buildDebtSettlementTransaction(newDebt);
                         const { error: transError } = await supabase.from('transactions').insert([transData]);
                         if (transError) throw transError;
                     }
 
-                    if (newDebt && newDebt.debt_type === 'CẦN TRẢ') {
+                    const shouldCreateDnttForDebt = newDebt
+                        && newDebt.debt_type === 'CẦN TRẢ'
+                        && !isInformationalDebtNote(newDebt.note)
+                        && !p.skip_auto_dntt
+                        && !['621', '623', '6413', '6418'].includes(String(p.source_code || ''));
+
+                    if (shouldCreateDnttForDebt) {
                         const dnttPayload = {
                             doc_type: 'Đề nghị thanh toán',
                             project_name: newDebt.project_name,
@@ -2234,7 +2272,7 @@ export default function Home() {
             const id = typeof debtOrId === 'object' ? debtOrId.id : debtOrId;
             const debtObj = typeof debtOrId === 'object' ? debtOrId : debts.find(d => d.id === id);
 
-            if (isDebtDone(newStatus) && !isDebtDone(debtObj.status)) {
+            if (isDebtDone(newStatus) && !isDebtDone(debtObj.status) && !isInformationalDebtNote(debtObj?.note)) {
                 const transData = buildDebtSettlementTransaction(debtObj, correspondingAccount);
                 const { error: transError } = await supabase.from('transactions').insert([transData]);
                 if (transError) throw transError;
@@ -2470,6 +2508,7 @@ export default function Home() {
 
     const handleExportBackup = () => {
         const fileName = `Backup_ToanBoDuLieu_${new Date().toISOString().split('T')[0]}`;
+        const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
         
         let rowsHtml = '';
         const sortedTrans = [...transactions].sort((a, b) => new Date(a.accounting_date) - new Date(b.accounting_date));
@@ -2483,8 +2522,8 @@ export default function Home() {
                     <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${i + 1}</td>
                     <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${formattedDate}</td>
                     <td style="border: 1px solid #000; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.project_name || ''}</td>
-                    <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.code || ''}</td>
-                    <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.corresponding_account || ''}</td>
+                    <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${getAccountCodeOnly(t.code) || ''}</td>
+                    <td style="border: 1px solid #000; text-align: center; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${getAccountCodeOnly(t.corresponding_account) || ''}</td>
                     <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.debit > 0 ? Number(t.debit).toLocaleString('en-US') : ''}</td>
                     <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.credit > 0 ? Number(t.credit).toLocaleString('en-US') : ''}</td>
                     <td style="border: 1px solid #000; vertical-align: middle; font-family: 'Times New Roman'; font-size: 11pt;">${t.recipient || ''}</td>
