@@ -84,6 +84,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     const [incomeToDelete, setIncomeToDelete] = useState(null);
     const [isCustomNote, setIsCustomNote] = useState(false);
     const lastAutoPhaseRef = useRef('Đợt 1');
+    const lastAutoProjectRef = useRef(projects[0]?.name || '');
 
     useEffect(() => {
         setIsCustomNote(false);
@@ -310,24 +311,35 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         return [...personnel, 'Khác'];
     }, [formData.project_name, projects]);
 
-
-
+    const getNextIncomeInvoicePhase = (projectName) => {
+        const projectInvoiceIncomes = incomes.filter(i => {
+            let isInvoiceRow = (Number(i.post_tax_amount) || 0) > 0 || (Number(i.amount) || 0) > 0;
+            if (i.note) {
+                try {
+                    const parsed = JSON.parse(i.note);
+                    if (parsed?.type_data === 'INCOME_INVOICE') isInvoiceRow = true;
+                } catch(e) {}
+            }
+            return i.project_name === projectName && isInvoiceRow;
+        });
+        let maxPhase = 0;
+        projectInvoiceIncomes.forEach(inc => {
+            const match = String(inc.phase || '').match(/\d+/);
+            if (match) {
+                const num = parseInt(match[0], 10);
+                if (num > maxPhase) maxPhase = num;
+            }
+        });
+        return `Đợt ${maxPhase + 1}`;
+    };
 
     useEffect(() => {
         if (!editData && type === 'INCOME_INVOICE') {
-            const projIncomes = incomes.filter(i => i.project_name === formData.project_name);
-            let maxPhase = 0;
-            projIncomes.forEach(inc => {
-                const phaseStr = inc.phase || '';
-                const match = phaseStr.match(/\d+/);
-                if (match) {
-                    const num = parseInt(match[0], 10);
-                    if (num > maxPhase) maxPhase = num;
-                }
-            });
-            const nextAutoPhase = `Đợt ${maxPhase + 1}`;
+            const nextAutoPhase = getNextIncomeInvoicePhase(formData.project_name);
             setFormData(prev => {
-                const userTypedPhase = prev.phase?.trim() && prev.phase !== lastAutoPhaseRef.current;
+                const projectChanged = prev.project_name !== lastAutoProjectRef.current;
+                const userTypedPhase = !projectChanged && prev.phase?.trim() && prev.phase !== lastAutoPhaseRef.current;
+                lastAutoProjectRef.current = prev.project_name;
                 lastAutoPhaseRef.current = nextAutoPhase;
                 return userTypedPhase ? prev : { ...prev, phase: nextAutoPhase };
             });
@@ -336,6 +348,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
     // Xóa lỗi khi user bắt đầu nhập
     const handleChange = (field, value) => {
+        if (field === 'project_name' && type === 'INCOME_INVOICE' && !editData) {
+            const nextAutoPhase = getNextIncomeInvoicePhase(value);
+            lastAutoProjectRef.current = value;
+            lastAutoPhaseRef.current = nextAutoPhase;
+            setFormData(prev => ({ ...prev, project_name: value, phase: nextAutoPhase }));
+            if (errors.project_name || errors.phase) {
+                setErrors(prev => {
+                    const e = { ...prev };
+                    delete e.project_name;
+                    delete e.phase;
+                    return e;
+                });
+            }
+            return;
+        }
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors(prev => { const e = { ...prev }; delete e[field]; return e; });
@@ -357,6 +384,22 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             if (!formData.recipient?.trim()) newErrors.recipient = 'Vui lòng nhập đối tượng';
         } else if (type === 'INCOME_INVOICE') {
             if (!formData.phase?.trim()) newErrors.phase = 'Vui lòng nhập đợt thu';
+            const duplicatedInvoicePhase = incomes.some(i => {
+                let isInvoiceRow = (Number(i.post_tax_amount) || 0) > 0 || (Number(i.amount) || 0) > 0;
+                if (i.note) {
+                    try {
+                        const parsed = JSON.parse(i.note);
+                        if (parsed?.type_data === 'INCOME_INVOICE') isInvoiceRow = true;
+                    } catch(e) {}
+                }
+                return isInvoiceRow &&
+                    i.project_name === formData.project_name &&
+                    i.phase === formData.phase &&
+                    i.id !== editData?.id;
+            });
+            if (duplicatedInvoicePhase) {
+                newErrors.phase = `Đợt ${formData.phase} của công trình này đã tồn tại`;
+            }
             const postTax = Number(formData.post_tax_amount) || 0;
             const actualReceived = Number(formData.actual_received_amount) || 0;
             if (postTax < 0) {

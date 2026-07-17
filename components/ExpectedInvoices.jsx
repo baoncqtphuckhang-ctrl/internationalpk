@@ -8,6 +8,7 @@ const CUSTOMER_DEBT_COLUMN_STORAGE_KEY = 'cbpro_expected_customer_debt_visible_c
 const DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS = {
     stt: true,
     name: true,
+    phase: true,
     expected: true,
     actual: true,
     remaining: true,
@@ -43,6 +44,50 @@ const normalizeMonthValue = (value) => {
         return `${slashMatch[2]}-${String(slashMatch[1]).padStart(2, '0')}`;
     }
     return normalized;
+};
+
+const addBusinessDays = (dateValue, days) => {
+    const startDate = new Date(dateValue);
+    if (Number.isNaN(startDate.getTime())) return null;
+
+    const dueDate = new Date(startDate.getTime());
+    let added = 0;
+    while (added < days) {
+        dueDate.setDate(dueDate.getDate() + 1);
+        if (dueDate.getDay() !== 0 && dueDate.getDay() !== 6) {
+            added++;
+        }
+    }
+    return dueDate;
+};
+
+const normalizeKeyPart = (value) => String(value || '').trim().toLowerCase();
+
+const getExpectedInvoiceKey = (inv = {}) => {
+    const projectName = normalizeKeyPart(inv.projectName);
+    const phase = normalizeKeyPart(inv.phase);
+    const invoiceMonth = normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '');
+    return [projectName, phase, invoiceMonth].join('__');
+};
+
+const dedupeExpectedInvoices = (rows = []) => {
+    const seen = new Map();
+    rows.forEach(row => {
+        const key = getExpectedInvoiceKey(row);
+        if (!seen.has(key)) {
+            seen.set(key, row);
+            return;
+        }
+
+        const current = seen.get(key);
+        const currentTime = new Date(current?.created_at || 0).getTime();
+        const nextTime = new Date(row?.created_at || 0).getTime();
+
+        if (nextTime >= currentTime) {
+            seen.set(key, row);
+        }
+    });
+    return Array.from(seen.values());
 };
 
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
@@ -169,16 +214,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }, [invoices]);
 
     useEffect(() => {
-        fetchInvoices();
-    }, []);
-
-    useEffect(() => {
         try {
             localStorage.setItem(CUSTOMER_DEBT_COLUMN_STORAGE_KEY, JSON.stringify(customerDebtVisibleColumns));
         } catch(e) {}
     }, [customerDebtVisibleColumns]);
 
-    const fetchInvoices = async () => {
+    async function fetchInvoices() {
         try {
             const { data: dbData, error } = await supabase
                 .from('expected_invoices')
@@ -187,7 +228,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             
             if (error) throw error;
             
-            // Lấy dữ liệu từ localStorage để đồng bộ (nếu có)
+            // Láº¥y dá»¯ liá»‡u tá»« localStorage Ä‘á»ƒ Ä‘á»“ng bá»™ (náº¿u cÃ³)
             const saved = localStorage.getItem('expected_invoices');
             let localInvoices = [];
             if (saved) {
@@ -196,49 +237,37 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 } catch (e) {}
             }
 
+            localInvoices = dedupeExpectedInvoices(localInvoices);
+
             const dbDataNonNull = dbData || [];
+            const normalizedDbData = dedupeExpectedInvoices(dbDataNonNull);
 
-            // Tìm các dòng chỉ có ở local (chưa được lưu lên Supabase)
-            const localOnly = localInvoices.filter(local => 
-                !dbDataNonNull.some(db => db.id === local.id)
-            );
-
-            if (localOnly.length > 0) {
-                console.log('Syncing local expected invoices to Supabase:', localOnly.length);
-                const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-                
-                const recordsToInsert = localOnly.map(local => {
-                    const rec = { ...local };
-                    if (!uuidRegex.test(rec.id)) {
-                        delete rec.id;
-                    }
-                    return rec;
-                });
-
-                const { data: insertedData, error: insertError } = await supabase
-                    .from('expected_invoices')
-                    .insert(recordsToInsert)
-                    .select();
-
-                if (insertError) {
-                    console.error('Failed to sync local invoices to Supabase on load:', insertError);
-                    setInvoices([...dbDataNonNull, ...localOnly]);
-                } else {
-                    console.log('Successfully synced local invoices:', insertedData?.length);
-                    setInvoices([...dbDataNonNull, ...(insertedData || [])]);
-                }
-            } else {
-                setInvoices(dbDataNonNull);
-            }
+            // Merge for display only; do not push local rows to DB on page load.
+            const mergedInvoices = dedupeExpectedInvoices([...normalizedDbData, ...localInvoices]);
+            setInvoices(mergedInvoices);
         } catch (error) {
             console.warn('Supabase fetch failed. Falling back to localStorage.', error);
-            loadFromLocal();
+            const saved = localStorage.getItem('expected_invoices');
+            if (saved) {
+                try {
+                    setInvoices(dedupeExpectedInvoices(JSON.parse(saved)));
+                } catch (e) {
+                    console.error('Error parsing expected invoices', e);
+                }
+            }
         } finally {
             setIsLoaded(true);
         }
-    };
+    }
 
-    const loadFromLocal = () => {
+    useEffect(() => {
+        const timer = setTimeout(() => {
+            fetchInvoices();
+        }, 0);
+        return () => clearTimeout(timer);
+    }, []);
+
+    function loadFromLocal() {
         const saved = localStorage.getItem('expected_invoices');
         if (saved) {
             try {
@@ -247,7 +276,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 console.error('Error parsing expected invoices', e);
             }
         }
-    };
+    }
 
     useEffect(() => {
         if (isLoaded) {
@@ -274,6 +303,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         const postTax = parseFloat(parseVietnameseNumber(formData.postTaxValue)) || 0;
         const teamVal = parseFloat(parseVietnameseNumber(formData.teamValue)) || 0;
         const accAdv = parseFloat(parseVietnameseNumber(formData.accumulatedAdvance)) || 0;
+        const normalizedInvoiceMonth = normalizeMonthValue(formData.invoice_month) || getCurrentMonthValue();
+
+        const buildRecord = () => ({
+            projectName: formData.projectName,
+            preTaxValue: preTax,
+            vatAmount: vat,
+            postTaxValue: postTax,
+            teamValue: teamVal,
+            accumulatedAdvance: accAdv,
+            teamName: formData.teamName || '',
+            phase: formData.phase,
+            note: formData.note,
+            payment_period: formData.payment_period,
+            account_name: formData.account_name,
+            account_number: formData.account_number,
+            bank_name: formData.bank_name,
+            deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
+            invoice_month: normalizedInvoiceMonth
+        });
 
         if (activeSubTab === 'team') {
             const existingPeriod = invoices.find(i => 
@@ -284,33 +332,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 !i.is_completed
             );
             if (existingPeriod && !editingId) {
-                if (showToast) showToast(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`, 'error');
-                else alert(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`);
+                if (showToast) showToast(`Ká»³ ${formData.phase} cá»§a tá»• Ä‘á»™i nÃ y Ä‘Ã£ tá»“n táº¡i! Vui lÃ²ng chá»n ká»³ khÃ¡c.`, 'error');
+                else alert(`Ká»³ ${formData.phase} cá»§a tá»• Ä‘á»™i nÃ y Ä‘Ã£ tá»“n táº¡i! Vui lÃ²ng chá»n ká»³ khÃ¡c.`);
                 return;
             }
         }
 
         try {
             if (editingId) {
+                const updatedRecord = buildRecord();
                 const { data, error } = await supabase
                     .from('expected_invoices')
-                    .update({
-                        projectName: formData.projectName,
-                        preTaxValue: preTax,
-                        vatAmount: vat,
-                        postTaxValue: postTax,
-                        teamValue: teamVal,
-                        accumulatedAdvance: accAdv,
-                        teamName: formData.teamName || '',
-                        phase: formData.phase,
-                        note: formData.note,
-                        payment_period: formData.payment_period,
-                        account_name: formData.account_name,
-                        account_number: formData.account_number,
-                        bank_name: formData.bank_name,
-                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
-                        invoice_month: normalizeMonthValue(formData.invoice_month)
-                    })
+                    .update(updatedRecord)
                     .eq('id', editingId)
                     .select();
 
@@ -319,61 +352,35 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 }
 
                 setInvoices(prev => prev.map(inv => 
-                    inv.id === editingId ? { 
-                        ...inv, 
-                        projectName: formData.projectName,
-                        preTaxValue: preTax,
-                        vatAmount: vat,
-                        postTaxValue: postTax,
-                        teamValue: teamVal,
-                        accumulatedAdvance: accAdv,
-                        teamName: formData.teamName || '',
-                        phase: formData.phase,
-                        note: formData.note,
-                        payment_period: formData.payment_period,
-                        account_name: formData.account_name,
-                        account_number: formData.account_number,
-                        bank_name: formData.bank_name,
-                        deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
-                        invoice_month: normalizeMonthValue(formData.invoice_month)
-                    } : inv
+                    inv.id === editingId ? { ...inv, ...updatedRecord } : inv
                 ));
             } else {
-                const newRecord = {
-                    projectName: formData.projectName,
-                    preTaxValue: preTax,
-                    vatAmount: vat,
-                    postTaxValue: postTax,
-                    teamValue: teamVal,
-                    accumulatedAdvance: accAdv,
-                    teamName: formData.teamName || '',
-                    phase: formData.phase,
-                    note: formData.note,
-                    payment_period: formData.payment_period,
-                    account_name: formData.account_name,
-                    account_number: formData.account_number,
-                    bank_name: formData.bank_name,
-                    deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
-                    invoice_month: normalizeMonthValue(formData.invoice_month)
-                };
+                const newRecord = buildRecord();
+                const existingDuplicate = invoices.find(inv => getExpectedInvoiceKey(inv) === getExpectedInvoiceKey(newRecord));
 
-                const { data, error } = await supabase
-                    .from('expected_invoices')
-                    .insert([newRecord])
-                    .select();
+                if (existingDuplicate?.id) {
+                    if (showToast) showToast(`Äá»£t ${newRecord.phase || ''} cá»§a cÃ´ng trÃ¬nh ${newRecord.projectName || ''} trong thÃ¡ng ${formatMonthLabel(newRecord.invoice_month)} Ä‘Ã£ tá»“n táº¡i!`, 'error');
+                    else alert(`Äá»£t ${newRecord.phase || ''} cá»§a cÃ´ng trÃ¬nh ${newRecord.projectName || ''} trong thÃ¡ng ${formatMonthLabel(newRecord.invoice_month)} Ä‘Ã£ tá»“n táº¡i!`);
+                    return;
+                } else {
+                    const { data, error } = await supabase
+                        .from('expected_invoices')
+                        .insert([newRecord])
+                        .select();
 
-                if (error) {
-                    console.warn('Supabase insert failed, inserting locally', error);
-                    setInvoices(prev => [...prev, { id: Date.now().toString(), ...newRecord }]);
-                } else if (data && data.length > 0) {
-                    setInvoices(prev => [...prev, data[0]]);
+                    if (error) {
+                        console.warn('Supabase insert failed, inserting locally', error);
+                        setInvoices(prev => dedupeExpectedInvoices([...prev, { id: Date.now().toString(), ...newRecord }]));
+                    } else if (data && data.length > 0) {
+                        setInvoices(prev => dedupeExpectedInvoices([...prev, data[0]]));
+                    }
                 }
             }
             resetForm();
         } catch (error) {
             console.error('Error in handleSave:', error);
-            if (showToast) showToast('Có lỗi xảy ra khi lưu dữ liệu!', 'error');
-            else alert('Có lỗi xảy ra khi lưu dữ liệu!');
+            if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi lÆ°u dá»¯ liá»‡u!', 'error');
+            else alert('CÃ³ lá»—i xáº£y ra khi lÆ°u dá»¯ liá»‡u!');
         }
     };
 
@@ -436,8 +443,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             setConfirmPeriodAction(null);
         } catch (error) {
             console.error('Error toggling period:', error);
-            if (showToast) showToast('Có lỗi xảy ra!', 'error');
-            else alert('Có lỗi xảy ra!');
+            if (showToast) showToast('CÃ³ lá»—i xáº£y ra!', 'error');
+            else alert('CÃ³ lá»—i xáº£y ra!');
         }
     };
 
@@ -448,7 +455,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
         
         if (allPeriods.includes(newPeriodName)) {
-            setRenameError('Tên kỳ thanh toán này đã tồn tại!');
+            setRenameError('TÃªn ká»³ thanh toÃ¡n nÃ y Ä‘Ã£ tá»“n táº¡i!');
             return;
         }
 
@@ -468,16 +475,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             setEditingPeriodName(null);
         } catch (error) {
             console.error('Error renaming period:', error);
-            if (showToast) showToast('Có lỗi xảy ra khi đổi tên!', 'error');
-            else alert('Có lỗi xảy ra khi đổi tên!');
+            if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi Ä‘á»•i tÃªn!', 'error');
+            else alert('CÃ³ lá»—i xáº£y ra khi Ä‘á»•i tÃªn!');
         }
     };
 
     const handleClonePeriod = async (sourcePeriod, targetPeriod) => {
         if (!sourcePeriod || !targetPeriod || targetPeriod.trim() === '') return;
         if (allPeriods.includes(targetPeriod.trim())) {
-            if (showToast) showToast('Tên kỳ thanh toán này đã tồn tại!', 'error');
-            else alert('Tên kỳ thanh toán này đã tồn tại!');
+            if (showToast) showToast('TÃªn ká»³ thanh toÃ¡n nÃ y Ä‘Ã£ tá»“n táº¡i!', 'error');
+            else alert('TÃªn ká»³ thanh toÃ¡n nÃ y Ä‘Ã£ tá»“n táº¡i!');
             return;
         }
 
@@ -511,8 +518,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             
             if (error) {
                 console.error('Error inserting cloned invoices:', error);
-                if (showToast) showToast('Có lỗi xảy ra khi nhân bản!', 'error');
-                else alert('Có lỗi xảy ra khi nhân bản!');
+                if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi nhÃ¢n báº£n!', 'error');
+                else alert('CÃ³ lá»—i xáº£y ra khi nhÃ¢n báº£n!');
             } else if (data) {
                 const formattedNew = data.map(d => ({
                     id: d.id,
@@ -536,8 +543,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     is_completed: d.is_completed
                 }));
                 setInvoices(prev => [...prev, ...formattedNew]);
-                if (showToast) showToast('Nhân bản kỳ thanh toán thành công!', 'success');
-                else alert('Nhân bản kỳ thanh toán thành công!');
+                if (showToast) showToast('NhÃ¢n báº£n ká»³ thanh toÃ¡n thÃ nh cÃ´ng!', 'success');
+                else alert('NhÃ¢n báº£n ká»³ thanh toÃ¡n thÃ nh cÃ´ng!');
                 setIsClonePeriodModalOpen(false);
                 setCloneSourcePeriod('');
                 setCloneTargetPeriod('');
@@ -553,11 +560,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const confirmDeletePeriod = async () => {
         if (!deletePeriodState.password) {
-            setDeletePeriodState(prev => ({ ...prev, error: 'Vui lòng nhập mật khẩu!' }));
+            setDeletePeriodState(prev => ({ ...prev, error: 'Vui lÃ²ng nháº­p máº­t kháº©u!' }));
             return;
         }
         if (!deletePeriodState.password || deletePeriodState.password !== adminPassword) {
-            setDeletePeriodState(prev => ({ ...prev, error: 'Mật khẩu không chính xác!' }));
+            setDeletePeriodState(prev => ({ ...prev, error: 'Máº­t kháº©u khÃ´ng chÃ­nh xÃ¡c!' }));
             return;
         }
 
@@ -570,12 +577,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     .eq('id', id);
             }
             setInvoices(prev => prev.filter(inv => !ids.includes(inv.id)));
-            if (showToast) showToast('Đã xóa toàn bộ dữ liệu trong kỳ!', 'success');
+            if (showToast) showToast('ÄÃ£ xÃ³a toÃ n bá»™ dá»¯ liá»‡u trong ká»³!', 'success');
             setDeletePeriodState({ isOpen: false, periodName: '', periodInvoices: [], password: '', error: '' });
         } catch (error) {
             console.error('Error deleting period:', error);
-            if (showToast) showToast('Có lỗi xảy ra khi xóa kỳ thanh toán!', 'error');
-            setDeletePeriodState(prev => ({ ...prev, error: 'Lỗi server khi xóa!' }));
+            if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi xÃ³a ká»³ thanh toÃ¡n!', 'error');
+            setDeletePeriodState(prev => ({ ...prev, error: 'Lá»—i server khi xÃ³a!' }));
         }
     };
 
@@ -589,7 +596,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             });
 
             if (matchedIncomes.length === 0) {
-                if (showToast) showToast(`Không tìm thấy đợt thanh toán nào trong tháng ${bulkAddMonth}!`, 'error');
+                if (showToast) showToast(`KhÃ´ng tÃ¬m tháº¥y Ä‘á»£t thanh toÃ¡n nÃ o trong thÃ¡ng ${bulkAddMonth}!`, 'error');
                 return;
             }
 
@@ -623,7 +630,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             }
 
             if (newRecords.length === 0) {
-                if (showToast) showToast('Tất cả hóa đơn trong tháng này đã tồn tại trong danh sách!', 'error');
+                if (showToast) showToast('Táº¥t cáº£ hÃ³a Ä‘Æ¡n trong thÃ¡ng nÃ y Ä‘Ã£ tá»“n táº¡i trong danh sÃ¡ch!', 'error');
                 return;
             }
 
@@ -634,7 +641,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             
             if (error) {
                 console.error('Error bulk inserting:', error);
-                if (showToast) showToast('Có lỗi xảy ra khi thêm hàng loạt!', 'error');
+                if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi thÃªm hÃ ng loáº¡t!', 'error');
             } else if (data) {
                 const formattedNew = data.map(d => ({
                     id: d.id,
@@ -658,7 +665,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     is_completed: d.is_completed
                 }));
                 setInvoices(prev => [...prev, ...formattedNew]);
-                if (showToast) showToast(`Đã thêm thành công ${newRecords.length} hóa đơn!`, 'success');
+                if (showToast) showToast(`ÄÃ£ thÃªm thÃ nh cÃ´ng ${newRecords.length} hÃ³a Ä‘Æ¡n!`, 'success');
                 setIsBulkAddModalOpen(false);
                 setBulkAddMonth('');
             }
@@ -667,8 +674,80 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
+    const handleBulkAddByMonthV2 = async () => {
+        if (!bulkAddMonth) return;
+
+        try {
+            const matchedIncomes = incomes.filter(inc => inc.date && inc.date.startsWith(bulkAddMonth));
+
+            if (matchedIncomes.length === 0) {
+                if (showToast) showToast(`KhÃ´ng tÃ¬m tháº¥y Ä‘á»£t thanh toÃ¡n nÃ o trong thÃ¡ng ${bulkAddMonth}!`, 'error');
+                return;
+            }
+
+            const payloads = matchedIncomes.map(inc => {
+                const candidate = {
+                    projectName: inc.project_name,
+                    preTaxValue: inc.amount || 0,
+                    vatAmount: inc.vat_amount || 0,
+                    postTaxValue: inc.post_tax_amount || 0,
+                    teamValue: 0,
+                    accumulatedAdvance: 0,
+                    teamName: '',
+                    phase: inc.phase,
+                    invoice_month: bulkAddMonth,
+                    note: '',
+                    payment_period: '',
+                    account_name: '',
+                    account_number: '',
+                    bank_name: '',
+                    deductionAmount: 0,
+                    qs_approved: false,
+                    accountant_approved: false,
+                    is_completed: false
+                };
+                const duplicate = invoices.find(inv => getExpectedInvoiceKey(inv) === getExpectedInvoiceKey(candidate));
+                return { ...candidate, _duplicateId: duplicate?.id || null };
+            });
+
+            const inserts = payloads.filter(item => !item._duplicateId);
+            const duplicates = payloads.filter(item => item._duplicateId);
+
+            if (inserts.length === 0) {
+                if (showToast) showToast(`CÃ¡c Ä‘á»£t trong thÃ¡ng ${formatMonthLabel(bulkAddMonth)} Ä‘Ã£ tá»“n táº¡i!`, 'error');
+                return;
+            }
+
+            if (inserts.length > 0) {
+                const { data, error } = await supabase
+                    .from('expected_invoices')
+                    .insert(inserts.map(({ _duplicateId, ...record }) => record))
+                    .select();
+
+                if (error) {
+                    console.error('Error bulk inserting:', error);
+                    if (showToast) showToast('CÃ³ lá»—i xáº£y ra khi thÃªm hÃ ng loáº¡t!', 'error');
+                    return;
+                }
+
+                if (data) {
+                    setInvoices(prev => dedupeExpectedInvoices([...prev, ...data]));
+                }
+            }
+
+            if (showToast) {
+                const duplicateText = duplicates.length > 0 ? ` Bá» qua ${duplicates.length} Ä‘á»£t Ä‘Ã£ tá»“n táº¡i.` : '';
+                showToast(`ÄÃ£ thÃªm ${inserts.length} hÃ³a Ä‘Æ¡n thÃ¡ng ${formatMonthLabel(bulkAddMonth)}.${duplicateText}`, 'success');
+            }
+            setIsBulkAddModalOpen(false);
+            setBulkAddMonth('');
+        } catch (err) {
+            console.error('Error in bulk add:', err);
+        }
+    };
+
     const handleDeleteClick = (inv) => {
-        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRÆ¯á»žNG';
         if (isAuthorizer) {
             setConfirmDeleteId(inv.id);
         } else {
@@ -680,7 +759,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (!requestDeleteInvoice) return;
         try {
             const inv = requestDeleteInvoice;
-            const recordName = `Dự kiến: ${inv.projectName || ''} - ${inv.teamName || 'HĐ'} - ${inv.phase || ''}`;
+            const recordName = `Dá»± kiáº¿n: ${inv.projectName || ''} - ${inv.teamName || 'HÄ'} - ${inv.phase || ''}`;
             const { error } = await supabase.from('delete_requests').insert([{
                 original_table: 'expected_invoices',
                 record_id: inv.id,
@@ -690,9 +769,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 status: 'pending'
             }]);
             if (error) throw error;
-            if (showToast) showToast('Đã gửi đề nghị xóa dự kiến tới Admin/QS Trưởng!', 'success');
+            if (showToast) showToast('ÄÃ£ gá»­i Ä‘á» nghá»‹ xÃ³a dá»± kiáº¿n tá»›i Admin/QS TrÆ°á»Ÿng!', 'success');
         } catch (error) {
-            if (showToast) showToast('Lỗi khi gửi đề nghị xóa: ' + (error.message || 'không rõ lỗi'), 'error');
+            if (showToast) showToast('Lá»—i khi gá»­i Ä‘á» nghá»‹ xÃ³a: ' + (error.message || 'khÃ´ng rÃµ lá»—i'), 'error');
         } finally {
             setRequestDeleteInvoice(null);
         }
@@ -713,10 +792,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             }
 
             setInvoices(prev => prev.filter(inv => inv.id !== confirmDeleteId));
-            if (showToast) showToast('Đã xóa hóa đơn dự kiến!', 'success');
+            if (showToast) showToast('ÄÃ£ xÃ³a hÃ³a Ä‘Æ¡n dá»± kiáº¿n!', 'success');
         } catch (error) {
             console.error('Error in handleDelete:', error);
-            if (showToast) showToast('Xóa thất bại: ' + (error.message || 'không rõ lỗi'), 'error');
+            if (showToast) showToast('XÃ³a tháº¥t báº¡i: ' + (error.message || 'khÃ´ng rÃµ lá»—i'), 'error');
         }
         setConfirmDeleteId(null);
     };
@@ -732,7 +811,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
 
         if (!password || password !== adminPassword) {
-            alert('Mật khẩu xác nhận không chính xác!');
+            alert('Máº­t kháº©u xÃ¡c nháº­n khÃ´ng chÃ­nh xÃ¡c!');
             setIsDeleteAllConfirmOpen(false);
             return;
         }
@@ -751,10 +830,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             }
             
             setInvoices(prev => prev.filter(inv => !idsToDelete.includes(inv.id)));
-            if (showToast) showToast('Đã xóa tất cả các hóa đơn dự kiến đang hiển thị!', 'success');
+            if (showToast) showToast('ÄÃ£ xÃ³a táº¥t cáº£ cÃ¡c hÃ³a Ä‘Æ¡n dá»± kiáº¿n Ä‘ang hiá»ƒn thá»‹!', 'success');
         } catch (error) {
             console.error('Error in confirmDeleteAll:', error);
-            if (showToast) showToast('Xóa thất bại: ' + (error.message || 'không rõ lỗi'), 'error');
+            if (showToast) showToast('XÃ³a tháº¥t báº¡i: ' + (error.message || 'khÃ´ng rÃµ lá»—i'), 'error');
         }
         setIsDeleteAllConfirmOpen(false);
     };
@@ -786,7 +865,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         )));
     };
 
-    const getInvoicePeriod = (inv) => inv.payment_period || inv.phase || 'Chưa phân kỳ';
+    const getInvoicePeriod = (inv) => inv.payment_period || inv.phase || 'ChÆ°a phÃ¢n ká»³';
 
     const updateProjectPdfUrl = (projectName, period, pdfUrl) => {
         setInvoices(prev => prev.map(inv => (
@@ -801,7 +880,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (!file) return;
 
         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-            if (showToast) showToast('Vui lòng chọn file PDF!', 'error');
+            if (showToast) showToast('Vui lÃ²ng chá»n file PDF!', 'error');
             e.target.value = '';
             return;
         }
@@ -825,7 +904,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (uploadError) {
                 throw new Error(
                     uploadError.message === 'Bucket not found'
-                        ? 'Không tìm thấy bucket "invoices". Hãy tạo bucket public tên "invoices" trong Supabase Storage.'
+                        ? 'KhÃ´ng tÃ¬m tháº¥y bucket "invoices". HÃ£y táº¡o bucket public tÃªn "invoices" trong Supabase Storage.'
                         : uploadError.message
                 );
             }
@@ -842,10 +921,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (error) throw error;
 
             updateInvoicePdfUrl(inv.id, publicUrl);
-            if (showToast) showToast('Tải lên PDF thành công!', 'success');
+            if (showToast) showToast('Táº£i lÃªn PDF thÃ nh cÃ´ng!', 'success');
         } catch (err) {
             console.error('Error uploading team PDF:', err);
-            if (showToast) showToast(err.message || 'Lỗi khi tải lên PDF!', 'error');
+            if (showToast) showToast(err.message || 'Lá»—i khi táº£i lÃªn PDF!', 'error');
         } finally {
             setUploadingPdfId(null);
             e.target.value = '';
@@ -872,10 +951,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (error) throw error;
 
             updateInvoicePdfUrl(inv.id, null);
-            if (showToast) showToast('Đã xóa PDF!', 'success');
+            if (showToast) showToast('ÄÃ£ xÃ³a PDF!', 'success');
         } catch (err) {
             console.error('Error deleting team PDF:', err);
-            if (showToast) showToast(err.message || 'Lỗi khi xóa PDF!', 'error');
+            if (showToast) showToast(err.message || 'Lá»—i khi xÃ³a PDF!', 'error');
         } finally {
             setConfirmDeletePdf(null);
         }
@@ -886,7 +965,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (!file) return;
 
         if (file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')) {
-            if (showToast) showToast('Vui lòng chọn file PDF!', 'error');
+            if (showToast) showToast('Vui lÃ²ng chá»n file PDF!', 'error');
             e.target.value = '';
             return;
         }
@@ -919,10 +998,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (error) throw error;
 
             updateProjectPdfUrl(projectName, period, publicUrl);
-            if (showToast) showToast('Tải lên PDF tổng công trình thành công!', 'success');
+            if (showToast) showToast('Táº£i lÃªn PDF tá»•ng cÃ´ng trÃ¬nh thÃ nh cÃ´ng!', 'success');
         } catch (err) {
             console.error('Error uploading project PDF:', err);
-            if (showToast) showToast(err.message || 'Lỗi khi tải lên PDF tổng công trình!', 'error');
+            if (showToast) showToast(err.message || 'Lá»—i khi táº£i lÃªn PDF tá»•ng cÃ´ng trÃ¬nh!', 'error');
         } finally {
             setUploadingProjectPdfKey(null);
             e.target.value = '';
@@ -950,10 +1029,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (error) throw error;
 
             updateProjectPdfUrl(projectName, period, null);
-            if (showToast) showToast('Đã xóa PDF tổng công trình!', 'success');
+            if (showToast) showToast('ÄÃ£ xÃ³a PDF tá»•ng cÃ´ng trÃ¬nh!', 'success');
         } catch (err) {
             console.error('Error deleting project PDF:', err);
-            if (showToast) showToast(err.message || 'Lỗi khi xóa PDF tổng công trình!', 'error');
+            if (showToast) showToast(err.message || 'Lá»—i khi xÃ³a PDF tá»•ng cÃ´ng trÃ¬nh!', 'error');
         } finally {
             setConfirmDeleteProjectPdf(null);
         }
@@ -969,7 +1048,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         } else if (activeSubTab === 'team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (inv.accountant_approved) return false;
-            if ((currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN')) && !inv.qs_approved) return false;
+            if ((currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('Káº¾ TOÃN')) && !inv.qs_approved) return false;
         } else if (activeSubTab === 'history_team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (!inv.accountant_approved) return false;
@@ -1008,7 +1087,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }
 
     const printPeriods = [...new Set(filteredInvoices.map(inv => getInvoicePeriod(inv)).filter(Boolean))];
-    const printPeriodTitle = printPeriods.length === 1 ? printPeriods[0] : 'TẤT CẢ CÁC KỲ';
+    const printPeriodTitle = printPeriods.length === 1 ? printPeriods[0] : 'Táº¤T Cáº¢ CÃC Ká»²';
     const hasLongPrintNotes = filteredInvoices.some(inv => (inv.note || '').trim().length > 12);
     const teamPrintLayout = useMemo(() => {
         if (activeSubTab !== 'team' && activeSubTab !== 'history_team') {
@@ -1023,9 +1102,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
 
         const grouped = filteredInvoices.reduce((acc, inv) => {
-            const period = inv.payment_period || inv.phase || 'Chưa phân kỳ';
+            const period = inv.payment_period || inv.phase || 'ChÆ°a phÃ¢n ká»³';
             if (!acc[period]) acc[period] = {};
-            const proj = inv.projectName || 'Khác';
+            const proj = inv.projectName || 'KhÃ¡c';
             if (!acc[period][proj]) acc[period][proj] = [];
             acc[period][proj].push(inv);
             return acc;
@@ -1117,7 +1196,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 }
                 
                 let pExpected = 0;
-                if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
+                if (phase === 'Táº¡m á»©ng' || phase?.toLowerCase() === 'táº¡m á»©ng') {
                     pExpected = Number(advanceValue) || 0;
                 } else {
                     pExpected = phaseHstt !== undefined 
@@ -1147,16 +1226,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 let overdue_days = '';
 
                 if (invoice_date) {
-                    const invDateObj = new Date(invoice_date);
-                    if (!isNaN(invDateObj.getTime())) {
-                        let dueDateObj = new Date(invDateObj.getTime());
-                        let added = 0;
-                        while (added < 15) {
-                            dueDateObj.setDate(dueDateObj.getDate() + 1);
-                            if (dueDateObj.getDay() !== 0 && dueDateObj.getDay() !== 6) {
-                                added++;
-                            }
-                        }
+                    const dueDateObj = addBusinessDays(invoice_date, 15);
+                    if (dueDateObj) {
                         due_date_str = dueDateObj.toLocaleDateString('vi-VN');
                         
                         const now = new Date();
@@ -1213,7 +1284,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         const inv = details.investor || '';
         if (gc && gc.trim()) return gc.trim();
         if (inv && inv.trim()) return inv.trim();
-        return 'CHƯA PHÂN LOẠI';
+        return 'CHÆ¯A PHÃ‚N LOáº I';
     };
 
     const groupedCustomerDebts = useMemo(() => {
@@ -1226,26 +1297,27 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             groups[groupName].push(debt);
         });
         
-        // Sort groups: 'CHƯA PHÂN LOẠI' last, others alphabetically
+        // Sort groups: 'CHÆ¯A PHÃ‚N LOáº I' last, others alphabetically
         return Object.entries(groups).sort(([a], [b]) => {
-            if (a === 'CHƯA PHÂN LOẠI') return 1;
-            if (b === 'CHƯA PHÂN LOẠI') return -1;
+            if (a === 'CHÆ¯A PHÃ‚N LOáº I') return 1;
+            if (b === 'CHÆ¯A PHÃ‚N LOáº I') return -1;
             return a.localeCompare(b);
         });
     }, [filteredCustomerDebts, projectDetails]);
 
     const customerDebtColumns = [
         { key: 'stt', label: 'STT', className: 'w-16 text-center', cellClassName: 'text-center text-slate-500 font-medium' },
-        { key: 'name', label: 'Tên', className: 'min-w-[220px] text-center', cellClassName: 'text-center font-bold text-slate-900' },
-        { key: 'expected', label: 'Cần thu', className: 'w-44 text-center', cellClassName: 'text-center font-black text-slate-800' },
-        { key: 'actual', label: 'Đã thu', className: 'w-40 text-center', cellClassName: 'text-center font-black text-emerald-600' },
-        { key: 'remaining', label: 'Còn lại', className: 'w-40 text-center', cellClassName: 'text-center font-black text-rose-600' },
-        { key: 'dueDate', label: 'Ngày tới hạn', className: 'w-40 text-center', cellClassName: 'text-center font-medium text-slate-700' },
-        { key: 'status', label: 'Hạn', className: 'w-32 text-center', cellClassName: 'text-center font-black' },
-        { key: 'invoiceNo', label: 'Số HĐ', className: 'w-44 text-center', cellClassName: 'text-center font-bold text-slate-700' },
-        { key: 'invoiceDate', label: 'Ngày HĐ', className: 'w-32 text-center', cellClassName: 'text-center font-medium text-slate-700' },
-        { key: 'contractNo', label: 'Số hợp đồng', className: 'w-52 text-center', cellClassName: 'text-center font-medium text-slate-700' },
-        { key: 'voucherNo', label: 'Số CT', className: 'w-36 text-center', cellClassName: 'text-center font-medium text-slate-700' }
+        { key: 'name', label: 'TÃªn', className: 'min-w-[220px] text-center', cellClassName: 'text-center font-bold text-slate-900' },
+        { key: 'phase', label: 'Äá»£t thanh toÃ¡n', className: 'w-40 text-center', cellClassName: 'text-center font-bold text-slate-700' },
+        { key: 'expected', label: 'Cáº§n thu', className: 'w-44 text-center', cellClassName: 'text-center font-black text-slate-800' },
+        { key: 'actual', label: 'ÄÃ£ thu', className: 'w-40 text-center', cellClassName: 'text-center font-black text-emerald-600' },
+        { key: 'remaining', label: 'CÃ²n láº¡i', className: 'w-40 text-center', cellClassName: 'text-center font-black text-rose-600' },
+        { key: 'dueDate', label: 'NgÃ y tá»›i háº¡n', className: 'w-40 text-center', cellClassName: 'text-center font-medium text-slate-700' },
+        { key: 'status', label: 'Háº¡n', className: 'w-32 text-center', cellClassName: 'text-center font-black' },
+        { key: 'invoiceNo', label: 'Sá»‘ HÄ', className: 'w-44 text-center', cellClassName: 'text-center font-bold text-slate-700' },
+        { key: 'invoiceDate', label: 'NgÃ y HÄ', className: 'w-32 text-center', cellClassName: 'text-center font-medium text-slate-700' },
+        { key: 'contractNo', label: 'Sá»‘ há»£p Ä‘á»“ng', className: 'w-52 text-center', cellClassName: 'text-center font-medium text-slate-700' },
+        { key: 'voucherNo', label: 'Sá»‘ CT', className: 'w-36 text-center', cellClassName: 'text-center font-medium text-slate-700' }
     ];
 
     const visibleCustomerDebtColumns = customerDebtColumns.filter(col => customerDebtVisibleColumns[col.key] !== false);
@@ -1271,24 +1343,26 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 return idx + 1;
             case 'name':
                 return debt.projectName;
+            case 'phase':
+                return debt.phase || '-';
             case 'expected':
-                return `${formatCurrency(debt.expected)} VNĐ`;
+                return `${formatCurrency(debt.expected)} VNÄ`;
             case 'actual':
-                return `${formatCurrency(debt.actual)} VNĐ`;
+                return `${formatCurrency(debt.actual)} VNÄ`;
             case 'remaining':
-                return `${formatCurrency(debt.remaining)} VNĐ`;
+                return `${formatCurrency(debt.remaining)} VNÄ`;
             case 'dueDate':
                 return debt.due_date || '-';
             case 'status':
                 return (
                     debt.overdue_days > 0 ? (
-                        <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-black text-red-700">Trễ {debt.overdue_days} ngày</span>
+                        <span className="inline-flex rounded-full bg-red-100 px-2.5 py-1 text-xs font-black text-red-700">Trá»… {debt.overdue_days} ngÃ y</span>
                     ) : debt.due_date ? (
-                        <span className="text-xs font-black text-emerald-600">Trong hạn</span>
+                        <span className="text-xs font-black text-emerald-600">Trong háº¡n</span>
                     ) : '-'
                 );
             case 'invoiceNo':
-                return debt.invoice_no || <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>;
+                return debt.invoice_no || <span className="font-black text-amber-700">ChÆ°a xuáº¥t hÃ³a Ä‘Æ¡n</span>;
             case 'invoiceDate':
                 return debt.invoice_date || '-';
             case 'contractNo': {
@@ -1297,10 +1371,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (debt.contractNo.startsWith('{')) {
                         const parsed = JSON.parse(debt.contractNo);
                         const parts = [];
-                        if (parsed.main_contract) parts.push(`Chính: ${parsed.main_contract}`);
-                        if (parsed.sub_contract_1) parts.push(`Phụ 1: ${parsed.sub_contract_1}`);
-                        if (parsed.sub_contract_2) parts.push(`Phụ 2: ${parsed.sub_contract_2}`);
-                        if (parsed.sub_contract_annex) parts.push(`PL HĐ phụ: ${parsed.sub_contract_annex}`);
+                        if (parsed.main_contract) parts.push(`ChÃ­nh: ${parsed.main_contract}`);
+                        if (parsed.sub_contract_1) parts.push(`Phá»¥ 1: ${parsed.sub_contract_1}`);
+                        if (parsed.sub_contract_2) parts.push(`Phá»¥ 2: ${parsed.sub_contract_2}`);
+                        if (parsed.sub_contract_annex) parts.push(`PL HÄ phá»¥: ${parsed.sub_contract_annex}`);
                         return parts.length > 0 ? parts.join(' | ') : '-';
                     }
                 } catch(e) {}
@@ -1335,9 +1409,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <div className="bg-emerald-100 p-2 rounded-xl">
                             <FileSpreadsheet className="text-emerald-600" size={28} />
                         </div>
-                        <h2 className="text-3xl font-black tracking-tight uppercase">Hóa Đơn - Tổ Đội Dự Kiến</h2>
+                        <h2 className="text-3xl font-black tracking-tight uppercase">HÃ³a ÄÆ¡n - Tá»• Äá»™i Dá»± Kiáº¿n</h2>
                     </div>
-                    <p className="text-slate-500 text-sm mt-1">Quản lý và theo dõi các hóa đơn, tổ đội dự kiến của công trình</p>
+                    <p className="text-slate-500 text-sm mt-1">Quáº£n lÃ½ vÃ  theo dÃµi cÃ¡c hÃ³a Ä‘Æ¡n, tá»• Ä‘á»™i dá»± kiáº¿n cá»§a cÃ´ng trÃ¬nh</p>
                 </div>
                 
                 <div className="flex gap-3">
@@ -1352,10 +1426,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     <button 
                         onClick={() => exportTableToExcel('expected-invoices-table', 'Du_Kien')}
                         className="bg-blue-50 text-blue-600 hover:bg-blue-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 print:hidden"
-                        title="Xuất Excel"
+                        title="Xuáº¥t Excel"
                     >
                         <Download size={20} />
-                        <span className="hidden sm:inline">Xuất Excel</span>
+                        <span className="hidden sm:inline">Xuáº¥t Excel</span>
                     </button>
                     {activeSubTab === 'team' && (
                         <button 
@@ -1363,17 +1437,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             className="bg-purple-50 text-purple-600 hover:bg-purple-100 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 print:hidden"
                         >
                             <Copy size={20} />
-                            <span className="hidden sm:inline">Thêm kỳ mới</span>
+                            <span className="hidden sm:inline">ThÃªm ká»³ má»›i</span>
                         </button>
                     )}
-                    {activeSubTab !== 'customer_debt' && (currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG') && (
+                    {activeSubTab !== 'customer_debt' && (currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRÆ¯á»žNG') && (
                         <button 
                             onClick={handleDeleteAll}
                             disabled={deleteAllTargetInvoices.length === 0}
                             className={`px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 ${deleteAllTargetInvoices.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-50 hover:bg-red-100 text-red-600'}`}
                         >
                             <Trash2 size={20} />
-                            Xóa tất cả
+                            XÃ³a táº¥t cáº£
                         </button>
                     )}
                     {activeSubTab === 'invoice' && (
@@ -1382,7 +1456,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/10"
                         >
                             <Plus size={20} />
-                            <span className="hidden sm:inline">Thêm theo tháng</span>
+                            <span className="hidden sm:inline">ThÃªm theo thÃ¡ng</span>
                         </button>
                     )}
                     {activeSubTab !== 'customer_debt' && (
@@ -1391,7 +1465,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
                         >
                             <Plus size={20} />
-                            Thêm mới
+                            ThÃªm má»›i
                         </button>
                     )}
                 </div>
@@ -1402,25 +1476,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     onClick={() => setActiveSubTab('customer_debt')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'customer_debt' ? 'border-rose-600 text-rose-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    CÔNG NỢ THU
+                    CÃ”NG Ná»¢ THU
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('invoice')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'invoice' ? 'border-emerald-600 text-emerald-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    HĐ DỰ KIẾN
+                    HÄ Dá»° KIáº¾N
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('team')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'team' ? 'border-indigo-600 text-indigo-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    GIÁ TRỊ TỔ ĐỘI
+                    GIÃ TRá»Š Tá»” Äá»˜I
                 </button>
                 <button 
                     onClick={() => setActiveSubTab('history_team')}
                     className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'history_team' ? 'border-amber-600 text-amber-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
                 >
-                    LỊCH SỬ CHI TỔ ĐỘI
+                    Lá»ŠCH Sá»¬ CHI Tá»” Äá»˜I
                 </button>
             </div>
 
@@ -1435,7 +1509,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         autoCorrect="off"
                         autoCapitalize="off"
                         spellCheck={false}
-                        placeholder="Tìm kiếm..."
+                        placeholder="TÃ¬m kiáº¿m..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-emerald-500 focus:bg-white transition"
@@ -1450,7 +1524,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         }}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
                     >
-                        <option value="">Tất cả công trình</option>
+                        <option value="">Táº¥t cáº£ cÃ´ng trÃ¬nh</option>
                         {projects.map(p => (
                             <option key={p.id} value={p.name}>{p.name}</option>
                         ))}
@@ -1462,7 +1536,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         onChange={(e) => setFilterPhase(e.target.value)}
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
                     >
-                        <option value="">Tất cả các đợt</option>
+                        <option value="">Táº¥t cáº£ cÃ¡c Ä‘á»£t</option>
                         {availablePhases.map(ph => (
                             <option key={ph} value={ph}>{ph}</option>
                         ))}
@@ -1475,7 +1549,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             onChange={(e) => setFilterInvoiceMonth(e.target.value)}
                             className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
                         >
-                            <option value="">Tất cả tháng HĐ</option>
+                            <option value="">Táº¥t cáº£ thÃ¡ng HÄ</option>
                             {availableInvoiceMonths.map(month => (
                                 <option key={month} value={month}>{formatMonthLabel(month)}</option>
                             ))}
@@ -1487,10 +1561,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         type="button"
                         onClick={() => setHideZeroRowsOnPrint(prev => !prev)}
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideZeroRowsOnPrint ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
-                        title={hideZeroRowsOnPrint ? 'Khi in sẽ ẩn tổ đội có giá trị kỳ này bằng 0' : 'Khi in sẽ hiện cả tổ đội có giá trị kỳ này bằng 0'}
+                        title={hideZeroRowsOnPrint ? 'Khi in sáº½ áº©n tá»• Ä‘á»™i cÃ³ giÃ¡ trá»‹ ká»³ nÃ y báº±ng 0' : 'Khi in sáº½ hiá»‡n cáº£ tá»• Ä‘á»™i cÃ³ giÃ¡ trá»‹ ká»³ nÃ y báº±ng 0'}
                     >
                         <EyeOff size={18} />
-                        <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
+                        <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'áº¨n dÃ²ng 0 khi in' : 'In cáº£ dÃ²ng 0'}</span>
                     </button>
                 )}
                 <div className="flex items-center justify-end gap-2 md:w-40">
@@ -1498,7 +1572,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         type="button"
                         onClick={() => changeTableZoom(-0.1)}
                         className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition"
-                        title="Thu nhỏ bảng"
+                        title="Thu nhá» báº£ng"
                     >
                         <ZoomOut size={18} />
                     </button>
@@ -1506,7 +1580,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         type="button"
                         onClick={() => setTableZoom(1)}
                         className="min-w-12 px-2 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-600 tabular-nums"
-                        title="Đưa bảng về 100%"
+                        title="ÄÆ°a báº£ng vá» 100%"
                     >
                         {Math.round(tableZoom * 100)}%
                     </button>
@@ -1514,7 +1588,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         type="button"
                         onClick={() => changeTableZoom(0.1)}
                         className="p-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 transition"
-                        title="Phóng to bảng"
+                        title="PhÃ³ng to báº£ng"
                     >
                         <ZoomIn size={18} />
                     </button>
@@ -1523,7 +1597,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             {activeSubTab === 'customer_debt' && (
                 <div className="mb-4 flex flex-wrap items-center gap-2 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm print:hidden">
-                    <span className="mr-1 text-xs font-black uppercase tracking-wide text-slate-500">Ẩn/hiện cột:</span>
+                    <span className="mr-1 text-xs font-black uppercase tracking-wide text-slate-500">áº¨n/hiá»‡n cá»™t:</span>
                     {customerDebtColumns.map(col => {
                         const isVisible = customerDebtVisibleColumns[col.key] !== false;
                         return (
@@ -1532,7 +1606,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 type="button"
                                 onClick={() => toggleCustomerDebtColumn(col.key)}
                                 className={`flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-black transition ${isVisible ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100' : 'border-slate-200 bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
-                                title={`${isVisible ? 'Ẩn' : 'Hiện'} cột ${col.label}`}
+                                title={`${isVisible ? 'áº¨n' : 'Hiá»‡n'} cá»™t ${col.label}`}
                             >
                                 {isVisible ? <Eye size={14} /> : <EyeOff size={14} />}
                                 {col.label}
@@ -1546,13 +1620,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-5xl overflow-hidden animate-in zoom-in-95 duration-200">
                     <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-                        <h3 className="text-white font-bold text-lg">{editingId ? 'Cập nhật' : 'Thêm mới'} {activeSubTab === 'invoice' ? 'hóa đơn' : 'tổ đội'} dự kiến</h3>
+                        <h3 className="text-white font-bold text-lg">{editingId ? 'Cáº­p nháº­t' : 'ThÃªm má»›i'} {activeSubTab === 'invoice' ? 'hÃ³a Ä‘Æ¡n' : 'tá»• Ä‘á»™i'} dá»± kiáº¿n</h3>
                         <button onClick={resetForm} className="text-slate-400 hover:text-white transition"><X /></button>
                     </div>
                     <form onSubmit={handleSave} className="p-6 flex flex-col gap-6">
                         <div className={activeSubTab === 'invoice' ? 'grid grid-cols-1 md:grid-cols-3 gap-6' : 'grid grid-cols-1 md:grid-cols-2 gap-6'}>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên công trình *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">TÃªn cÃ´ng trÃ¬nh *</label>
                                 <select 
                                     name="projectName" 
                                     value={formData.projectName}
@@ -1560,7 +1634,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
                                     required
                                 >
-                                    <option value="">-- Chọn công trình --</option>
+                                    <option value="">-- Chá»n cÃ´ng trÃ¬nh --</option>
                                     {projects.map(p => (
                                         <option key={p.id} value={p.name}>{p.name}</option>
                                     ))}
@@ -1569,13 +1643,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             {activeSubTab === 'invoice' ? (
                                 <>
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Äá»£t</label>
                                     <select 
                                         name="phase_select" 
-                                        value={isCustomPhase ? 'Khác' : formData.phase}
+                                        value={isCustomPhase ? 'KhÃ¡c' : formData.phase}
                                         onChange={(e) => {
                                             const val = e.target.value;
-                                            if (val === 'Khác') {
+                                            if (val === 'KhÃ¡c') {
                                                 setIsCustomPhase(true);
                                                 setFormData(prev => ({ ...prev, phase: '' }));
                                             } else {
@@ -1594,11 +1668,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         }}
                                         className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
                                     >
-                                        <option value="">-- Chọn đợt --</option>
+                                        <option value="">-- Chá»n Ä‘á»£t --</option>
                                         {availableFormPhases.map(ph => (
                                             <option key={ph} value={ph}>{ph}</option>
                                         ))}
-                                        <option value="Khác">Khác...</option>
+                                        <option value="KhÃ¡c">KhÃ¡c...</option>
                                     </select>
                                     {isCustomPhase && (
                                         <input 
@@ -1607,12 +1681,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             value={formData.phase}
                                             onChange={handleFormChange}
                                             className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Nhập đợt khác..."
+                                            placeholder="Nháº­p Ä‘á»£t khÃ¡c..."
                                         />
                                     )}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tháng hóa đơn</label>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">ThÃ¡ng hÃ³a Ä‘Æ¡n</label>
                                     <input
                                         type="month"
                                         name="invoice_month"
@@ -1625,22 +1699,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 <div className="grid grid-cols-2 gap-4">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Đợt</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Äá»£t</label>
                                         <input 
                                             type="text" 
                                             name="phase" 
                                             value={formData.phase || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Có thể để trống"
+                                            placeholder="CÃ³ thá»ƒ Ä‘á»ƒ trá»‘ng"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Kỳ thanh toán *</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ká»³ thanh toÃ¡n *</label>
                                         <select 
-                                            value={isCustomPeriod ? 'Khác' : (allPeriods.includes(formData.payment_period) ? formData.payment_period : (formData.payment_period ? 'Khác' : ''))}
+                                            value={isCustomPeriod ? 'KhÃ¡c' : (allPeriods.includes(formData.payment_period) ? formData.payment_period : (formData.payment_period ? 'KhÃ¡c' : ''))}
                                             onChange={(e) => {
-                                                if (e.target.value === 'Khác') {
+                                                if (e.target.value === 'KhÃ¡c') {
                                                     setIsCustomPeriod(true);
                                                     setFormData(prev => ({ ...prev, payment_period: '' }));
                                                 } else {
@@ -1651,9 +1725,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
                                             required
                                         >
-                                            <option value="">-- Chọn kỳ thanh toán --</option>
+                                            <option value="">-- Chá»n ká»³ thanh toÃ¡n --</option>
                                             {allPeriods.map(p => <option key={p} value={p}>{p}</option>)}
-                                            <option value="Khác">-- Thêm kỳ mới --</option>
+                                            <option value="KhÃ¡c">-- ThÃªm ká»³ má»›i --</option>
                                         </select>
                                         {(isCustomPeriod || (!allPeriods.includes(formData.payment_period) && formData.payment_period)) && (
                                             <input 
@@ -1662,7 +1736,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 value={formData.payment_period || ''}
                                                 onChange={handleFormChange}
                                                 className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                                placeholder="Nhập kỳ thanh toán mới..."
+                                                placeholder="Nháº­p ká»³ thanh toÃ¡n má»›i..."
                                                 required
                                             />
                                         )}
@@ -1674,36 +1748,36 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         {activeSubTab === 'invoice' ? (
                             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị trước thuế</label>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">GiÃ¡ trá»‹ trÆ°á»›c thuáº¿</label>
                                         <input 
                                             type="text" 
                                             name="preTaxValue" 
                                             value={formData.preTaxValue ? formatCurrency(formData.preTaxValue) : ''}
                                             onChange={handleNumberChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 150,000,000"
+                                            placeholder="VÃ­ dá»¥: 150,000,000"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thuế VAT</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thuáº¿ VAT</label>
                                         <input 
                                             type="text" 
                                             name="vatAmount" 
                                             value={formData.vatAmount ? formatCurrency(formData.vatAmount) : ''}
                                             onChange={handleNumberChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 15,000,000"
+                                            placeholder="VÃ­ dá»¥: 15,000,000"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị sau thuế *</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">GiÃ¡ trá»‹ sau thuáº¿ *</label>
                                         <input 
                                             type="text" 
                                             name="postTaxValue" 
                                             value={formData.postTaxValue ? formatCurrency(formData.postTaxValue) : ''}
                                             onChange={handleNumberChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 165,000,000"
+                                            placeholder="VÃ­ dá»¥: 165,000,000"
                                             required
                                         />
                                     </div>
@@ -1712,13 +1786,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên tổ đội *</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">TÃªn tá»• Ä‘á»™i *</label>
                                         <select 
-                                            value={isCustomTeamName ? 'Khác' : (availableTeamNames.includes(formData.teamName) ? formData.teamName : (formData.teamName ? 'Khác' : ''))}
+                                            value={isCustomTeamName ? 'KhÃ¡c' : (availableTeamNames.includes(formData.teamName) ? formData.teamName : (formData.teamName ? 'KhÃ¡c' : ''))}
                                             onChange={(e) => {
                                                 const val = e.target.value;
                                                 let tName = val;
-                                                if (val === 'Khác') {
+                                                if (val === 'KhÃ¡c') {
                                                     setIsCustomTeamName(true);
                                                     setFormData(prev => ({ ...prev, teamName: '', accumulatedAdvance: '', account_name: '', account_number: '', bank_name: '' }));
                                                     tName = '';
@@ -1740,11 +1814,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             }}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
                                         >
-                                            <option value="">-- Chọn tổ đội --</option>
+                                            <option value="">-- Chá»n tá»• Ä‘á»™i --</option>
                                             {availableTeamNames.map(name => (
                                                 <option key={name} value={name}>{name}</option>
                                             ))}
-                                            <option value="Khác">Khác...</option>
+                                            <option value="KhÃ¡c">KhÃ¡c...</option>
                                         </select>
                                         {(isCustomTeamName || (!availableTeamNames.includes(formData.teamName) && formData.teamName)) && (
                                             <input 
@@ -1753,13 +1827,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 value={formData.teamName || ''}
                                                 onChange={handleFormChange}
                                                 className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                                placeholder="Nhập tên tổ đội..."
+                                                placeholder="Nháº­p tÃªn tá»• Ä‘á»™i..."
                                             />
                                         )}
                                     </div>
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                         <div>
-                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị KL</label>
+                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">GiÃ¡ trá»‹ KL</label>
                                             <input 
                                                 type="text" 
                                                 name="preTaxValue" 
@@ -1775,11 +1849,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     }));
                                                 }}
                                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-amber-600 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                                placeholder="Ví dụ: 50,000,000"
+                                                placeholder="VÃ­ dá»¥: 50,000,000"
                                             />
                                         </div>
                                         <div>
-                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thu lại đội</label>
+                                            <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Thu láº¡i Ä‘á»™i</label>
                                             <input 
                                                 type="text" 
                                                 name="deductionAmount" 
@@ -1795,14 +1869,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     }));
                                                 }}
                                                 className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-red-600 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                                placeholder="Ví dụ: 5,000,000"
+                                                placeholder="VÃ­ dá»¥: 5,000,000"
                                             />
                                         </div>
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lũy kế tạm ứng</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">LÅ©y káº¿ táº¡m á»©ng</label>
                                         <input 
                                             type="text" 
                                             name="accumulatedAdvance" 
@@ -1812,11 +1886,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 setFormData(prev => ({ ...prev, accumulatedAdvance: value ? parseInt(value).toLocaleString('en-US') : '' }));
                                             }}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-blue-600 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 50,000,000"
+                                            placeholder="VÃ­ dá»¥: 50,000,000"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Giá trị kỳ này *</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">GiÃ¡ trá»‹ ká»³ nÃ y *</label>
                                         <input 
                                             type="text" 
                                             name="teamValue" 
@@ -1826,54 +1900,54 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 setFormData(prev => ({ ...prev, teamValue: value ? parseInt(value).toLocaleString('en-US') : '' }));
                                             }}
                                             className="w-full bg-slate-100 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-emerald-600 outline-none cursor-not-allowed"
-                                            placeholder="Tự động tính..."
+                                            placeholder="Tá»± Ä‘á»™ng tÃ­nh..."
                                             readOnly
                                         />
                                     </div>
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên tài khoản</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">TÃªn tÃ i khoáº£n</label>
                                         <input 
                                             type="text" 
                                             name="account_name" 
                                             value={formData.account_name || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Tên người nhận..."
+                                            placeholder="TÃªn ngÆ°á»i nháº­n..."
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Số tài khoản</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Sá»‘ tÃ i khoáº£n</label>
                                         <input 
                                             type="text" 
                                             name="account_number" 
                                             value={formData.account_number || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: 123456789"
+                                            placeholder="VÃ­ dá»¥: 123456789"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ngân hàng</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">NgÃ¢n hÃ ng</label>
                                         <input 
                                             type="text" 
                                             name="bank_name" 
                                             value={formData.bank_name || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
-                                            placeholder="Ví dụ: Vietcombank"
+                                            placeholder="VÃ­ dá»¥: Vietcombank"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chÃº</label>
                                         <input 
                                             type="text" 
                                             name="note" 
                                             value={formData.note || ''}
                                             onChange={handleFormChange}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                            placeholder="Nhập ghi chú..."
+                                            placeholder="Nháº­p ghi chÃº..."
                                         />
                                     </div>
                                 </div>
@@ -1882,21 +1956,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         
                         {activeSubTab === 'invoice' && (
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chÃº</label>
                                 <input 
                                     type="text" 
                                     name="note" 
                                     value={formData.note || ''}
                                     onChange={handleFormChange}
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Nhập ghi chú..."
+                                    placeholder="Nháº­p ghi chÃº..."
                                 />
                             </div>
                         )}
                         <div className="mt-2 flex justify-end gap-3 border-t border-slate-100 pt-6">
-                            <button type="button" onClick={resetForm} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy</button>
+                            <button type="button" onClick={resetForm} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Há»§y</button>
                             <button type="submit" className="px-6 py-2.5 rounded-xl font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-lg shadow-emerald-600/20 flex items-center gap-2 transition">
-                                <CheckCircle2 size={18} /> Lưu dữ liệu
+                                <CheckCircle2 size={18} /> LÆ°u dá»¯ liá»‡u
                             </button>
                         </div>
                     </form>
@@ -1909,17 +1983,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     <div className="expected-print-zoom" style={{ zoom: tableZoom }}>
                     {activeSubTab === 'customer_debt' && (
                         <div className="expected-print-title">
-                            BẢNG THEO DÕI CÔNG NỢ PHẢI THU KHÁCH HÀNG
+                            Báº¢NG THEO DÃ•I CÃ”NG Ná»¢ PHáº¢I THU KHÃCH HÃ€NG
                         </div>
                     )}
                     {activeSubTab === 'invoice' && (
                         <div className="expected-print-title">
-                            BẢNG THEO DÕI HÓA ĐƠN VÀ TIẾN ĐỘ THU TIỀN
+                            Báº¢NG THEO DÃ•I HÃ“A ÄÆ N VÃ€ TIáº¾N Äá»˜ THU TIá»€N
                         </div>
                     )}
                     {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                         <div className="expected-print-title">
-                            BẢNG KHỐI LƯỢNG TỔ ĐỘI KỲ {printPeriodTitle}
+                            Báº¢NG KHá»I LÆ¯á»¢NG Tá»” Äá»˜I Ká»² {printPeriodTitle}
                         </div>
                     )}
                     <table 
@@ -2001,7 +2075,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     type="button"
                                                     onClick={() => toggleCustomerDebtColumn(col.key)}
                                                     className="print:hidden rounded-lg border border-white/15 bg-white/10 p-1 text-white/80 hover:bg-white/20 hover:text-white"
-                                                    title={`Ẩn cột ${col.label}`}
+                                                    title={`áº¨n cá»™t ${col.label}`}
                                                 >
                                                     <Eye size={14} />
                                                 </button>
@@ -2013,48 +2087,48 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     <>
                                         <th className="p-4 font-black uppercase text-sm w-16 text-center">STT</th>
                                 <th className="p-4 font-black uppercase text-sm">
-                                    {activeSubTab === 'customer_debt' ? 'Tên' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'Tên tổ đội' : 'Tên công trình')}
+                                    {activeSubTab === 'customer_debt' ? 'TÃªn' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'TÃªn tá»• Ä‘á»™i' : 'TÃªn cÃ´ng trÃ¬nh')}
                                 </th>
                                     </>
                                 )}
                                 {activeSubTab === 'invoice' ? (
                                     <>
-                                        <th className="p-4 font-black uppercase text-sm">Tháng HĐ</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuế VAT</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Giá trị sau thuế</th>
-                                        <th className="p-4 font-black uppercase text-sm">Đợt</th>
-                                        <th className="p-4 font-black uppercase text-sm">Ghi chú</th>
-                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-sm">ThÃ¡ng HÄ</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">GiÃ¡ trá»‹ trÆ°á»›c thuáº¿</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuáº¿ VAT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">GiÃ¡ trá»‹ sau thuáº¿</th>
+                                        <th className="p-4 font-black uppercase text-sm">Äá»£t</th>
+                                        <th className="p-4 font-black uppercase text-sm">Ghi chÃº</th>
+                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">Thao tÃ¡c</th>
                                     </>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
-                                        <th className="p-3 font-black uppercase text-sm text-right">Thực chi</th>
+                                        <th className="p-3 font-black uppercase text-sm text-right">Thá»±c chi</th>
                                         <th className="p-3 font-black uppercase text-sm text-right">Thu</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kì trước</span></th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kỳ này</span></th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">đến nay</span></th>
-                                        <th className="p-3 font-black uppercase text-sm text-center">Tên TK</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center">Số TK</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center">Ngân hàng</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center">Ghi chú</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center print:hidden">Đợt</th>
-                                        {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-sm text-center w-36">Trạng thái duyệt</th>}
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">LÅ©y káº¿</span><span className="block">kÃ¬ trÆ°á»›c</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">LÅ©y káº¿</span><span className="block">ká»³ nÃ y</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">LÅ©y káº¿</span><span className="block">Ä‘áº¿n nay</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">TÃªn TK</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Sá»‘ TK</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">NgÃ¢n hÃ ng</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Ghi chÃº</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center print:hidden">Äá»£t</th>
+                                        {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-sm text-center w-36">Tráº¡ng thÃ¡i duyá»‡t</th>}
                                         <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">PDF</th>
-                                        <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tÃ¡c</th>
                                     </>
                                 ) : activeSubTab === 'customer_debt' ? null : (
                                     <>
-                                        <th className="p-4 font-black uppercase text-sm">Số hợp đồng</th>
-                                        <th className="p-4 font-black uppercase text-sm">Số HĐ</th>
-                                        <th className="p-4 font-black uppercase text-sm">Ngày HĐ</th>
-                                        <th className="p-4 font-black uppercase text-sm">Ngày tới hạn</th>
-                                        <th className="p-4 font-black uppercase text-sm text-center">Quá hạn</th>
-                                        <th className="p-4 font-black uppercase text-sm">Số CT</th>
-                                        <th className="p-4 font-black uppercase text-sm">Đợt TT</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Cần thu (HSTT)</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Đã thu</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Còn lại</th>
+                                        <th className="p-4 font-black uppercase text-sm">Sá»‘ há»£p Ä‘á»“ng</th>
+                                        <th className="p-4 font-black uppercase text-sm">Sá»‘ HÄ</th>
+                                        <th className="p-4 font-black uppercase text-sm">NgÃ y HÄ</th>
+                                        <th className="p-4 font-black uppercase text-sm">NgÃ y tá»›i háº¡n</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">QuÃ¡ háº¡n</th>
+                                        <th className="p-4 font-black uppercase text-sm">Sá»‘ CT</th>
+                                        <th className="p-4 font-black uppercase text-sm">Äá»£t TT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Cáº§n thu (HSTT)</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">ÄÃ£ thu</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">CÃ²n láº¡i</th>
                                     </>
                                 )}
                             </tr>
@@ -2063,7 +2137,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             {activeSubTab === 'customer_debt' ? (
                                 filteredCustomerDebts.length === 0 ? (
                                     <tr>
-                                        <td colSpan={visibleCustomerDebtColumns.length || 1} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={visibleCustomerDebtColumns.length || 1} className="p-8 text-center text-slate-500">ChÆ°a cÃ³ dá»¯ liá»‡u phÃ¹ há»£p.</td>
                                     </tr>
                                 ) : (
                                     (() => {
@@ -2073,7 +2147,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 <tr className="bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black">
                                                     {visibleCustomerDebtColumns.map(col => {
                                                         if (col.key === 'stt') {
-                                                            return <td key={col.key} className="p-4 text-center text-[16px] print:text-black">🏢</td>;
+                                                            return <td key={col.key} className="p-4 text-center text-[16px] print:text-black">ðŸ¢</td>;
                                                         }
                                                         if (col.key === 'name') {
                                                             return (
@@ -2085,21 +2159,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         if (col.key === 'expected') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-slate-800 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.expected, 0))} VNĐ
+                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.expected, 0))} VNÄ
                                                                 </td>
                                                             );
                                                         }
                                                         if (col.key === 'actual') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-emerald-700 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.actual, 0))} VNĐ
+                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.actual, 0))} VNÄ
                                                                 </td>
                                                             );
                                                         }
                                                         if (col.key === 'remaining') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-rose-700 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ
+                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.remaining, 0))} VNÄ
                                                                 </td>
                                                             );
                                                         }
@@ -2132,14 +2206,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 filteredInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeSubTab === 'invoice' ? 9 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={activeSubTab === 'invoice' ? 9 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">ChÆ°a cÃ³ dá»¯ liá»‡u phÃ¹ há»£p.</td>
                                     </tr>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     Object.entries(
                                         filteredInvoices.reduce((acc, inv) => {
-                                            const period = inv.payment_period || inv.phase || 'Chưa phân kỳ';
+                                            const period = inv.payment_period || inv.phase || 'ChÆ°a phÃ¢n ká»³';
                                             if (!acc[period]) acc[period] = {};
-                                            const proj = inv.projectName || 'Khác';
+                                            const proj = inv.projectName || 'KhÃ¡c';
                                             if (!acc[period][proj]) acc[period][proj] = [];
                                             acc[period][proj].push(inv);
                                             return acc;
@@ -2150,10 +2224,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         const isQsApproved = periodInvoices[0]?.qs_approved;
                                         const isKtApproved = periodInvoices[0]?.accountant_approved;
                                         const role = currentUser?.role?.toUpperCase();
-                                        const canApproveQs = (role === 'QS' || role === 'QS TRƯỞNG' || role === 'ADMIN') && !isQsApproved;
-                                        const canRevertQs = (role === 'QS' || role === 'QS TRƯỞNG' || role === 'ADMIN') && isQsApproved && !isKtApproved;
-                                        const canApproveKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isQsApproved && !isKtApproved;
-                                        const canRevertKt = (role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN') || role === 'ADMIN') && isKtApproved;
+                                        const canApproveQs = (role === 'QS' || role === 'QS TRÆ¯á»žNG' || role === 'ADMIN') && !isQsApproved;
+                                        const canRevertQs = (role === 'QS' || role === 'QS TRÆ¯á»žNG' || role === 'ADMIN') && isQsApproved && !isKtApproved;
+                                        const canApproveKt = (role === 'ACCOUNTANT' || role?.startsWith('Káº¾ TOÃN') || role === 'ADMIN') && isQsApproved && !isKtApproved;
+                                        const canRevertKt = (role === 'ACCOUNTANT' || role?.startsWith('Káº¾ TOÃN') || role === 'ADMIN') && isKtApproved;
 
                                         return (
                                         <React.Fragment key={period}>
@@ -2185,11 +2259,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex items-center gap-2">
-                                                                    <span className="font-black text-white text-sm uppercase tracking-wider">KỲ THANH TOÁN: {period}</span>
+                                                                    <span className="font-black text-white text-sm uppercase tracking-wider">Ká»² THANH TOÃN: {period}</span>
                                                                     <button 
                                                                         onClick={(e) => { e.stopPropagation(); setEditingPeriodName(period); setNewPeriodName(period); }} 
                                                                         className="text-slate-400 hover:text-white transition p-1"
-                                                                        title="Đổi tên kỳ thanh toán"
+                                                                        title="Äá»•i tÃªn ká»³ thanh toÃ¡n"
                                                                     >
                                                                         <Edit2 size={14} />
                                                                     </button>
@@ -2197,7 +2271,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                         <button 
                                                                             onClick={(e) => { e.stopPropagation(); handleDeletePeriod(period, periodInvoices); }} 
                                                                             className="text-slate-400 hover:text-rose-400 transition p-1"
-                                                                            title="Xóa toàn bộ kỳ này"
+                                                                            title="XÃ³a toÃ n bá»™ ká»³ nÃ y"
                                                                         >
                                                                             <Trash2 size={14} />
                                                                         </button>
@@ -2205,9 +2279,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                 </div>
                                                             )}
                                                             {isKtApproved ? (
-                                                                <span className="ml-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-md text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> KẾ TOÁN: ĐÃ DUYỆT</span>
+                                                                <span className="ml-3 bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 px-2 py-0.5 rounded-md text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> Káº¾ TOÃN: ÄÃƒ DUYá»†T</span>
                                                             ) : isQsApproved ? (
-                                                                <span className="ml-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-md text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> QS: ĐÃ DUYỆT</span>
+                                                                <span className="ml-3 bg-blue-500/20 text-blue-400 border border-blue-500/30 px-2 py-0.5 rounded-md text-xs font-bold flex items-center gap-1"><CheckCircle2 size={12}/> QS: ÄÃƒ DUYá»†T</span>
                                                             ) : null}
                                                         </div>
                                                         <div className="flex gap-2">
@@ -2216,7 +2290,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     onClick={(e) => { e.stopPropagation(); setConfirmPeriodAction({period, periodInvoices, type: 'APPROVE_QS'}); }} 
                                                                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-xs flex items-center gap-2 transition shadow-sm"
                                                                 >
-                                                                    <CheckCircle2 size={16} /> DUYỆT QS KỲ NÀY
+                                                                    <CheckCircle2 size={16} /> DUYá»†T QS Ká»² NÃ€Y
                                                                 </button>
                                                             )}
                                                             {activeSubTab === 'team' && canRevertQs && (
@@ -2224,7 +2298,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     onClick={(e) => { e.stopPropagation(); setConfirmPeriodAction({period, periodInvoices, type: 'REVERT_QS'}); }} 
                                                                     className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-black text-xs flex items-center gap-2 transition shadow-sm"
                                                                 >
-                                                                    <RotateCcw size={16} /> HOÀN TÁC QS
+                                                                    <RotateCcw size={16} /> HOÃ€N TÃC QS
                                                                 </button>
                                                             )}
                                                             {activeSubTab === 'team' && canApproveKt && (
@@ -2232,7 +2306,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     onClick={(e) => { e.stopPropagation(); setConfirmPeriodAction({period, periodInvoices, type: 'APPROVE_KT'}); }} 
                                                                     className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-black text-xs flex items-center gap-2 transition shadow-sm"
                                                                 >
-                                                                    <CheckCircle2 size={16} /> DUYỆT KẾ TOÁN
+                                                                    <CheckCircle2 size={16} /> DUYá»†T Káº¾ TOÃN
                                                                 </button>
                                                             )}
                                                             {activeSubTab === 'history_team' && canRevertKt && (
@@ -2240,7 +2314,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                     onClick={(e) => { e.stopPropagation(); setConfirmPeriodAction({period, periodInvoices, type: 'REVERT_KT'}); }} 
                                                                     className="px-4 py-2 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-black text-xs flex items-center gap-2 transition shadow-sm"
                                                                 >
-                                                                    <RotateCcw size={16} /> HOÀN TÁC KẾ TOÁN
+                                                                    <RotateCcw size={16} /> HOÃ€N TÃC Káº¾ TOÃN
                                                                 </button>
                                                             )}
                                                         </div>
@@ -2272,7 +2346,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <td 
                                                             className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
                                                             onDoubleClick={() => onNavigateToProject && onNavigateToProject(projName)}
-                                                            title="Click đúp để xem chi tiết công trình"
+                                                            title="Click Ä‘Ãºp Ä‘á»ƒ xem chi tiáº¿t cÃ´ng trÃ¬nh"
                                                         >
                                                             {projName}:
                                                         </td>
@@ -2285,9 +2359,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     </tr>
                                                     {sortedGroupInvoices.map((inv, idx) => {
                                                         const role = currentUser?.role?.toUpperCase();
-                                                        const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN');
+                                                        const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('Káº¾ TOÃN');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
-                                                        const canDeleteTeamRow = role === 'ADMIN' || role === 'QS' || role === 'QS TRƯỞNG';
+                                                        const canDeleteTeamRow = role === 'ADMIN' || role === 'QS' || role === 'QS TRÆ¯á»žNG';
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
@@ -2306,14 +2380,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
                                                             <td className={`p-4 text-sm break-words ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
                                                             <td className={`p-4 text-sm font-medium whitespace-nowrap print:hidden ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
-                                                            {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
+                                                            {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">ChÆ°a duyá»‡t</span>}</td>}
                                                             <td className="p-4 text-center print:hidden">
                                                                 {teamPdfUrl ? (
                                                                     <div className="flex items-center justify-center gap-1.5">
                                                                         <a href={teamPdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF">
                                                                             <Eye size={16} />
                                                                         </a>
-                                                                        <button onClick={() => setConfirmDeletePdf(inv)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="Xóa PDF">
+                                                                        <button onClick={() => setConfirmDeletePdf(inv)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="XÃ³a PDF">
                                                                             <Trash2 size={16} />
                                                                         </button>
                                                                     </div>
@@ -2325,9 +2399,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
                                                                             onChange={(e) => handleUploadTeamPdf(e, inv)}
                                                                             disabled={uploadingPdfId === inv.id}
-                                                                            title="Tải lên PDF"
+                                                                            title="Táº£i lÃªn PDF"
                                                                         />
-                                                                        <button className={`p-1.5 rounded-lg transition border ${uploadingPdfId === inv.id ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Tải lên PDF">
+                                                                        <button className={`p-1.5 rounded-lg transition border ${uploadingPdfId === inv.id ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Táº£i lÃªn PDF">
                                                                             <Upload size={16} className={uploadingPdfId === inv.id ? 'animate-bounce' : ''} />
                                                                         </button>
                                                                     </div>
@@ -2340,7 +2414,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                         if (isPendingDelete) {
                                                                             return (
                                                                                 <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap self-center">
-                                                                                    Chờ xóa
+                                                                                    Chá» xÃ³a
                                                                                 </span>
                                                                             );
                                                                         }
@@ -2349,7 +2423,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                 <button 
                                                                                     onClick={() => !disableEdit && handleEdit(inv)} 
                                                                                     className={`p-1.5 rounded-lg transition border ${disableEdit ? 'text-slate-400 bg-slate-100 border-slate-200 cursor-not-allowed' : 'text-blue-500 hover:bg-blue-50 border-blue-200 bg-blue-50'}`} 
-                                                                                    title={disableEdit ? 'Kế toán chỉ được sửa sau khi QS đã duyệt' : 'Sửa'}
+                                                                                    title={disableEdit ? 'Káº¿ toÃ¡n chá»‰ Ä‘Æ°á»£c sá»­a sau khi QS Ä‘Ã£ duyá»‡t' : 'Sá»­a'}
                                                                                     disabled={disableEdit}
                                                                                 >
                                                                                     <Edit2 size={16} />
@@ -2358,7 +2432,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                     <button 
                                                                                         onClick={() => handleDeleteClick(inv)} 
                                                                                         className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
-                                                                                        title={(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG') ? "Xóa" : "Đề nghị Xóa"}
+                                                                                        title={(currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRÆ¯á»žNG') ? "XÃ³a" : "Äá» nghá»‹ XÃ³a"}
                                                                                     >
                                                                                         <Trash2 size={16} />
                                                                                     </button>
@@ -2370,10 +2444,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                         transactions?.some(t => 
                                                                             t.project_name === inv.projectName && 
                                                                             t.recipient === inv.teamName && 
-                                                                            (t.note || '') === `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`
+                                                                            (t.note || '') === `Táº¡m á»©ng tá»• Ä‘á»™i - ${inv.teamName} - ${inv.payment_period}`
                                                                         ) ? (
-                                                                            <span className="px-2 py-1.5 text-slate-400 bg-slate-100 rounded-lg border border-slate-200 whitespace-nowrap text-xs font-bold select-none cursor-not-allowed" title="Đã có giao dịch chi tương ứng trong Sổ quỹ">
-                                                                                Đã tạo T.Ứng
+                                                                            <span className="px-2 py-1.5 text-slate-400 bg-slate-100 rounded-lg border border-slate-200 whitespace-nowrap text-xs font-bold select-none cursor-not-allowed" title="ÄÃ£ cÃ³ giao dá»‹ch chi tÆ°Æ¡ng á»©ng trong Sá»• quá»¹">
+                                                                                ÄÃ£ táº¡o T.á»¨ng
                                                                             </span>
                                                                         ) : (
                                                                             <button 
@@ -2383,16 +2457,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                         recipient: inv.teamName,
                                                                                         amount: parseFloat(inv.teamValue) || 0,
                                                                                         payment_period: inv.payment_period,
-                                                                                        note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
+                                                                                        note: `Táº¡m á»©ng tá»• Ä‘á»™i - ${inv.teamName} - ${inv.payment_period}`,
                                                                                         code: '622',
                                                                                         corresponding_account: ''
                                                                                     });
                                                                                     setIsAdvanceModalOpen(true);
                                                                                 }}
                                                                                 className="px-2 py-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition border border-orange-200 bg-orange-50 whitespace-nowrap text-xs font-bold" 
-                                                                                title="Tạo Nhập liệu Tạm ứng"
+                                                                                title="Táº¡o Nháº­p liá»‡u Táº¡m á»©ng"
                                                                             >
-                                                                                Hạch toán
+                                                                                Háº¡ch toÃ¡n
                                                                             </button>
                                                                         )
                                                                     )}
@@ -2406,7 +2480,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             {!collapsedPhases[period] && (
                                                 <tr className="bg-indigo-50 border-y-2 border-indigo-300 shadow-[inset_0_1px_0_rgba(99,102,241,0.22),inset_0_-1px_0_rgba(99,102,241,0.22)]">
                                                     <td></td>
-                                                    <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">TỔNG:</td>
+                                                    <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">Tá»”NG:</td>
                                                     <td className="p-4 text-base text-right font-black text-emerald-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
                                                     <td className="p-4 text-base text-right font-black text-red-600">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
                                                     <td className="p-4 text-base text-right font-black text-blue-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
@@ -2421,17 +2495,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     <td className="p-4 text-center print:hidden">
                                                         {periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url ? (
                                                             <div className="flex items-center justify-center gap-1.5">
-                                                                <a href={periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF tổng">
+                                                                <a href={periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF tá»•ng">
                                                                     <Eye size={16} />
                                                                 </a>
-                                                                <button onClick={() => setConfirmDeleteProjectPdf({ projectName: null, period, pdfUrl: periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="Xóa PDF tổng">
+                                                                <button onClick={() => setConfirmDeleteProjectPdf({ projectName: null, period, pdfUrl: periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="XÃ³a PDF tá»•ng">
                                                                     <Trash2 size={16} />
                                                                 </button>
                                                             </div>
                                                         ) : (
                                                             <div className="relative group/upload flex items-center justify-center">
-                                                                <input type="file" accept=".pdf,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleUploadProjectPdf(e, null, period)} disabled={uploadingProjectPdfKey === `null__${period}`} title="Tải lên PDF tổng" />
-                                                                <button className={`p-1.5 rounded-lg transition border ${uploadingProjectPdfKey === `null__${period}` ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Tải lên PDF tổng">
+                                                                <input type="file" accept=".pdf,application/pdf" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" onChange={(e) => handleUploadProjectPdf(e, null, period)} disabled={uploadingProjectPdfKey === `null__${period}`} title="Táº£i lÃªn PDF tá»•ng" />
+                                                                <button className={`p-1.5 rounded-lg transition border ${uploadingProjectPdfKey === `null__${period}` ? 'bg-slate-100 text-slate-400 border-slate-200' : 'bg-slate-50 text-slate-600 border-slate-200 group-hover/upload:bg-indigo-600 group-hover/upload:text-white group-hover/upload:border-indigo-600'}`} title="Táº£i lÃªn PDF tá»•ng">
                                                                     <Upload size={16} className={uploadingProjectPdfKey === `null__${period}` ? 'animate-bounce' : ''} />
                                                                 </button>
                                                             </div>
@@ -2450,14 +2524,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             <td 
                                                 className="p-4 text-sm font-bold text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline"
                                                 onDoubleClick={() => onNavigateToProject && onNavigateToProject(inv.projectName)}
-                                                title="Click đúp để xem chi tiết công trình"
+                                                title="Click Ä‘Ãºp Ä‘á»ƒ xem chi tiáº¿t cÃ´ng trÃ¬nh"
                                             >
                                                 {inv.projectName}
                                             </td>
                                             <td className="p-4 text-sm text-slate-600 font-bold">{formatMonthLabel(inv.invoice_month || inv.created_at?.slice(0, 7) || '') || '-'}</td>
                                             <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
                                             <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
-                                            <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
+                                            <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNÄ</td>
                                             <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                             <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
                                             <td className="p-4 text-center print:hidden">
@@ -2467,19 +2541,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         if (isPendingDelete) {
                                                             return (
                                                                 <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
-                                                                    Chờ xóa
+                                                                    Chá» xÃ³a
                                                                 </span>
                                                             );
                                                         }
-                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRÆ¯á»žNG';
                                                         return (
                                                             <>
-                                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
+                                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sá»­a"><Edit2 size={16} /></button>
                                                                 {(isAuthorizer || true) && (
                                                                     <button 
                                                                         onClick={() => handleDeleteClick(inv)} 
                                                                         className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
-                                                                        title={isAuthorizer ? "Xóa" : "Đề nghị Xóa"}
+                                                                        title={isAuthorizer ? "XÃ³a" : "Äá» nghá»‹ XÃ³a"}
                                                                     >
                                                                         <Trash2 size={16} />
                                                                     </button>
@@ -2498,16 +2572,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     {visibleCustomerDebtColumns.map(col => {
                                         const totalClass = `p-4 text-sm ${col.cellClassName || ''}`;
                                         if (col.key === 'name') {
-                                            return <td key={col.key} className="p-4 text-center text-sm font-black text-slate-800 uppercase">Tổng cộng:</td>;
+                                            return <td key={col.key} className="p-4 text-center text-sm font-black text-slate-800 uppercase">Tá»•ng cá»™ng:</td>;
                                         }
                                         if (col.key === 'expected') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNÄ</td>;
                                         }
                                         if (col.key === 'actual') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNÄ</td>;
                                         }
                                         if (col.key === 'remaining') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNÄ</td>;
                                         }
                                         return <td key={col.key} className="p-4"></td>;
                                     })}
@@ -2515,10 +2589,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             )}
                             {activeSubTab === 'invoice' && filteredInvoices.length > 0 && (
                                 <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
+                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tá»•ng cá»™ng:</td>
                                     <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
                                     <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNĐ</td>
+                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNÄ</td>
                                     <td colSpan="3"></td>
                                 </tr>
                             )}
@@ -2530,11 +2604,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <div className="expected-print-signature-space"></div>
                         </div>
                         <div className="expected-print-signature-box">
-                            <div className="expected-print-signature-title">KẾ TOÁN</div>
+                            <div className="expected-print-signature-title">Káº¾ TOÃN</div>
                             <div className="expected-print-signature-space"></div>
                         </div>
                         <div className="expected-print-signature-box">
-                            <div className="expected-print-signature-title">GIÁM ĐỐC</div>
+                            <div className="expected-print-signature-title">GIÃM Äá»C</div>
                             <div className="expected-print-signature-space"></div>
                         </div>
                     </div>
@@ -2544,8 +2618,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             
             <ConfirmModal
                 isOpen={!!confirmDeleteId}
-                title="Xác nhận xóa"
-                message="Bạn có chắc chắn muốn xóa dữ liệu này? Hành động này không thể hoàn tác."
+                title="XÃ¡c nháº­n xÃ³a"
+                message="Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a dá»¯ liá»‡u nÃ y? HÃ nh Ä‘á»™ng nÃ y khÃ´ng thá»ƒ hoÃ n tÃ¡c."
                 type="danger"
                 onConfirm={confirmDelete}
                 onCancel={() => setConfirmDeleteId(null)}
@@ -2553,22 +2627,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <ConfirmModal
                 isOpen={!!requestDeleteInvoice}
-                title="Đề nghị xóa hóa đơn dự kiến"
-                message={`Gửi đề nghị admin/QS trưởng xóa dòng dự kiến ${requestDeleteInvoice?.projectName || ''} - ${requestDeleteInvoice?.phase || ''}.`}
+                title="Äá» nghá»‹ xÃ³a hÃ³a Ä‘Æ¡n dá»± kiáº¿n"
+                message={`Gá»­i Ä‘á» nghá»‹ admin/QS trÆ°á»Ÿng xÃ³a dÃ²ng dá»± kiáº¿n ${requestDeleteInvoice?.projectName || ''} - ${requestDeleteInvoice?.phase || ''}.`}
                 type="info"
-                confirmText="Gửi đề nghị"
+                confirmText="Gá»­i Ä‘á» nghá»‹"
                 requireReason={true}
-                reasonLabel="Lý do đề nghị xóa"
-                reasonPlaceholder="Ví dụ: nhập sai kỳ, sai tổ đội, trùng dòng..."
+                reasonLabel="LÃ½ do Ä‘á» nghá»‹ xÃ³a"
+                reasonPlaceholder="VÃ­ dá»¥: nháº­p sai ká»³, sai tá»• Ä‘á»™i, trÃ¹ng dÃ²ng..."
                 onConfirm={submitDeleteRequest}
                 onCancel={() => setRequestDeleteInvoice(null)}
             />
 
             <ConfirmModal
                 isOpen={!!confirmDeletePdf}
-                title="Xóa PDF"
-                message="Bạn có chắc chắn muốn xóa file PDF này khỏi dòng tổ đội không?"
-                confirmText="Xóa PDF"
+                title="XÃ³a PDF"
+                message="Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a file PDF nÃ y khá»i dÃ²ng tá»• Ä‘á»™i khÃ´ng?"
+                confirmText="XÃ³a PDF"
                 type="danger"
                 onConfirm={() => confirmDeletePdf && handleDeleteTeamPdf(confirmDeletePdf)}
                 onCancel={() => setConfirmDeletePdf(null)}
@@ -2576,9 +2650,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <ConfirmModal
                 isOpen={!!confirmDeleteProjectPdf}
-                title="Xóa PDF tổng công trình"
-                message="Bạn có chắc chắn muốn xóa file PDF tổng công trình này không?"
-                confirmText="Xóa PDF"
+                title="XÃ³a PDF tá»•ng cÃ´ng trÃ¬nh"
+                message="Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a file PDF tá»•ng cÃ´ng trÃ¬nh nÃ y khÃ´ng?"
+                confirmText="XÃ³a PDF"
                 type="danger"
                 onConfirm={() => confirmDeleteProjectPdf && handleDeleteProjectPdf(confirmDeleteProjectPdf.projectName, confirmDeleteProjectPdf.period, confirmDeleteProjectPdf.pdfUrl)}
                 onCancel={() => setConfirmDeleteProjectPdf(null)}
@@ -2586,8 +2660,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             <ConfirmModal
                 isOpen={isDeleteAllConfirmOpen}
-                title="Xóa toàn bộ dữ liệu"
-                message={`Bạn có chắc chắn muốn xóa tất cả ${deleteAllTargetInvoices.length} dòng dữ liệu trong tab/bộ lọc hiện tại? Ô tìm kiếm sẽ không làm lệch phạm vi xóa. Hành động này cực kỳ nguy hiểm và không thể hoàn tác!`}
+                title="XÃ³a toÃ n bá»™ dá»¯ liá»‡u"
+                message={`Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n xÃ³a táº¥t cáº£ ${deleteAllTargetInvoices.length} dÃ²ng dá»¯ liá»‡u trong tab/bá»™ lá»c hiá»‡n táº¡i? Ã” tÃ¬m kiáº¿m sáº½ khÃ´ng lÃ m lá»‡ch pháº¡m vi xÃ³a. HÃ nh Ä‘á»™ng nÃ y cá»±c ká»³ nguy hiá»ƒm vÃ  khÃ´ng thá»ƒ hoÃ n tÃ¡c!`}
                 type="danger"
                 requirePassword={true}
                 onConfirm={confirmDeleteAll}
@@ -2597,18 +2671,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             <ConfirmModal
                 isOpen={!!confirmPeriodAction}
                 title={
-                    confirmPeriodAction?.type === 'APPROVE_QS' ? 'Xác nhận duyệt (QS)' :
-                    confirmPeriodAction?.type === 'APPROVE_KT' ? 'Xác nhận duyệt (Kế Toán)' :
-                    confirmPeriodAction?.type === 'REVERT_QS' ? 'Xác nhận hoàn tác (QS)' :
-                    'Xác nhận hoàn tác (Kế Toán)'
+                    confirmPeriodAction?.type === 'APPROVE_QS' ? 'XÃ¡c nháº­n duyá»‡t (QS)' :
+                    confirmPeriodAction?.type === 'APPROVE_KT' ? 'XÃ¡c nháº­n duyá»‡t (Káº¿ ToÃ¡n)' :
+                    confirmPeriodAction?.type === 'REVERT_QS' ? 'XÃ¡c nháº­n hoÃ n tÃ¡c (QS)' :
+                    'XÃ¡c nháº­n hoÃ n tÃ¡c (Káº¿ ToÃ¡n)'
                 }
                 message={
-                    confirmPeriodAction?.type === 'APPROVE_QS' ? `Bạn có chắc chắn muốn DUYỆT toàn bộ kỳ thanh toán ${confirmPeriodAction?.period} với tư cách QS không? Kế toán sẽ nhìn thấy sau khi bạn duyệt.` :
-                    confirmPeriodAction?.type === 'APPROVE_KT' ? `Bạn có chắc chắn muốn DUYỆT toàn bộ kỳ thanh toán ${confirmPeriodAction?.period} với tư cách Kế Toán không? Kỳ này sẽ chuyển sang Lịch sử chi.` :
-                    `Bạn có chắc chắn muốn HOÀN TÁC toàn bộ kỳ thanh toán ${confirmPeriodAction?.period} không?`
+                    confirmPeriodAction?.type === 'APPROVE_QS' ? `Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n DUYá»†T toÃ n bá»™ ká»³ thanh toÃ¡n ${confirmPeriodAction?.period} vá»›i tÆ° cÃ¡ch QS khÃ´ng? Káº¿ toÃ¡n sáº½ nhÃ¬n tháº¥y sau khi báº¡n duyá»‡t.` :
+                    confirmPeriodAction?.type === 'APPROVE_KT' ? `Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n DUYá»†T toÃ n bá»™ ká»³ thanh toÃ¡n ${confirmPeriodAction?.period} vá»›i tÆ° cÃ¡ch Káº¿ ToÃ¡n khÃ´ng? Ká»³ nÃ y sáº½ chuyá»ƒn sang Lá»‹ch sá»­ chi.` :
+                    `Báº¡n cÃ³ cháº¯c cháº¯n muá»‘n HOÃ€N TÃC toÃ n bá»™ ká»³ thanh toÃ¡n ${confirmPeriodAction?.period} khÃ´ng?`
                 }
                 type={confirmPeriodAction?.type?.includes('REVERT') ? 'warning' : 'info'}
-                confirmText={confirmPeriodAction?.type?.includes('REVERT') ? 'Hoàn tác' : 'Duyệt kỳ này'}
+                confirmText={confirmPeriodAction?.type?.includes('REVERT') ? 'HoÃ n tÃ¡c' : 'Duyá»‡t ká»³ nÃ y'}
                 onConfirm={() => executePeriodToggle(confirmPeriodAction)}
                 onCancel={() => setConfirmPeriodAction(null)}
             />
@@ -2617,37 +2691,37 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Copy size={20} /> Thêm kỳ thanh toán mới (Nhân bản)</h3>
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Copy size={20} /> ThÃªm ká»³ thanh toÃ¡n má»›i (NhÃ¢n báº£n)</h3>
                             <button onClick={() => { setIsClonePeriodModalOpen(false); setCloneSourcePeriod(''); setCloneTargetPeriod(''); }} className="text-slate-400 hover:text-white transition"><X /></button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-sm text-blue-800 mb-2">
-                                <p className="font-bold mb-1">Quy tắc nhân bản:</p>
+                                <p className="font-bold mb-1">Quy táº¯c nhÃ¢n báº£n:</p>
                                 <ul className="list-disc pl-5 space-y-1">
-                                    <li>Sao chép toàn bộ danh sách tổ đội từ kỳ cũ sang kỳ mới.</li>
-                                    <li>Lũy kế tạm ứng (kỳ mới) = Tổng cộng (kỳ cũ).</li>
-                                    <li>Giá trị KL, Thu lại đội = 0.</li>
+                                    <li>Sao chÃ©p toÃ n bá»™ danh sÃ¡ch tá»• Ä‘á»™i tá»« ká»³ cÅ© sang ká»³ má»›i.</li>
+                                    <li>LÅ©y káº¿ táº¡m á»©ng (ká»³ má»›i) = Tá»•ng cá»™ng (ká»³ cÅ©).</li>
+                                    <li>GiÃ¡ trá»‹ KL, Thu láº¡i Ä‘á»™i = 0.</li>
                                 </ul>
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn kỳ thanh toán cũ muốn copy *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Chá»n ká»³ thanh toÃ¡n cÅ© muá»‘n copy *</label>
                                 <select 
                                     value={cloneSourcePeriod}
                                     onChange={(e) => setCloneSourcePeriod(e.target.value)}
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
                                 >
-                                    <option value="">-- Chọn kỳ cũ --</option>
+                                    <option value="">-- Chá»n ká»³ cÅ© --</option>
                                     {allPeriods.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Nhập tên/ngày cho kỳ thanh toán mới *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Nháº­p tÃªn/ngÃ y cho ká»³ thanh toÃ¡n má»›i *</label>
                                 <input 
                                     type="text" 
                                     value={cloneTargetPeriod}
                                     onChange={(e) => setCloneTargetPeriod(e.target.value)}
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
-                                    placeholder="Ví dụ: 15/07/2026..."
+                                    placeholder="VÃ­ dá»¥: 15/07/2026..."
                                 />
                             </div>
                             <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
@@ -2655,14 +2729,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     onClick={() => { setIsClonePeriodModalOpen(false); setCloneSourcePeriod(''); setCloneTargetPeriod(''); }} 
                                     className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
                                 >
-                                    Hủy
+                                    Há»§y
                                 </button>
                                 <button 
                                     onClick={() => handleClonePeriod(cloneSourcePeriod, cloneTargetPeriod)} 
                                     disabled={!cloneSourcePeriod || !cloneTargetPeriod || cloneTargetPeriod.trim() === ''}
                                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <CheckCircle2 size={18} /> Xác nhận Thêm
+                                    <CheckCircle2 size={18} /> XÃ¡c nháº­n ThÃªm
                                 </button>
                             </div>
                         </div>
@@ -2674,23 +2748,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="bg-red-600 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Trash2 size={20} /> Xác nhận xóa kỳ thanh toán</h3>
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Trash2 size={20} /> XÃ¡c nháº­n xÃ³a ká»³ thanh toÃ¡n</h3>
                             <button onClick={() => setDeletePeriodState(prev => ({...prev, isOpen: false}))} className="text-red-200 hover:text-white transition"><X /></button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-slate-600">Bạn đang yêu cầu <b>XÓA TOÀN BỘ</b> hóa đơn trong kỳ <b>"{deletePeriodState.periodName}"</b>.</p>
+                            <p className="text-slate-600">Báº¡n Ä‘ang yÃªu cáº§u <b>XÃ“A TOÃ€N Bá»˜</b> hÃ³a Ä‘Æ¡n trong ká»³ <b>&quot;{deletePeriodState.periodName}&quot;</b>.</p>
                             <div className="bg-red-50 text-red-800 p-4 rounded-xl text-sm border border-red-200">
-                                <b>Cảnh báo:</b> Hành động này sẽ xóa vĩnh viễn dữ liệu của kỳ này và không thể phục hồi!
+                                <b>Cáº£nh bÃ¡o:</b> HÃ nh Ä‘á»™ng nÃ y sáº½ xÃ³a vÄ©nh viá»…n dá»¯ liá»‡u cá»§a ká»³ nÃ y vÃ  khÃ´ng thá»ƒ phá»¥c há»“i!
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Vui lòng nhập mật khẩu tài khoản để xác nhận *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Vui lÃ²ng nháº­p máº­t kháº©u tÃ i khoáº£n Ä‘á»ƒ xÃ¡c nháº­n *</label>
                                 <input 
                                     type="password" 
                                     value={deletePeriodState.password}
                                     onChange={(e) => setDeletePeriodState(prev => ({...prev, password: e.target.value, error: ''}))}
                                     onKeyDown={(e) => { if (e.key === 'Enter') confirmDeletePeriod(); }}
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-red-500 transition"
-                                    placeholder="Nhập mật khẩu của bạn..."
+                                    placeholder="Nháº­p máº­t kháº©u cá»§a báº¡n..."
                                     autoFocus
                                 />
                                 {deletePeriodState.error && <p className="text-red-500 text-sm mt-2 font-bold">{deletePeriodState.error}</p>}
@@ -2700,13 +2774,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     onClick={() => setDeletePeriodState(prev => ({...prev, isOpen: false}))} 
                                     className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
                                 >
-                                    Hủy
+                                    Há»§y
                                 </button>
                                 <button 
                                     onClick={confirmDeletePeriod} 
                                     className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg"
                                 >
-                                    <Trash2 size={18} /> Xác nhận Xóa
+                                    <Trash2 size={18} /> XÃ¡c nháº­n XÃ³a
                                 </button>
                             </div>
                         </div>
@@ -2718,13 +2792,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Plus size={20} /> Thêm HĐ Dự kiến theo tháng</h3>
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Plus size={20} /> ThÃªm HÄ Dá»± kiáº¿n theo thÃ¡ng</h3>
                             <button onClick={() => { setIsBulkAddModalOpen(false); setBulkAddMonth(''); }} className="text-indigo-200 hover:text-white transition"><X /></button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-slate-600">Hệ thống sẽ tự động quét các đợt thanh toán (Thu thực tế) trong tháng bạn chọn và thêm vào danh sách HĐ Dự kiến.</p>
+                            <p className="text-slate-600">Há»‡ thá»‘ng sáº½ tá»± Ä‘á»™ng quÃ©t cÃ¡c Ä‘á»£t thanh toÃ¡n (Thu thá»±c táº¿) trong thÃ¡ng báº¡n chá»n vÃ  thÃªm vÃ o danh sÃ¡ch HÄ Dá»± kiáº¿n.</p>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn tháng *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Chá»n thÃ¡ng *</label>
                                 <input 
                                     type="month" 
                                     value={bulkAddMonth}
@@ -2737,14 +2811,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     onClick={() => { setIsBulkAddModalOpen(false); setBulkAddMonth(''); }} 
                                     className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition"
                                 >
-                                    Hủy
+                                    Há»§y
                                 </button>
                                 <button 
-                                    onClick={handleBulkAddByMonth} 
+                                onClick={handleBulkAddByMonthV2}
                                     disabled={!bulkAddMonth}
                                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    <CheckCircle2 size={18} /> Xác nhận Thêm
+                                    <CheckCircle2 size={18} /> XÃ¡c nháº­n ThÃªm
                                 </button>
                             </div>
                         </div>
@@ -2756,41 +2830,41 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="bg-slate-900 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2">Tạo Giao Dịch Tạm Ứng</h3>
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2">Táº¡o Giao Dá»‹ch Táº¡m á»¨ng</h3>
                             <button onClick={() => { setIsAdvanceModalOpen(false); setAdvanceData(null); }} className="text-slate-400 hover:text-white transition"><X /></button>
                         </div>
                         <div className="p-6 space-y-4">
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Công trình</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">CÃ´ng trÃ¬nh</label>
                                 <input type="text" value={advanceData.project_name} readOnly className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-600 outline-none cursor-not-allowed" />
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Người nhận (Tổ đội)</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">NgÆ°á»i nháº­n (Tá»• Ä‘á»™i)</label>
                                 <input type="text" value={advanceData.recipient} onChange={(e) => setAdvanceData({...advanceData, recipient: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" />
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Số tiền Tạm ứng (CHI)</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Sá»‘ tiá»n Táº¡m á»©ng (CHI)</label>
                                 <input type="text" value={advanceData.amount ? formatCurrency(advanceData.amount) : ''} onChange={(e) => setAdvanceData({...advanceData, amount: parseVietnameseNumber(e.target.value)})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none focus:border-indigo-500 transition" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2">Mã chi phí (Nợ)</label>
+                                    <label className="block text-sm font-black text-slate-900 mb-2">MÃ£ chi phÃ­ (Ná»£)</label>
                                     <input type="text" value={advanceData.code} onChange={(e) => setAdvanceData({...advanceData, code: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" placeholder="VD: 622" />
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2">Tài khoản đối ứng (Có)</label>
-                                    <input type="text" value={advanceData.corresponding_account} onChange={(e) => setAdvanceData({...advanceData, corresponding_account: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" placeholder="VD: 1111 - Tiền mặt" />
+                                    <label className="block text-sm font-black text-slate-900 mb-2">TÃ i khoáº£n Ä‘á»‘i á»©ng (CÃ³)</label>
+                                    <input type="text" value={advanceData.corresponding_account} onChange={(e) => setAdvanceData({...advanceData, corresponding_account: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" placeholder="VD: 1111 - Tiá»n máº·t" />
                                 </div>
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Ghi chú</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Ghi chÃº</label>
                                 <input type="text" value={advanceData.note} onChange={(e) => setAdvanceData({...advanceData, note: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" />
                             </div>
                             <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl text-sm text-blue-800">
-                                Giao dịch này sẽ được tự động ghi nhận vào <b>Sổ Thu/Chi</b> với loại hình là <b>CHI</b>.
+                                Giao dá»‹ch nÃ y sáº½ Ä‘Æ°á»£c tá»± Ä‘á»™ng ghi nháº­n vÃ o <b>Sá»• Thu/Chi</b> vá»›i loáº¡i hÃ¬nh lÃ  <b>CHI</b>.
                             </div>
                             <div className="flex justify-end gap-3 pt-4 mt-2 border-t border-slate-100">
-                                <button onClick={() => { setIsAdvanceModalOpen(false); setAdvanceData(null); }} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Hủy</button>
+                                <button onClick={() => { setIsAdvanceModalOpen(false); setAdvanceData(null); }} className="px-6 py-2.5 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition">Há»§y</button>
                                 <button 
                                     onClick={() => {
                                         if (onAddTransaction) {
@@ -2809,7 +2883,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     }} 
                                     className="bg-orange-600 hover:bg-orange-700 text-white px-6 py-2.5 rounded-xl font-bold transition shadow-lg"
                                 >
-                                    Xác nhận Tạo
+                                    XÃ¡c nháº­n Táº¡o
                                 </button>
                             </div>
                         </div>
