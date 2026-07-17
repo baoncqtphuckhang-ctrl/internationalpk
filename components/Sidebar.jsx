@@ -225,8 +225,8 @@ export default function Sidebar({
                         >
                             <Bell size={14} className="text-amber-400" /> Thông báo
                             {unreadNotificationsCount > 0 && (
-                                <span className="absolute right-3 top-1.5 bg-red-500 text-white text-[10px] font-black px-1.5 py-0.5 rounded-full animate-pulse">
-                                    {unreadNotificationsCount}
+                                <span className="absolute right-3 top-1.5 bg-red-500 text-white text-[10px] font-black min-w-[18px] h-[18px] flex items-center justify-center px-1 rounded-full animate-pulse">
+                                    {unreadNotificationsCount > 99 ? '99+' : unreadNotificationsCount}
                                 </span>
                             )}
                         </button>

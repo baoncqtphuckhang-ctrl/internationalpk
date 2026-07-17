@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
-import { Trash2, Check, X, ShieldAlert, Calendar, User, FileText, Building2 } from 'lucide-react';
+import { Trash2, Check, X, ShieldAlert, Calendar, User, FileText, Building2, CheckCheck } from 'lucide-react';
 import ConfirmModal from '@/components/ConfirmModal';
 
 export default function DeleteApprovals({ deleteRequests = [], onApprove, onReject, isLoading, onNavigateToHistoryWithId }) {
     const [confirmState, setConfirmState] = useState({ isOpen: false, action: null, request: null });
+    const [approveAllConfirm, setApproveAllConfirm] = useState(false);
+    const [isApprovingAll, setIsApprovingAll] = useState(false);
 
     const getTableLabel = (req) => {
         const tableName = req.original_table;
@@ -71,6 +73,15 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
         setConfirmState({ isOpen: false, action: null, request: null });
     };
 
+    const handleApproveAll = async () => {
+        setApproveAllConfirm(false);
+        setIsApprovingAll(true);
+        for (const req of deleteRequests) {
+            await onApprove(req);
+        }
+        setIsApprovingAll(false);
+    };
+
     return (
         <div className="w-full max-w-none mx-auto my-4 animate-in fade-in duration-300">
             <div className="bg-white rounded-2xl shadow-md border border-slate-200/80 overflow-hidden">
@@ -86,8 +97,25 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
                             </p>
                         </div>
                     </div>
-                    <div className="px-3 py-1.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 text-xs font-black rounded-full">
-                        {deleteRequests.length} đang chờ
+                    <div className="flex items-center gap-3">
+                        <div className="px-3 py-1.5 bg-amber-500/10 text-amber-300 border border-amber-500/20 text-xs font-black rounded-full">
+                            {deleteRequests.length} đang chờ
+                        </div>
+                        {deleteRequests.length > 0 && (
+                            <button
+                                onClick={() => setApproveAllConfirm(true)}
+                                disabled={isApprovingAll || isLoading}
+                                className="flex items-center gap-2 px-4 py-2 bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-black rounded-xl transition-all duration-200 shadow-md shadow-emerald-500/30 hover:shadow-emerald-400/40 active:scale-95"
+                                title="Duyệt tất cả yêu cầu xóa đang chờ"
+                            >
+                                {isApprovingAll ? (
+                                    <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                ) : (
+                                    <CheckCheck size={14} />
+                                )}
+                                {isApprovingAll ? 'Đang duyệt...' : 'Duyệt Tất Cả'}
+                            </button>
+                        )}
                     </div>
                 </div>
 
@@ -206,6 +234,16 @@ export default function DeleteApprovals({ deleteRequests = [], onApprove, onReje
                 confirmText={confirmState.action === 'approve' ? 'Phê duyệt xóa' : 'Từ chối'}
                 onConfirm={handleConfirm}
                 onCancel={() => setConfirmState({ isOpen: false, action: null, request: null })}
+            />
+
+            <ConfirmModal
+                isOpen={approveAllConfirm}
+                title="Duyệt tất cả yêu cầu xóa"
+                message={`Bạn có chắc chắn muốn phê duyệt tất cả ${deleteRequests.length} yêu cầu xóa đang chờ? Tất cả dữ liệu sẽ được chuyển vào thùng rác.`}
+                type="danger"
+                confirmText="Duyệt Tất Cả"
+                onConfirm={handleApproveAll}
+                onCancel={() => setApproveAllConfirm(false)}
             />
         </div>
     );
