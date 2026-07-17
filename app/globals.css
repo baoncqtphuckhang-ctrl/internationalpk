@@ -21,6 +21,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
+  font-family: 'Be Vietnam Pro', 'Inter', 'Segoe UI', 'Arial Unicode MS', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 table th,

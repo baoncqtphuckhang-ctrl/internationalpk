@@ -1,14 +1,18 @@
-import { Inter } from "next/font/google";
+import { Be_Vietnam_Pro } from "next/font/google";
 import "./globals.css";
 
-const inter = Inter({
+const beVietnamPro = Be_Vietnam_Pro({
   variable: "--font-inter",
   subsets: ["latin", "vietnamese"],
+  weight: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
+  display: "swap",
+  preload: true,
 });
 
 export const metadata = {
   title: "CB Pro",
   description: "Hệ Thống Quản Lý Nội Bộ CB Pro",
+  charset: "utf-8",
 };
 
 export const viewport = {
@@ -23,7 +27,7 @@ export default function RootLayout({ children }) {
   return (
     <html
       lang="vi"
-      className={`${inter.variable} h-full antialiased`}
+      className={`${beVietnamPro.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col font-sans">{children}</body>
     </html>
