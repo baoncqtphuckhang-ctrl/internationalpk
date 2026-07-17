@@ -2129,14 +2129,19 @@ export default function Home() {
             const debtObj = typeof debtOrId === 'object' ? debtOrId : debts.find(d => d.id === id);
 
             if (newStatus === 'ĐÃ XONG' && debtObj.status !== 'ĐÃ XONG') {
+                const isHoSoRecovery = (debtObj.note || '').includes('Thu lại (Hồ sơ)') || (debtObj.note || '').includes('6413');
+                const resolvedCode = isHoSoRecovery
+                    ? '6413'
+                    : (debtObj.debt_type === 'CẦN THU' ? '511' : (debtObj.note?.includes('[VẬT TƯ]') ? '621' : '622'));
+                const resolvedCorresponding = correspondingAccount || (isHoSoRecovery ? '131' : '1121');
                 const transData = {
                     project_name: debtObj.project_name,
-                    code: debtObj.debt_type === 'CẦN THU' ? '511' : (debtObj.note?.includes('[VẬT TƯ]') ? '621' : '622'),
+                    code: resolvedCode,
                     credit: debtObj.debt_type === 'CẦN THU' ? debtObj.amount : 0,
                     debit: debtObj.debt_type === 'CẦN TRẢ' ? debtObj.amount : 0,
                     note: `[THANH TOÁN CÔNG NỢ] ${debtObj.note || ''}`,
                     recipient: debtObj.partner_name,
-                    corresponding_account: correspondingAccount || '1121',
+                    corresponding_account: resolvedCorresponding,
                     accounting_date: new Date().toISOString().split('T')[0],
                     created_by: currentUser?.username || 'System'
                 };

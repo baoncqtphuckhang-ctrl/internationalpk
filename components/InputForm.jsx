@@ -415,9 +415,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const isAdvanceOrReceivable = ['131', '141'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isPayable = ['331', '334', '338'].some(acc => formData.corresponding_account?.startsWith(acc));
             const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
+            const isHoSoRecovery = formData.code === '6413';
             
             const isPayOnly = isMaterialOrEquipment || isPayable;
-            const isBoth = !isPayOnly && (isBothCode || isAdvanceOrReceivable);
+            const isBoth = !isPayOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable);
 
             if ((isBoth || isPayOnly) && parseFloat(formData.debit) > 0 && !editData) {
                 setDebtConfirmModal({
@@ -451,7 +452,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const categoryPrefix = isVatTu ? '[VẬT TƯ] ' : '[TỔ ĐỘI] ';
             
             const debts = [];
-            if (mode === 'BOTH') {
+            const isHoSoRecovery = data.code === '6413';
+
+            if (mode === 'BOTH' && !isHoSoRecovery) {
                 let partnerNameThu = data.recipient || 'Đối tác/Nhà cung cấp';
                 let debtNote = `${categoryPrefix}Thu lại - ${data.note || ''}`;
                 if (data.code === '6418') debtNote = `${categoryPrefix}Thu lại (Bảo hiểm) - ${data.note || ''}`;
@@ -465,18 +468,29 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     status: thuStatus,
                     note: debtNote
                 });
+            } else if (isHoSoRecovery) {
+                debts.push({
+                    project_name: data.project_name,
+                    partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
+                    debt_type: 'CẦN THU',
+                    amount: parseFloat(data.debit) || 0,
+                    status: thuStatus,
+                    note: `${categoryPrefix}Thu lại (Hồ sơ) - ${data.note || ''}`
+                });
             }
             
-            const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
+            if (!isHoSoRecovery) {
+                const debtNoteChi = `${categoryPrefix}Thanh toán chi phí - ${data.note || ''}`;
 
-            debts.push({
-                project_name: data.project_name,
-                partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
-                debt_type: 'CẦN TRẢ',
-                amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
-                status: chiStatus,
-                note: debtNoteChi
-            });
+                debts.push({
+                    project_name: data.project_name,
+                    partner_name: data.recipient || 'Đối tác/Nhà cung cấp',
+                    debt_type: 'CẦN TRẢ',
+                    amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+                    status: chiStatus,
+                    note: debtNoteChi
+                });
+            }
             onAddDebt(debts);
         }
         
@@ -1116,7 +1130,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             </table>
                                         </div>
                                         <p className="text-[11px] text-slate-500 mt-2 font-medium">
-                                            * Lưu ý: Để SỬA hoặc XÓA một phiếu thu cũ, vui lòng sang menu <span className="font-bold text-slate-700">"LỊCH SỬ THU CHI"</span>.
+                                            * Lưu ý: Để SỬA hoặc XÓA một phiếu thu cũ, vui lòng sang menu <span className="font-bold text-slate-700">&quot;LỊCH SỬ THU CHI&quot;</span>.
                                         </p>
                                     </div>
                                 )}
