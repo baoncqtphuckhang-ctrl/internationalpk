@@ -100,87 +100,8 @@ const dedupeExpectedInvoices = (rows = []) => {
 };
 
 const TEAM_ACCOUNT_FIELDS = ['account_name', 'account_number', 'bank_name'];
-const EXPECTED_INVOICE_DB_FIELDS = [
-    'projectName',
-    'preTaxValue',
-    'vatAmount',
-    'postTaxValue',
-    'teamValue',
-    'accumulatedAdvance',
-    'teamName',
-    'team_pdf_url',
-    'project_pdf_url',
-    'phase',
-    'note',
-    'is_completed',
-    'deductionAmount',
-    'qs_approved',
-    'accountant_approved',
-    'payment_period',
-    'account_name',
-    'account_number',
-    'bank_name',
-    'invoice_month'
-];
 
 const cleanAccountFieldValue = (value) => String(value || '').trim();
-
-const cleanNumberFieldValue = (value) => {
-    const parsed = Number(parseVietnameseNumber(value));
-    return Number.isFinite(parsed) ? parsed : 0;
-};
-
-const hasLocalTeamInvoiceContent = (row = {}) => (
-    cleanNumberFieldValue(row.preTaxValue) !== 0 ||
-    cleanNumberFieldValue(row.vatAmount) !== 0 ||
-    cleanNumberFieldValue(row.postTaxValue) !== 0 ||
-    cleanNumberFieldValue(row.teamValue) !== 0 ||
-    cleanNumberFieldValue(row.accumulatedAdvance) !== 0 ||
-    cleanNumberFieldValue(row.deductionAmount) !== 0 ||
-    TEAM_ACCOUNT_FIELDS.some(field => cleanAccountFieldValue(row[field])) ||
-    Boolean(cleanAccountFieldValue(row.note)) ||
-    Boolean(cleanAccountFieldValue(row.team_pdf_url || row.pdf_url))
-);
-
-const isRecoverableLocalTeamInvoice = (row = {}, dbByKey = new Map()) => {
-    if (dbByKey.has(getExpectedInvoiceKey(row))) return false;
-    if (!cleanAccountFieldValue(row.projectName)) return false;
-    if (!cleanAccountFieldValue(row.teamName)) return false;
-    if (!cleanAccountFieldValue(row.payment_period)) return false;
-    return hasLocalTeamInvoiceContent(row);
-};
-
-const buildExpectedInvoiceInsert = (row = {}) => {
-    const insert = {};
-
-    EXPECTED_INVOICE_DB_FIELDS.forEach(field => {
-        if (!(field in row)) return;
-        insert[field] = row[field];
-    });
-
-    insert.projectName = cleanAccountFieldValue(insert.projectName);
-    insert.teamName = cleanAccountFieldValue(insert.teamName);
-    insert.phase = cleanAccountFieldValue(insert.phase);
-    insert.payment_period = cleanAccountFieldValue(insert.payment_period);
-    insert.note = insert.note || '';
-    insert.preTaxValue = cleanNumberFieldValue(insert.preTaxValue);
-    insert.vatAmount = cleanNumberFieldValue(insert.vatAmount);
-    insert.postTaxValue = cleanNumberFieldValue(insert.postTaxValue);
-    insert.teamValue = cleanNumberFieldValue(insert.teamValue);
-    insert.accumulatedAdvance = cleanNumberFieldValue(insert.accumulatedAdvance);
-    insert.deductionAmount = cleanNumberFieldValue(insert.deductionAmount);
-    insert.account_name = cleanAccountFieldValue(insert.account_name);
-    insert.account_number = cleanAccountFieldValue(insert.account_number);
-    insert.bank_name = cleanAccountFieldValue(insert.bank_name);
-    insert.team_pdf_url = insert.team_pdf_url || row.pdf_url || null;
-    insert.project_pdf_url = insert.project_pdf_url || null;
-    insert.invoice_month = normalizeMonthValue(insert.invoice_month) || getCurrentMonthValue();
-    insert.qs_approved = Boolean(insert.qs_approved);
-    insert.accountant_approved = Boolean(insert.accountant_approved);
-    insert.is_completed = Boolean(insert.is_completed);
-
-    return insert;
-};
 
 const buildMissingTeamAccountPatch = (dbRow = {}, localRow = {}) => {
     const patch = {};
@@ -228,36 +149,6 @@ const syncLocalTeamAccountInfoToSupabase = async (dbRows = [], localRows = []) =
     }
 
     return synced;
-};
-
-const recoverLocalTeamInvoicesToSupabase = async (dbRows = [], localRows = []) => {
-    const dbByKey = new Map(dbRows.map(row => [getExpectedInvoiceKey(row), row]));
-    const inserts = localRows
-        .filter(row => isRecoverableLocalTeamInvoice(row, dbByKey))
-        .map(buildExpectedInvoiceInsert);
-
-    if (inserts.length === 0) return 0;
-
-    let recovered = 0;
-    for (const insert of inserts) {
-        const { data, error } = await supabase
-            .from('expected_invoices')
-            .insert([insert])
-            .select();
-
-        if (error) {
-            console.warn('Failed to recover local team invoice:', error);
-            continue;
-        }
-
-        if (data?.[0]) {
-            dbRows.push(data[0]);
-            dbByKey.set(getExpectedInvoiceKey(data[0]), data[0]);
-            recovered += 1;
-        }
-    }
-
-    return recovered;
 };
 
 const getExpectedInvoiceStats = (rows = []) => {
@@ -481,26 +372,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             const dbDataNonNull = dbData || [];
             const normalizedDbData = dedupeExpectedInvoices(dbDataNonNull);
-            const recoveredLocalRows = await recoverLocalTeamInvoicesToSupabase(normalizedDbData, localInvoices);
-            if (recoveredLocalRows > 0) {
-                showToast?.(`Da khoi phuc ${recoveredLocalRows} dong to doi len du lieu chung.`, 'success');
-            }
-
             const syncedAccountRows = await syncLocalTeamAccountInfoToSupabase(normalizedDbData, localInvoices);
             if (syncedAccountRows > 0) {
                 showToast?.(`Da dong bo ${syncedAccountRows} dong STK/Ten TK len du lieu chung.`, 'success');
             }
 
-            // Merge for display after recovery. Local rows stay as a browser backup.
-            const mergedInvoices = dedupeExpectedInvoices([...normalizedDbData, ...localInvoices]);
-            if (shouldBlockExpectedInvoiceOverwrite(localInvoices, mergedInvoices)) {
-                quarantineExpectedInvoices(localInvoices, mergedInvoices, 'suspicious_fetch_merge');
-                showToast?.('Đã giữ bản dữ liệu tổ đội cũ vì dữ liệu tải mới bị thiếu bất thường.', 'error');
-                setInvoices(localInvoices);
-                return;
-            }
-
-            setInvoices(mergedInvoices);
+            // Supabase is the source of truth. Local rows are only a browser backup
+            // for total fetch failure, never merged into a successful DB response.
+            setInvoices(normalizedDbData);
+            return;
         } catch (error) {
             console.warn('Supabase fetch failed. Falling back to localStorage.', error);
             const saved = localStorage.getItem(EXPECTED_INVOICES_STORAGE_KEY);
@@ -1325,6 +1205,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const invoiceMatchesCurrentScope = (inv) => {
         if (activeSubTab === 'invoice') {
+            if (String(inv.teamName || '').trim() || String(inv.payment_period || '').trim()) return false;
             if (!inv.postTaxValue && !inv.expectedValue && !inv.preTaxValue && !inv.vatAmount) return false;
         } else if (activeSubTab === 'team') {
             if (!inv.teamValue && !inv.teamName) return false;
