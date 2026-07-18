@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy, Upload, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
@@ -242,6 +242,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [confirmDeleteProjectPdf, setConfirmDeleteProjectPdf] = useState(null);
     const [tableZoom, setTableZoom] = useState(1);
     const [hideZeroRowsOnPrint, setHideZeroRowsOnPrint] = useState(true);
+    const [hideUnissuedRowsOnPrint, setHideUnissuedRowsOnPrint] = useState(false);
     const [customerDebtVisibleColumns, setCustomerDebtVisibleColumns] = useState(() => {
         if (typeof window === 'undefined') return DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
         try {
@@ -1248,6 +1249,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         filteredInvoices.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
     }
 
+    const hasTeamInvoicePdf = useCallback((inv) => Boolean(inv.team_pdf_url || inv.pdf_url), []);
+    const isPrintableTeamRow = useCallback((inv) => {
+        if (hideZeroRowsOnPrint && !(parseFloat(inv.teamValue) || 0)) return false;
+        if (hideUnissuedRowsOnPrint && !hasTeamInvoicePdf(inv)) return false;
+        return true;
+    }, [hideZeroRowsOnPrint, hideUnissuedRowsOnPrint, hasTeamInvoicePdf]);
+    const getPrintableTeamRows = useCallback((rows = []) => rows.filter(isPrintableTeamRow), [isPrintableTeamRow]);
+
     const printPeriods = [...new Set(filteredInvoices.map(inv => getInvoicePeriod(inv)).filter(Boolean))];
     const printPeriodTitle = printPeriods.length === 1 ? printPeriods[0] : 'TẤT CẢ CÁC KỲ';
     const hasLongPrintNotes = filteredInvoices.some(inv => (inv.note || '').trim().length > 12);
@@ -1276,15 +1285,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (collapsedPhases[period]) return sum;
 
             const periodRows = Object.values(projectGroups).flat();
-            const visiblePeriodRows = hideZeroRowsOnPrint
-                ? periodRows.filter(inv => (parseFloat(inv.teamValue) || 0) > 0)
-                : periodRows;
+            const visiblePeriodRows = getPrintableTeamRows(periodRows);
 
             let periodCount = visiblePeriodRows.length > 0 ? 1 : 0; // Period header
             Object.values(projectGroups).forEach(rows => {
-                const visibleRows = hideZeroRowsOnPrint
-                    ? rows.filter(inv => (parseFloat(inv.teamValue) || 0) > 0)
-                    : rows;
+                const visibleRows = getPrintableTeamRows(rows);
                 if (visibleRows.length > 0) {
                     periodCount += 1 + visibleRows.length; // Project summary + rows
                 }
@@ -1303,7 +1308,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             return { rowCount, fontSize: 7.0, headerFontSize: 7.4, summaryFontSize: 8.3, cellPaddingY: 2, cellPaddingX: 5 };
         }
         return { rowCount, fontSize: 8.2, headerFontSize: 8.2, summaryFontSize: 9.2, cellPaddingY: 3, cellPaddingX: 6 };
-    }, [activeSubTab, filteredInvoices, collapsedPhases, hideZeroRowsOnPrint]);
+    }, [activeSubTab, filteredInvoices, collapsedPhases, getPrintableTeamRows]);
 
     const customerDebts = useMemo(() => {
         if (activeSubTab !== 'customer_debt') return [];
@@ -1719,6 +1724,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     </div>
                 )}
                 {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
+                    <div className="contents">
                     <button
                         type="button"
                         onClick={() => setHideZeroRowsOnPrint(prev => !prev)}
@@ -1728,6 +1734,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <EyeOff size={18} />
                         <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setHideUnissuedRowsOnPrint(prev => !prev)}
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideUnissuedRowsOnPrint ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        title={hideUnissuedRowsOnPrint ? 'Khi in sẽ ẩn tổ đội chưa có PDF HĐ' : 'Khi in sẽ hiện cả tổ đội chưa có PDF HĐ'}
+                    >
+                        <EyeOff size={18} />
+                        <span className="hidden xl:inline">{hideUnissuedRowsOnPrint ? 'Ẩn chưa xuất HĐ' : 'In cả chưa xuất HĐ'}</span>
+                    </button>
+                    </div>
                 )}
                 <div className="flex items-center justify-end gap-2 md:w-40">
                     <button
@@ -2382,7 +2398,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         }, {})
                                     ).map(([period, projectGroups]) => {
                                         const periodInvoices = Object.values(projectGroups).flat();
-                                        const hasPrintablePeriodRows = periodInvoices.some(inv => (parseFloat(inv.teamValue) || 0) > 0);
+                                        const printablePeriodInvoices = getPrintableTeamRows(periodInvoices);
+                                        const hasPrintablePeriodRows = printablePeriodInvoices.length > 0;
                                         const isQsApproved = periodInvoices[0]?.qs_approved;
                                         const isKtApproved = periodInvoices[0]?.accountant_approved;
                                         const role = currentUser?.role?.toUpperCase();
@@ -2393,7 +2410,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
                                         return (
                                         <React.Fragment key={period}>
-                                            <tr className={`bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10 ${hideZeroRowsOnPrint && !hasPrintablePeriodRows ? 'print:hidden' : ''}`} onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
+                                            <tr className={`bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10 ${!hasPrintablePeriodRows ? 'print:hidden' : ''}`} onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
                                                 <td colSpan={activeSubTab === 'history_team' ? 15 : 14} className="p-4 py-5">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
@@ -2500,10 +2517,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     if (aVal !== 0 && bVal === 0) return -1;
                                                     return 0;
                                                 });
-                                                const hasPrintableGroupRows = sortedGroupInvoices.some(inv => (parseFloat(inv.teamValue) || 0) > 0);
+                                                const printableGroupInvoices = getPrintableTeamRows(sortedGroupInvoices);
+                                                const hasPrintableGroupRows = printableGroupInvoices.length > 0;
                                                 return (
                                                 <React.Fragment key={projName}>
-                                                    <tr className={`expected-project-summary-row ${color.bg} border-y ${color.border} ${hideZeroRowsOnPrint && !hasPrintableGroupRows ? 'print:hidden' : ''}`}>
+                                                    <tr className={`expected-project-summary-row ${color.bg} border-y ${color.border} ${!hasPrintableGroupRows ? 'print:hidden' : ''}`}>
                                                         <td></td>
                                                         <td 
                                                             className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
@@ -2512,11 +2530,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         >
                                                             {projName}:
                                                         </td>
-                                                        <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-red-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(groupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-red-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
                                                         <td colSpan={activeSubTab === 'history_team' ? 8 : 7}></td>
                                                     </tr>
                                                     {sortedGroupInvoices.map((inv, idx) => {
@@ -2527,9 +2545,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
+                                                        const hideUnissuedInPrint = hideUnissuedRowsOnPrint && !teamPdfUrl;
+                                                        const hideRowInPrint = hideZeroInPrint || hideUnissuedInPrint;
 
                                                         return (
-                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
+                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideRowInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
@@ -2640,14 +2660,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 </React.Fragment>
                                             )})}
                                             {!collapsedPhases[period] && (
-                                                <tr className="bg-indigo-50 border-y-2 border-indigo-300 shadow-[inset_0_1px_0_rgba(99,102,241,0.22),inset_0_-1px_0_rgba(99,102,241,0.22)]">
+                                                <tr className={`bg-indigo-50 border-y-2 border-indigo-300 shadow-[inset_0_1px_0_rgba(99,102,241,0.22),inset_0_-1px_0_rgba(99,102,241,0.22)] ${!hasPrintablePeriodRows ? 'print:hidden' : ''}`}>
                                                     <td></td>
                                                     <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">TỔNG:</td>
-                                                    <td className="p-4 text-base text-right font-black text-emerald-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-red-600">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-blue-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-amber-600">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-indigo-700">{formatCurrency(periodInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-emerald-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-red-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-blue-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-amber-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-right font-black text-indigo-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
