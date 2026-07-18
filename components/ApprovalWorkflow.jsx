@@ -771,7 +771,7 @@ export default function ApprovalWorkflow({
                             <div className="h-24"></div>
                         </div>
                         <div className="flex flex-col items-center">
-                            <div>{dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH' ? 'Thủ Quỹ' : 'KẾ TOÁN'}</div>
+                            <div>THỦ QUỸ</div>
                             <div className="h-24"></div>
                         </div>
                         <div className="flex flex-col items-center">
@@ -1619,7 +1619,7 @@ export default function ApprovalWorkflow({
                                             );
                                         })()}
                                         <div>QS</div>
-                                        <div>{printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'Thủ Quỹ' : 'KẾ TOÁN'}</div>
+                                        <div>THỦ QUỸ</div>
                                         <div>GIÁM ĐỐC</div>
                                     </div>
                                     {printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && <div className="h-24"></div>}
