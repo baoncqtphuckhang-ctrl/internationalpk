@@ -242,7 +242,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [confirmDeleteProjectPdf, setConfirmDeleteProjectPdf] = useState(null);
     const [tableZoom, setTableZoom] = useState(1);
     const [hideZeroRowsOnPrint, setHideZeroRowsOnPrint] = useState(true);
-    const [hideUnissuedRowsOnPrint, setHideUnissuedRowsOnPrint] = useState(false);
+    const [hideUnissuedCustomerDebtRowsOnPrint, setHideUnissuedCustomerDebtRowsOnPrint] = useState(false);
     const [customerDebtVisibleColumns, setCustomerDebtVisibleColumns] = useState(() => {
         if (typeof window === 'undefined') return DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
         try {
@@ -1249,12 +1249,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         filteredInvoices.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
     }
 
-    const hasTeamInvoicePdf = useCallback((inv) => Boolean(inv.team_pdf_url || inv.pdf_url), []);
     const isPrintableTeamRow = useCallback((inv) => {
         if (hideZeroRowsOnPrint && !(parseFloat(inv.teamValue) || 0)) return false;
-        if (hideUnissuedRowsOnPrint && !hasTeamInvoicePdf(inv)) return false;
         return true;
-    }, [hideZeroRowsOnPrint, hideUnissuedRowsOnPrint, hasTeamInvoicePdf]);
+    }, [hideZeroRowsOnPrint]);
     const getPrintableTeamRows = useCallback((rows = []) => rows.filter(isPrintableTeamRow), [isPrintableTeamRow]);
 
     const printPeriods = [...new Set(filteredInvoices.map(inv => getInvoicePeriod(inv)).filter(Boolean))];
@@ -1445,6 +1443,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         });
     }, [customerDebts, searchTerm, filterProject, filterPhase]);
 
+    const hasCustomerDebtInvoice = useCallback((debt) => Boolean(String(debt.invoice_no || '').trim()), []);
+    const isPrintableCustomerDebtRow = useCallback((debt) => (
+        !hideUnissuedCustomerDebtRowsOnPrint || hasCustomerDebtInvoice(debt)
+    ), [hideUnissuedCustomerDebtRowsOnPrint, hasCustomerDebtInvoice]);
+    const getPrintableCustomerDebtRows = useCallback((rows = []) => rows.filter(isPrintableCustomerDebtRow), [isPrintableCustomerDebtRow]);
+
     const getCollectorGroup = (projectName) => {
         const details = projectDetails[projectName] || {};
         const gc = details.generalContractor || '';
@@ -1471,6 +1475,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             return a.localeCompare(b);
         });
     }, [filteredCustomerDebts, projectDetails]);
+
+    const printableFilteredCustomerDebts = getPrintableCustomerDebtRows(filteredCustomerDebts);
 
     const customerDebtColumns = [
         { key: 'stt', label: 'STT', className: 'w-16 text-center', cellClassName: 'text-center text-slate-500 font-medium' },
@@ -1723,6 +1729,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         </select>
                     </div>
                 )}
+                {activeSubTab === 'customer_debt' && (
+                    <button
+                        type="button"
+                        onClick={() => setHideUnissuedCustomerDebtRowsOnPrint(prev => !prev)}
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideUnissuedCustomerDebtRowsOnPrint ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        title={hideUnissuedCustomerDebtRowsOnPrint ? 'Khi in sẽ ẩn dòng công nợ chưa có số HĐ' : 'Khi in sẽ hiện cả dòng công nợ chưa có số HĐ'}
+                    >
+                        <EyeOff size={18} />
+                        <span className="hidden xl:inline">{hideUnissuedCustomerDebtRowsOnPrint ? 'Ẩn chưa xuất HĐ' : 'In cả chưa xuất HĐ'}</span>
+                    </button>
+                )}
                 {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                     <div className="contents">
                     <button
@@ -1733,15 +1750,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     >
                         <EyeOff size={18} />
                         <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => setHideUnissuedRowsOnPrint(prev => !prev)}
-                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideUnissuedRowsOnPrint ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
-                        title={hideUnissuedRowsOnPrint ? 'Khi in sẽ ẩn tổ đội chưa có PDF HĐ' : 'Khi in sẽ hiện cả tổ đội chưa có PDF HĐ'}
-                    >
-                        <EyeOff size={18} />
-                        <span className="hidden xl:inline">{hideUnissuedRowsOnPrint ? 'Ẩn chưa xuất HĐ' : 'In cả chưa xuất HĐ'}</span>
                     </button>
                     </div>
                 )}
@@ -2320,9 +2328,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 ) : (
                                     (() => {
                                         let globalIdx = 0;
-                                        return groupedCustomerDebts.map(([groupName, debts]) => (
+                                        return groupedCustomerDebts.map(([groupName, debts]) => {
+                                            const printableDebts = getPrintableCustomerDebtRows(debts);
+                                            return (
                                             <React.Fragment key={groupName}>
-                                                <tr className="bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black">
+                                                <tr className={`bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black ${printableDebts.length === 0 ? 'print:hidden' : ''}`}>
                                                     {visibleCustomerDebtColumns.map(col => {
                                                         if (col.key === 'stt') {
                                                             return <td key={col.key} className="p-4 text-center text-[16px] print:text-black">🏢</td>;
@@ -2337,21 +2347,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         if (col.key === 'expected') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-slate-800 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.expected, 0))} VNĐ
+                                                                    {formatCurrency(printableDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ
                                                                 </td>
                                                             );
                                                         }
                                                         if (col.key === 'actual') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-emerald-700 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.actual, 0))} VNĐ
+                                                                    {formatCurrency(printableDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ
                                                                 </td>
                                                             );
                                                         }
                                                         if (col.key === 'remaining') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-center font-black text-[14px] text-rose-700 bg-indigo-100/30 print:text-black print:text-[14px] print:font-black print:bg-slate-300/30">
-                                                                    {formatCurrency(debts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ
+                                                                    {formatCurrency(printableDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ
                                                                 </td>
                                                             );
                                                         }
@@ -2360,8 +2370,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 </tr>
                                                 {debts.map((debt) => {
                                                     const currentIdx = globalIdx++;
+                                                    const hideUnissuedDebtInPrint = hideUnissuedCustomerDebtRowsOnPrint && !hasCustomerDebtInvoice(debt);
                                                     return (
-                                                        <tr key={debt.id} className="hover:bg-slate-50 transition group">
+                                                        <tr key={debt.id} className={`hover:bg-slate-50 transition group ${hideUnissuedDebtInPrint ? 'print:hidden' : ''}`}>
                                                             {visibleCustomerDebtColumns.map(col => (
                                                                 <td
                                                                     key={col.key}
@@ -2378,7 +2389,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     );
                                                 })}
                                             </React.Fragment>
-                                        ));
+                                        );});
                                     })()
                                 )
                             ) : (
@@ -2545,11 +2556,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
-                                                        const hideUnissuedInPrint = hideUnissuedRowsOnPrint && !teamPdfUrl;
-                                                        const hideRowInPrint = hideZeroInPrint || hideUnissuedInPrint;
 
                                                         return (
-                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideRowInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
+                                                        <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
                                                             <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
@@ -2750,20 +2759,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 )
                             )}
                             {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
-                                <tr className="bg-slate-100 border-t-2 border-slate-300">
+                                <tr className={`bg-slate-100 border-t-2 border-slate-300 ${printableFilteredCustomerDebts.length === 0 ? 'print:hidden' : ''}`}>
                                     {visibleCustomerDebtColumns.map(col => {
                                         const totalClass = `p-4 text-sm ${col.cellClassName || ''}`;
                                         if (col.key === 'name') {
                                             return <td key={col.key} className="p-4 text-center text-sm font-black text-slate-800 uppercase">Tổng cộng:</td>;
                                         }
                                         if (col.key === 'expected') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(printableFilteredCustomerDebts.reduce((sum, d) => sum + d.expected, 0))} VNĐ</td>;
                                         }
                                         if (col.key === 'actual') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(printableFilteredCustomerDebts.reduce((sum, d) => sum + d.actual, 0))} VNĐ</td>;
                                         }
                                         if (col.key === 'remaining') {
-                                            return <td key={col.key} className={totalClass}>{formatCurrency(filteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>;
+                                            return <td key={col.key} className={totalClass}>{formatCurrency(printableFilteredCustomerDebts.reduce((sum, d) => sum + d.remaining, 0))} VNĐ</td>;
                                         }
                                         return <td key={col.key} className="p-4"></td>;
                                     })}
