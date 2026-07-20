@@ -259,7 +259,7 @@ table td {
   }
 
   #expected-invoices-table.expected-team-print-table tr {
-    height: calc(210mm / var(--row-count, 20)) !important;
+    height: calc(630mm / var(--row-count, 20)) !important;
   }
 
   #expected-invoices-table th,
@@ -331,13 +331,13 @@ table td {
   }
 
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(1) { width: 3% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(2) { width: 24% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(2) { width: 21% !important; }
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(3) { width: 8% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(4) { width: 5% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(5) { width: 8% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(6) { width: 8% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(7) { width: 9% !important; }
-  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(8) { width: calc(17% - var(--print-note-width, 7%)) !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(4) { width: 4% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(5) { width: 10% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(6) { width: 10% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(7) { width: 10% !important; }
+  #expected-invoices-table.expected-team-print-table colgroup col:nth-child(8) { width: calc(16% - var(--print-note-width, 7%)) !important; }
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(9) { width: 8% !important; }
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(10) { width: 10% !important; }
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(11) { width: var(--print-note-width, 7%) !important; }

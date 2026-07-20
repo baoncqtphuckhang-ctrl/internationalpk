@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy, Upload, Eye, EyeOff, ZoomIn, ZoomOut } from 'lucide-react';
+import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy, Upload, Eye, EyeOff, ZoomIn, ZoomOut, Coins } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -101,6 +101,13 @@ const dedupeExpectedInvoices = (rows = []) => {
 
 const TEAM_ACCOUNT_FIELDS = ['account_name', 'account_number', 'bank_name'];
 
+const getBankCodeForQR = (bankFullName) => {
+    if (!bankFullName) return '';
+    const match = bankFullName.match(/^([A-Z0-9]+)\s*-/i);
+    if (match) return match[1];
+    return bankFullName.trim().replace(/\s+/g, '');
+};
+
 const cleanAccountFieldValue = (value) => String(value || '').trim();
 
 const buildMissingTeamAccountPatch = (dbRow = {}, localRow = {}) => {
@@ -168,11 +175,11 @@ const shouldBlockExpectedInvoiceOverwrite = (previousRows = [], nextRows = []) =
     const previous = getExpectedInvoiceStats(previousRows);
     const next = getExpectedInvoiceStats(nextRows);
 
-    const totalDropped = previous.totalRows >= 10 && next.totalRows <= previous.totalRows * 0.75 && previous.totalRows - next.totalRows >= 5;
-    const teamDropped = previous.teamRows >= 5 && next.teamRows <= previous.teamRows * 0.75 && previous.teamRows - next.teamRows >= 3;
-    const valueDropped = previous.nonzeroTeamRows >= 3 && next.nonzeroTeamRows <= previous.nonzeroTeamRows * 0.5;
+    // Chỉ chặn khi dữ liệu mới bị trống hoàn toàn một cách bất thường (ví dụ do lỗi kết nối)
+    // trong khi dữ liệu cũ đang lưu trữ có nhiều hơn 10 dòng.
+    const totalDropped = previous.totalRows >= 10 && next.totalRows === 0;
 
-    return totalDropped || teamDropped || valueDropped;
+    return totalDropped;
 };
 
 const saveExpectedInvoiceBackup = (rows = [], reason = 'auto') => {
@@ -282,6 +289,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [advanceData, setAdvanceData] = useState(null);
 
     const [collapsedPhases, setCollapsedPhases] = useState({});
+    const [collapsedProjects, setCollapsedProjects] = useState({});
+    const [isConfirmTransferModalOpen, setIsConfirmTransferModalOpen] = useState(false);
+    const [transferInvoice, setTransferInvoice] = useState(null);
+    const [transferNote, setTransferNote] = useState('');
 
     const [filterProject, setFilterProject] = useState('');
     const [filterPhase, setFilterPhase] = useState('');
@@ -606,6 +617,38 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
+    const handleConfirmTransfer = async () => {
+        if (!transferInvoice) return;
+        try {
+            const { data, error } = await supabase
+                .from('expected_invoices')
+                .update({
+                    cashier_approved: true,
+                    cashier_note: 'Đã thanh toán'
+                })
+                .eq('id', transferInvoice.id)
+                .select();
+
+            if (error) throw error;
+
+            if (showToast) showToast('Xác nhận chuyển khoản thành công!', 'success');
+            else alert('Xác nhận chuyển khoản thành công!');
+            
+            setInvoices(prev => prev.map(inv => 
+                inv.id === transferInvoice.id 
+                    ? { ...inv, cashier_approved: true, cashier_note: transferNote } 
+                    : inv
+            ));
+            setIsConfirmTransferModalOpen(false);
+            setTransferInvoice(null);
+            setTransferNote('');
+        } catch (err) {
+            console.error('Failed to confirm transfer:', err);
+            if (showToast) showToast('Không thể xác nhận chuyển khoản. Vui lòng thử lại.', 'error');
+            else alert('Không thể xác nhận chuyển khoản. Vui lòng thử lại.');
+        }
+    };
+
     const handleRenamePeriod = async (oldPeriod, periodInvoices) => {
         if (!newPeriodName.trim() || newPeriodName === oldPeriod) {
             setEditingPeriodName(null);
@@ -649,7 +692,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         try {
             const periodInvoices = invoices.filter(inv => inv.payment_period === sourcePeriod);
             const newInvoices = periodInvoices.map(inv => {
-                const oldTotal = (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.teamValue) || 0);
+                const oldTotal = (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0);
                 return {
                     projectName: inv.projectName,
                     phase: inv.phase,
@@ -2228,18 +2271,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
                             <colgroup>
                                 <col className="w-12" />
-                                <col className="w-[320px]" />
+                                <col className="w-[280px]" />
                                 <col className="w-24" />
                                 <col className="w-20" />
-                                <col className="w-24" />
-                                <col className="w-24" />
                                 <col className="w-32" />
-                                <col className="w-[190px]" />
+                                <col className="w-32" />
+                                <col className="w-[140px]" />
+                                <col className="w-[170px]" />
                                 <col className="w-[110px]" />
                                 <col className="w-[110px]" />
                                 <col className={hasLongPrintNotes ? 'w-[150px]' : 'w-[110px]'} />
                                 <col className="w-[72px] print-hide-col" />
-                                {activeSubTab === 'history_team' && <col className="w-32" />}
+                                
                                 <col className="w-20 print-hide-col" />
                                 <col className="w-24 print-hide-col" />
                             </colgroup>
@@ -2271,7 +2314,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     ))
                                 ) : activeSubTab === 'customer_debt' ? null : (
                                     <>
-                                        <th className="p-4 font-black uppercase text-sm w-16 text-center">STT</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">STT</th>
                                 <th className="p-4 font-black uppercase text-sm">
                                     {activeSubTab === 'customer_debt' ? 'Tên' : (activeSubTab === 'team' || activeSubTab === 'history_team' ? 'Tên tổ đội' : 'Tên công trình')}
                                 </th>
@@ -2289,19 +2332,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     </>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
-                                        <th className="p-3 font-black uppercase text-sm text-right">Thực chi</th>
-                                        <th className="p-3 font-black uppercase text-sm text-right">Thu</th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kì trước</span></th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">kỳ này</span></th>
-                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block">Lũy kế</span><span className="block">đến nay</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Thực chi</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Thu</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block text-center">Lũy kế</span><span className="block text-center">kì trước</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block text-center">Lũy kế</span><span className="block text-center">kỳ này</span></th>
+                                        <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block text-center">Lũy kế</span><span className="block text-center">đến nay</span></th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Tên TK</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Số TK</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Ngân hàng</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Ghi chú</th>
                                         <th className="p-3 font-black uppercase text-sm text-center print:hidden">Đợt</th>
-                                        {activeSubTab === 'history_team' && <th className="p-4 font-black uppercase text-sm text-center w-36">Trạng thái duyệt</th>}
-                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">PDF</th>
-                                        <th className="p-4 font-black uppercase text-sm w-32 text-center print:hidden">Thao tác</th>
+                                        
+                                        <th className="p-4 font-black uppercase text-sm text-center print:hidden">PDF</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : activeSubTab === 'customer_debt' ? null : (
                                     <>
@@ -2395,7 +2438,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 filteredInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeSubTab === 'invoice' ? 9 : (activeSubTab === 'history_team' ? 15 : 14)} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={activeSubTab === 'invoice' ? 9 : 14} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     Object.entries(
@@ -2422,7 +2465,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         return (
                                         <React.Fragment key={period}>
                                             <tr className={`bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10 ${!hasPrintablePeriodRows ? 'print:hidden' : ''}`} onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
-                                                <td colSpan={activeSubTab === 'history_team' ? 15 : 14} className="p-4 py-5">
+                                                <td colSpan={14} className="p-4 py-5">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
                                                             <div className="p-1 bg-slate-800 rounded-md">
@@ -2511,7 +2554,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     </div>
                                                 </td>
                                             </tr>
-                                            {!collapsedPhases[period] && Object.entries(projectGroups).map(([projName, groupInvoices], projIdx) => {
+                                            {!collapsedPhases[period] && Object.entries(projectGroups).sort((a, b) => a[0].localeCompare(b[0])).map(([projName, groupInvoices], projIdx) => {
                                                 const projectColors = [
                                                     { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', rowBorder: 'border-l-orange-400' },
                                                     { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', rowBorder: 'border-l-blue-400' },
@@ -2524,35 +2567,66 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 const sortedGroupInvoices = [...groupInvoices].sort((a, b) => {
                                                     const aVal = parseFloat(a.teamValue) || 0;
                                                     const bVal = parseFloat(b.teamValue) || 0;
-                                                    if (aVal === 0 && bVal !== 0) return 1;
-                                                    if (aVal !== 0 && bVal === 0) return -1;
-                                                    return 0;
+                                                    if (aVal !== 0 || bVal !== 0) {
+                                                        if (aVal === 0) return 1;
+                                                        if (bVal === 0) return -1;
+                                                        return (a.teamName || '').localeCompare(b.teamName || '');
+                                                    }
+                                                    const prevPeriod = allPeriods[allPeriods.indexOf(period) - 1];
+                                                    if (prevPeriod) {
+                                                        const getPrevValue = (inv) => {
+                                                            const prevInv = invoices.find(i => 
+                                                                i.payment_period === prevPeriod && 
+                                                                i.projectName === inv.projectName && 
+                                                                i.teamName === inv.teamName
+                                                            );
+                                                            return prevInv ? (parseFloat(prevInv.teamValue) || 0) : 0;
+                                                        };
+                                                        const aPrev = getPrevValue(a);
+                                                        const bPrev = getPrevValue(b);
+                                                        if (aPrev !== 0 || bPrev !== 0) {
+                                                            if (aPrev === 0) return 1;
+                                                            if (bPrev === 0) return -1;
+                                                            return (a.teamName || '').localeCompare(b.teamName || '');
+                                                        }
+                                                    }
+                                                    return (a.teamName || '').localeCompare(b.teamName || '');
                                                 });
                                                 const printableGroupInvoices = getPrintableTeamRows(sortedGroupInvoices);
                                                 const hasPrintableGroupRows = printableGroupInvoices.length > 0;
                                                 return (
                                                 <React.Fragment key={projName}>
-                                                    <tr className={`expected-project-summary-row ${color.bg} border-y ${color.border} ${!hasPrintableGroupRows ? 'print:hidden' : ''}`}>
-                                                        <td></td>
+                                                    <tr 
+                                                        className={`expected-project-summary-row ${color.bg} border-y ${color.border} cursor-pointer hover:opacity-90 select-none ${!hasPrintableGroupRows ? 'print:hidden' : ''}`}
+                                                        onClick={() => setCollapsedProjects(prev => ({ ...prev, [`${period}_${projName}`]: !prev[`${period}_${projName}`] }))}
+                                                    >
+                                                        <td className="text-center p-3">
+                                                            <div className="flex items-center justify-center print:hidden">
+                                                                {collapsedProjects[`${period}_${projName}`] ? <ChevronRight size={16} className={color.text} /> : <ChevronDown size={16} className={color.text} />}
+                                                            </div>
+                                                        </td>
                                                         <td 
-                                                            className={`p-3 font-black ${color.text} text-sm uppercase text-left cursor-pointer hover:underline`}
-                                                            onDoubleClick={() => onNavigateToProject && onNavigateToProject(projName)}
+                                                            className={`p-3 font-black ${color.text} text-sm uppercase text-left hover:underline`}
+                                                            onDoubleClick={(e) => { e.stopPropagation(); onNavigateToProject && onNavigateToProject(projName); }}
                                                             title="Click đúp để xem chi tiết công trình"
                                                         >
                                                             {projName}:
                                                         </td>
-                                                        <td className="p-3 text-sm text-right font-black text-emerald-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-red-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-blue-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-amber-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                                        <td className="p-3 text-sm text-right font-black text-indigo-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
-                                                        <td colSpan={activeSubTab === 'history_team' ? 8 : 7}></td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-emerald-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-red-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-blue-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-amber-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-indigo-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                        <td colSpan={7}></td>
                                                     </tr>
-                                                    {sortedGroupInvoices.map((inv, idx) => {
+                                                    {!collapsedProjects[`${period}_${projName}`] && sortedGroupInvoices.map((inv, idx) => {
                                                         const role = currentUser?.role?.toUpperCase();
+                                                        const isCashier = role === 'THỦ QUỸ';
                                                         const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
                                                         const canDeleteTeamRow = role === 'ADMIN' || role === 'QS' || role === 'QS TRƯỞNG';
+                                                         const canConfirmTransfer = isCashier || isAcctUser || role === 'ADMIN';
+                                                         const canPostTransaction = isAcctUser || role === 'ADMIN';
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
@@ -2561,17 +2635,17 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
-                                                            <td className={`p-4 text-sm text-right font-bold ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0))}</td>
-                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
-                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
-                                                            <td className={`p-4 text-sm font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
-                                                            <td className={`p-4 text-sm break-words ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
-                                                            <td className={`p-4 text-sm font-medium whitespace-nowrap print:hidden ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
-                                                            {activeSubTab === 'history_team' && <td className="p-4 text-center">{inv.accountant_approved ? <span className="text-emerald-600 font-black">KT</span> : inv.qs_approved ? <span className="text-blue-600 font-black">QS</span> : <span className="text-slate-400">Chưa duyệt</span>}</td>}
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0))}</td>
+                                                            <td className={`p-4 text-sm text-center font-medium whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
+                                                            <td className={`p-4 text-sm text-center font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
+                                                            <td className={`p-4 text-sm text-center font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
+                                                            <td className={`p-4 text-sm text-center break-words ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
+                                                            <td className={`p-4 text-sm text-center font-medium whitespace-nowrap print:hidden ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
+                                                            
                                                             <td className="p-4 text-center print:hidden">
                                                                 {teamPdfUrl ? (
                                                                     <div className="flex items-center justify-center gap-1.5">
@@ -2632,57 +2706,83 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                         );
                                                                     })()}
                                                                     {activeSubTab === 'history_team' && (
-                                                                        transactions?.some(t => 
-                                                                            t.project_name === inv.projectName && 
-                                                                            t.recipient === inv.teamName && 
-                                                                            (t.note || '') === `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`
-                                                                        ) ? (
-                                                                            <span className="px-2 py-1.5 text-slate-400 bg-slate-100 rounded-lg border border-slate-200 whitespace-nowrap text-xs font-bold select-none cursor-not-allowed" title="Đã có giao dịch chi tương ứng trong Sổ quỹ">
-                                                                                Đã tạo T.Ứng
-                                                                            </span>
-                                                                        ) : (
-                                                                            <button 
-                                                                                onClick={() => {
-                                                                                    setAdvanceData({
-                                                                                        project_name: inv.projectName,
-                                                                                        recipient: inv.teamName,
-                                                                                        amount: parseFloat(inv.teamValue) || 0,
-                                                                                        payment_period: inv.payment_period,
-                                                                                        note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
-                                                                                        code: '622',
-                                                                                        corresponding_account: ''
-                                                                                    });
-                                                                                    setIsAdvanceModalOpen(true);
-                                                                                }}
-                                                                                className="px-2 py-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition border border-orange-200 bg-orange-50 whitespace-nowrap text-xs font-bold" 
-                                                                                title="Tạo Nhập liệu Tạm ứng"
-                                                                            >
-                                                                                Hạch toán
-                                                                            </button>
-                                                                        )
+                                                                        <div className="flex items-center justify-center">
+                                                                            {!inv.cashier_approved ? (
+                                                                                canConfirmTransfer && (
+                                                                                    <button
+                                                                                        onClick={() => {
+                                                                                            setTransferInvoice(inv);
+                                                                                            setTransferNote('');
+                                                                                            setIsConfirmTransferModalOpen(true);
+                                                                                        }}
+                                                                                        className="px-2 py-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50 whitespace-nowrap text-xs font-bold animate-pulse"
+                                                                                        title="Xác nhận chuyển khoản ngân hàng"
+                                                                                    >
+                                                                                        Thanh toán
+                                                                                    </button>
+                                                                                )
+                                                                            ) : (
+                                                                                canPostTransaction ? (
+                                                                                    transactions?.some(t => 
+                                                                                        t.project_name === inv.projectName && 
+                                                                                        t.recipient === inv.teamName && 
+                                                                                        (t.note || '') === `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`
+                                                                                    ) ? (
+                                                                                        <span className="px-2 py-1.5 text-slate-400 bg-slate-100 rounded-lg border border-slate-200 whitespace-nowrap text-xs font-bold select-none cursor-not-allowed" title="Đã có giao dịch chi tương ứng trong Sổ quỹ">
+                                                                                            Đã tạo T.Ứng
+                                                                                        </span>
+                                                                                    ) : (
+                                                                                        <button 
+                                                                                            onClick={() => {
+                                                                                                setAdvanceData({
+                                                                                                    project_name: inv.projectName,
+                                                                                                    recipient: inv.teamName,
+                                                                                                    amount: parseFloat(inv.teamValue) || 0,
+                                                                                                    payment_period: inv.payment_period,
+                                                                                                    note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
+                                                                                                    code: '622',
+                                                                                                    corresponding_account: ''
+                                                                                                });
+                                                                                                setIsAdvanceModalOpen(true);
+                                                                                            }}
+                                                                                            className="px-2 py-1.5 text-orange-500 hover:bg-orange-50 rounded-lg transition border border-orange-200 bg-orange-50 whitespace-nowrap text-xs font-bold" 
+                                                                                            title="Tạo Nhập liệu Tạm ứng"
+                                                                                        >
+                                                                                            Hạch toán
+                                                                                        </button>
+                                                                                    )
+                                                                                ) : (
+                                                                                    <span 
+                                                                                        className="px-2 py-1 bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg text-xs font-black cursor-help whitespace-nowrap"
+                                                                                        title={`Thủ quỹ đã xác nhận chuyển khoản. Ghi chú: ${inv.cashier_note || 'Không có'}`}
+                                                                                    >
+                                                                                        Đã CK
+                                                                                    </span>
+                                                                                )
+                                                                            )}
+                                                                        </div>
                                                                     )}
                                                                 </div>
                                                             </td>
                                                         </tr>
                                                         );
-                                                    })}
+                                                    }) || null}
                                                 </React.Fragment>
                                             )})}
                                             {!collapsedPhases[period] && (
                                                 <tr className={`bg-indigo-50 border-y-2 border-indigo-300 shadow-[inset_0_1px_0_rgba(99,102,241,0.22),inset_0_-1px_0_rgba(99,102,241,0.22)] ${!hasPrintablePeriodRows ? 'print:hidden' : ''}`}>
                                                     <td></td>
                                                     <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">TỔNG:</td>
-                                                    <td className="p-4 text-base text-right font-black text-emerald-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-red-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-blue-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-amber-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                                    <td className="p-4 text-base text-right font-black text-indigo-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-emerald-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-red-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-blue-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-amber-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-indigo-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + ((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0)), 0))}</td>
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
                                                     <td></td>
                                                     <td className="print:hidden"></td>
-                                                    {activeSubTab === 'history_team' && <td></td>}
                                                     <td className="p-4 text-center print:hidden">
                                                         {periodInvoices.find(inv => inv.project_pdf_url)?.project_pdf_url ? (
                                                             <div className="flex items-center justify-center gap-1.5">
@@ -2972,6 +3072,66 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     className="bg-red-600 hover:bg-red-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg"
                                 >
                                     <Trash2 size={18} /> Xác nhận Xóa
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {isConfirmTransferModalOpen && transferInvoice && (
+                <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-[1000] flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden animate-in zoom-in-95">
+                        <header className="bg-slate-900 text-white p-4 flex justify-between items-center">
+                            <h3 className="font-black flex items-center gap-2 text-lg"><Coins size={20}/> Thanh Toán Phiếu</h3>
+                            <button onClick={() => { setIsConfirmTransferModalOpen(false); setTransferInvoice(null); setTransferNote(''); }} className="text-slate-400 hover:text-white transition"><X/></button>
+                        </header>
+                        <div className="p-6 flex flex-col items-center">
+                            <div className="w-full bg-slate-50 rounded-2xl p-4 mb-4 border border-slate-100 space-y-2">
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                    <span className="text-slate-500 font-bold text-xs uppercase">Số tiền</span>
+                                    <span className="font-black text-lg text-slate-800">{formatCurrency(parseFloat(transferInvoice.teamValue) || 0)} VNĐ</span>
+                                </div>
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                    <span className="text-slate-500 font-bold text-xs uppercase">Người lập</span>
+                                    <span className="font-bold text-sm text-slate-700 uppercase">{transferInvoice.created_by || currentUser?.username || '-'}</span>
+                                </div>
+                                <div className="flex justify-between items-center pb-2 border-b border-slate-200 border-dashed">
+                                    <span className="text-slate-500 font-bold text-xs uppercase">Công trình</span>
+                                    <span className="font-bold text-sm text-slate-700 uppercase">{transferInvoice.projectName || '-'}</span>
+                                </div>
+                                <div className="flex justify-between items-center">
+                                    <span className="text-slate-500 font-bold text-xs uppercase">Người nhận</span>
+                                    <span className="font-bold text-sm text-slate-700 uppercase">{transferInvoice.account_name || transferInvoice.teamName || '-'}</span>
+                                </div>
+                            </div>
+                            
+                            {transferInvoice.bank_name && transferInvoice.account_number ? (
+                                <div className="p-2 bg-slate-50 rounded-2xl border-2 border-dashed border-slate-200 mb-6">
+                                    <img 
+                                        src={`https://img.vietqr.io/image/${getBankCodeForQR(transferInvoice.bank_name)}-${transferInvoice.account_number.trim()}-compact2.png?amount=${parseFloat(transferInvoice.teamValue) || 0}&accountName=${encodeURIComponent(transferInvoice.account_name || '')}`} 
+                                        alt="VietQR" 
+                                        className="w-[320px] h-[320px] object-contain rounded-xl bg-white mx-auto" 
+                                    />
+                                </div>
+                            ) : (
+                                <div className="text-sm text-red-500 font-bold p-3 mb-6">
+                                    Không tìm thấy thông tin tài khoản ngân hàng để tạo QR!
+                                </div>
+                            )}
+                            
+                            <div className="w-full space-y-3">
+                                <button 
+                                    onClick={handleConfirmTransfer}
+                                    className="w-full bg-emerald-600 text-white py-3.5 rounded-xl font-black shadow-lg shadow-emerald-600/20 hover:bg-emerald-700 hover:-translate-y-0.5 transition-all flex justify-center items-center gap-2"
+                                >
+                                    <CheckCircle2 size={20} /> XÁC NHẬN ĐÃ CHUYỂN KHOẢN
+                                </button>
+                                <button 
+                                    onClick={() => { setIsConfirmTransferModalOpen(false); setTransferInvoice(null); setTransferNote(''); }}
+                                    className="w-full py-2.5 text-slate-500 font-bold hover:bg-slate-50 rounded-xl transition"
+                                >
+                                    Đóng lại
                                 </button>
                             </div>
                         </div>

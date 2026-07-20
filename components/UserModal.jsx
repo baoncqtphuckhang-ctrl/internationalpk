@@ -110,6 +110,7 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
                                 <option value="ADMIN">ADMIN</option>
                                 <option value="GIÁM ĐỐC">GIÁM ĐỐC</option>
                                 <option value="PHÓ GĐ">PHÓ GĐ</option>
+                                <option value="THỦ QUỸ">THỦ QUỸ</option>
                                 <option value="KẾ TOÁN THUẾ">KẾ TOÁN THUẾ</option>
                                 <option value="KẾ TOÁN TỔNG HỢP">KẾ TOÁN TỔNG HỢP</option>
                                 <option value="KẾ TOÁN VẬT TƯ">KẾ TOÁN VẬT TƯ</option>
