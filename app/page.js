@@ -252,6 +252,9 @@ export default function Home() {
     const [projects, setProjects] = useState([]);
     const [projectDetails, setProjectDetails] = useState({});
     const [transactions, setTransactions] = useState([]);
+    const [detailedTransactions, setDetailedTransactions] = useState([]);
+    const [isDetailsLoaded, setIsDetailsLoaded] = useState(false);
+    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
     const [highlightedReqId, setHighlightedReqId] = useState(null);
@@ -736,36 +739,63 @@ export default function Home() {
     };
 
     const fetchTransactionsData = async () => {
-        let allTrans = [];
-        let page = 0;
-        const pageSize = 1000;
-        while(true) {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('*')
-                .order('accounting_date', { ascending: false })
-                .order('id', { ascending: true })
-                .range(page * pageSize, (page + 1) * pageSize - 1);
-            
-            if (error) {
-                console.error('Fetch transactions error:', error);
-                throw error;
-            }
-            
-            if (data && data.length > 0) {
-                allTrans = [...allTrans, ...data];
-                if (data.length < pageSize) break;
-                page++;
-            } else {
-                break;
-            }
+        const { data, error } = await supabase
+            .from('transactions')
+            .select('id, project_name, accounting_date, code, debit, credit');
+        
+        if (error) {
+            console.error('Fetch transactions error:', error);
+            throw error;
         }
 
-        const normalizedTransData = allTrans.map(t => ({
+        const normalizedTransData = (data || []).map(t => ({
             ...t,
             code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
         }));
         setTransactions(normalizedTransData);
+    };
+
+    const fetchDetailedTransactionsData = async (force = false) => {
+        if ((isDetailsLoaded || isLoadingDetails) && !force) return;
+        setIsLoadingDetails(true);
+        try {
+            let allTrans = [];
+            let page = 0;
+            const pageSize = 1000;
+            while(true) {
+                const { data, error } = await supabase
+                    .from('transactions')
+                    .select('*')
+                    .order('accounting_date', { ascending: false })
+                    .order('id', { ascending: true })
+                    .range(page * pageSize, (page + 1) * pageSize - 1);
+                
+                if (error) {
+                    console.error('Fetch detailed transactions error:', error);
+                    throw error;
+                }
+                
+                if (data && data.length > 0) {
+                    allTrans = [...allTrans, ...data];
+                    if (data.length < pageSize) break;
+                    page++;
+                } else {
+                    break;
+                }
+            }
+
+            const normalizedTransData = allTrans.map(t => ({
+                ...t,
+                code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
+            }));
+            setDetailedTransactions(normalizedTransData);
+            setIsDetailsLoaded(true);
+        } catch (error) {
+            console.error('Error fetching detailed transactions:', error);
+            showToast('Lỗi khi tải chi tiết giao dịch!', 'error');
+        } finally {
+            setIsLoadingDetails(false);
+        }
     };
 
     const fetchIncomesData = async () => {
@@ -962,15 +992,19 @@ export default function Home() {
         if (currentUser) fetchData();
     }, [currentUser]);
 
-    // Auto-refresh: Supabase Realtime subscription + polling mỗi 2 phút
+    useEffect(() => {
+        if (['history', 'expense-summary', 'input', 'project-detail'].includes(activeTab)) {
+            fetchDetailedTransactionsData();
+        }
+    }, [activeTab, currentUser]);
+
+    // Auto-refresh: Supabase Realtime subscription + polling mỗi 5 phút
     useEffect(() => {
         if (!currentUser) return;
 
         let debounceTimer = null;
         let isRefreshing = false;
         let hasPendingRefresh = false;
-        const currentRole = currentUser?.role?.toUpperCase?.() || '';
-        const refreshDelay = currentRole === 'ACCOUNTANT' || currentRole.includes('TOÁN') ? 2500 : 1200;
 
         const runRefresh = async () => {
             if (isRefreshing) {
@@ -981,6 +1015,9 @@ export default function Home() {
             isRefreshing = true;
             try {
                 await fetchData(false);
+                if (['history', 'expense-summary', 'input', 'project-detail'].includes(activeTab)) {
+                    await fetchDetailedTransactionsData(true);
+                }
             } finally {
                 isRefreshing = false;
                 if (hasPendingRefresh) {
@@ -995,18 +1032,94 @@ export default function Home() {
             debounceTimer = setTimeout(() => {
                 runRefresh();
                 setRealtimeVersion(v => v + 1);
-            }, refreshDelay);
+            }, 2000);
         };
 
-        // Supabase Realtime: lắng nghe thay đổi trên các bảng quan trọng
+        const handleRealtimeChange = (table, payload) => {
+            const { eventType, new: newRow, old: oldRow } = payload;
+            console.log(`Realtime change in ${table}:`, eventType, payload);
+
+            if (table === 'transactions') {
+                const normalize = (t) => ({
+                    ...t,
+                    code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
+                });
+                if (eventType === 'INSERT') {
+                    const norm = normalize(newRow);
+                    setTransactions(prev => {
+                        if (prev.some(x => x.id === norm.id)) return prev;
+                        return [norm, ...prev];
+                    });
+                    setDetailedTransactions(prev => {
+                        if (prev.some(x => x.id === norm.id)) return prev;
+                        return [norm, ...prev];
+                    });
+                } else if (eventType === 'UPDATE') {
+                    const norm = normalize(newRow);
+                    setTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
+                    setDetailedTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
+                } else if (eventType === 'DELETE') {
+                    setTransactions(prev => prev.filter(item => item.id !== oldRow.id));
+                    setDetailedTransactions(prev => prev.filter(item => item.id !== oldRow.id));
+                }
+            } else if (table === 'incomes') {
+                if (eventType === 'INSERT') {
+                    setIncomes(prev => {
+                        if (prev.some(x => x.id === newRow.id)) return prev;
+                        return [newRow, ...prev];
+                    });
+                } else if (eventType === 'UPDATE') {
+                    setIncomes(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                } else if (eventType === 'DELETE') {
+                    setIncomes(prev => prev.filter(item => item.id !== oldRow.id));
+                }
+            } else if (table === 'approval_requests') {
+                if (eventType === 'INSERT') {
+                    setDnttList(prev => {
+                        if (prev.some(x => x.id === newRow.id)) return prev;
+                        return [newRow, ...prev];
+                    });
+                } else if (eventType === 'UPDATE') {
+                    setDnttList(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                } else if (eventType === 'DELETE') {
+                    setDnttList(prev => prev.filter(item => item.id !== oldRow.id));
+                }
+            } else if (table === 'delete_requests') {
+                if (eventType === 'INSERT') {
+                    setDeleteRequests(prev => {
+                        if (prev.some(x => x.id === newRow.id)) return prev;
+                        return [newRow, ...prev];
+                    });
+                } else if (eventType === 'UPDATE') {
+                    setDeleteRequests(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                } else if (eventType === 'DELETE') {
+                    setDeleteRequests(prev => prev.filter(item => item.id !== oldRow.id));
+                }
+            } else if (table === 'partner_debts') {
+                if (eventType === 'INSERT') {
+                    setPartnerDebts(prev => {
+                        if (prev.some(x => x.id === newRow.id)) return prev;
+                        return [newRow, ...prev];
+                    });
+                } else if (eventType === 'UPDATE') {
+                    setPartnerDebts(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                } else if (eventType === 'DELETE') {
+                    setPartnerDebts(prev => prev.filter(item => item.id !== oldRow.id));
+                }
+            }
+            
+            // Trigger a minor version increment to prompt reactive UI checks
+            setRealtimeVersion(v => v + 1);
+        };
+
+        // Supabase Realtime: lắng nghe thay đổi và cập nhật cục bộ
         const channel = supabase
             .channel('realtime-sync')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_requests' }, debouncedFetch)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, debouncedFetch)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, debouncedFetch)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'material_orders' }, debouncedFetch)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, debouncedFetch)
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'delete_requests' }, debouncedFetch)
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_requests' }, (p) => handleRealtimeChange('approval_requests', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, (p) => handleRealtimeChange('transactions', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, (p) => handleRealtimeChange('incomes', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, (p) => handleRealtimeChange('partner_debts', p))
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'delete_requests' }, (p) => handleRealtimeChange('delete_requests', p))
             .subscribe();
 
         const pollingInterval = setInterval(() => {
@@ -1018,7 +1131,7 @@ export default function Home() {
             clearInterval(pollingInterval);
             supabase.removeChannel(channel);
         };
-    }, [currentUser]);
+    }, [currentUser, activeTab, isDetailsLoaded, detailedTransactions]);
 
     useEffect(() => {
         if (!currentUser || !notificationsAvailable) return;
@@ -2599,6 +2712,10 @@ export default function Home() {
 
     const allowedProjects = useMemo(() => projects.filter(p => assignedProjectNames.includes(p.name)), [projects, assignedProjectNames]);
     const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code)), [transactions, assignedProjectNames]);
+    const allowedDetailedTransactions = useMemo(() => {
+        const source = isDetailsLoaded ? detailedTransactions : transactions;
+        return source.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code));
+    }, [isDetailsLoaded, detailedTransactions, transactions, assignedProjectNames]);
     const expectedCosts = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'EXPECTED_COST'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
@@ -2961,11 +3078,11 @@ export default function Home() {
 
                 {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} systemConfig={systemConfig} onSaveConfig={handleSaveSystemConfig} currentUser={currentUser} />}
                 
-                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
+                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedDetailedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedDetailedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
                 
-                {activeTab === 'input' && <InputForm transactions={allowedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
+                {activeTab === 'input' && <InputForm transactions={allowedDetailedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} deleteRequests={deleteRequests} />}
                 
@@ -2982,7 +3099,7 @@ export default function Home() {
                         usersList={usersList}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
-                        transactions={allowedTransactions}
+                        transactions={allowedDetailedTransactions}
                         onAddDNTT={handleAddDNTT}
                         onUpdateDNTT={handleUpdateDNTT}
                         onUpdateStatus={handleUpdateApprovalStatus}
@@ -3640,7 +3757,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
+                                <HistoryTable transactions={allowedDetailedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (

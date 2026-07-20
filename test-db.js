@@ -14,11 +14,11 @@ envContent.split('\n').forEach(line => {
 const supabase = createClient(env.NEXT_PUBLIC_SUPABASE_URL, env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
 
 async function check() {
-  const { data: trans, error: transErr } = await supabase.from('transactions').select('project_name').limit(10);
-  console.log("Transactions sample:", trans);
-
-  const { data: proj, error: projErr } = await supabase.from('projects').select('*');
-  console.log("All projects in DB:", proj);
+  const tables = ['users', 'projects', 'transactions', 'incomes', 'approval_requests', 'partner_debts', 'employees', 'salary_history'];
+  for (const t of tables) {
+    const { count, error } = await supabase.from(t).select('*', { count: 'exact', head: true });
+    console.log(`Table ${t}: count = ${count}, error = ${error ? error.message : 'none'}`);
+  }
 }
 
 check();

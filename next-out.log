@@ -1,0 +1,350 @@
+
+> misa-pro@0.1.0 dev
+> next dev -H 0.0.0.0 -p 9999
+
+▲ Next.js 16.2.6 (Turbopack)
+- Local:         http://localhost:9999
+- Network:       http://0.0.0.0:9999
+- Environments: .env.local
+✓ Ready in 548ms
+
+ GET / 200 in 756ms (next.js: 250ms, application-code: 507ms)
+ GET / 200 in 72ms (next.js: 9ms, application-code: 63ms)
+✓ Compiled in 540ms
+ GET / 200 in 83ms (next.js: 50ms, application-code: 33ms)
+✓ Compiled in 120ms
+ GET / 200 in 103ms (next.js: 67ms, application-code: 36ms)
+✓ Compiled in 175ms
+ GET / 200 in 100ms (next.js: 60ms, application-code: 40ms)
+ GET / 200 in 293ms (next.js: 4ms, application-code: 289ms)
+✓ Compiled in 177ms
+ GET / 200 in 87ms (next.js: 55ms, application-code: 32ms)
+✓ Compiled in 172ms
+ GET / 200 in 147ms (next.js: 104ms, application-code: 43ms)
+✓ Compiled in 140ms
+ GET / 200 in 105ms (next.js: 71ms, application-code: 34ms)
+✓ Compiled in 170ms
+ GET / 200 in 134ms (next.js: 82ms, application-code: 52ms)
+✓ Compiled in 161ms
+ GET / 200 in 92ms (next.js: 62ms, application-code: 30ms)
+✓ Compiled in 211ms
+⨯ ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  [90m562 |[0m             [36mif[0m (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  [90m563 |[0m                     amount: parseFloat(data.debit) || parseFloat(data.amount) || [35m0[0m,
+[31m[1m>[0m [90m564 |[0m                     status: chiStatus,
+  [90m    |[0m                           [31m[1m^[0m
+  [90m565 |[0m                     note: debtNoteChi
+  [90m566 |[0m                 });
+  [90m567 |[0m             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component]
+
+
+ GET / 500 in 1237ms (next.js: 1049ms, application-code: 188ms)
+⨯ ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  [90m562 |[0m             [36mif[0m (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  [90m563 |[0m                     amount: parseFloat(data.debit) || parseFloat(data.amount) || [35m0[0m,
+[31m[1m>[0m [90m564 |[0m                     status: chiStatus,
+  [90m    |[0m                           [31m[1m^[0m
+  [90m565 |[0m                     note: debtNoteChi
+  [90m566 |[0m                 });
+  [90m567 |[0m             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component]
+
+
+ GET / 500 in 42ms (next.js: 12ms, application-code: 29ms)
+⨯ ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  [90m562 |[0m             [36mif[0m (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  [90m563 |[0m                     amount: parseFloat(data.debit) || parseFloat(data.amount) || [35m0[0m,
+[31m[1m>[0m [90m564 |[0m                     status: chiStatus,
+  [90m    |[0m                           [31m[1m^[0m
+  [90m565 |[0m                     note: debtNoteChi
+  [90m566 |[0m                 });
+  [90m567 |[0m             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component]
+
+
+⨯ ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  [90m562 |[0m             [36mif[0m (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  [90m563 |[0m                     amount: parseFloat(data.debit) || parseFloat(data.amount) || [35m0[0m,
+[31m[1m>[0m [90m564 |[0m                     status: chiStatus,
+  [90m    |[0m                           [31m[1m^[0m
+  [90m565 |[0m                     note: debtNoteChi
+  [90m566 |[0m                 });
+  [90m567 |[0m             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component]
+
+
+ GET / 500 in 53ms (next.js: 28ms, application-code: 25ms)
+ GET / 500 in 102ms (next.js: 57ms, application-code: 45ms)
+[browser] Uncaught Error: ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  562 |             if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  563 |                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+> 564 |                     status: chiStatus,
+      |                           ^
+  565 |                     note: debtNoteChi
+  566 |                 });
+  567 |             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component]
+
+
+    at <unknown> (Error: ./components/InputForm.jsx:564:27)
+    at <unknown> (Error: (./components/InputForm.jsx:564:27)
+[browser] ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  562 |             if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  563 |                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+> 564 |                     status: chiStatus,
+      |                           ^
+  565 |                     note: debtNoteChi
+  566 |                 });
+  567 |             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component] 
+    at handleErrors (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+    at processMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2835:28)
+    at <unknown> (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2680:13)
+    at WebSocket.handleMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2325:17) (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+[browser] ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  562 |             if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  563 |                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+> 564 |                     status: chiStatus,
+      |                           ^
+  565 |                     note: debtNoteChi
+  566 |                 });
+  567 |             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component] 
+    at handleErrors (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+    at processMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2835:28)
+    at <unknown> (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2680:13)
+    at WebSocket.handleMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2325:17) (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+[browser] ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  562 |             if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  563 |                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+> 564 |                     status: chiStatus,
+      |                           ^
+  565 |                     note: debtNoteChi
+  566 |                 });
+  567 |             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component] 
+    at handleErrors (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+    at processMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2835:28)
+    at <unknown> (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2680:13)
+    at WebSocket.handleMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2325:17) (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+[browser] ./components/InputForm.jsx:564:27
+Expected ';', '}' or <eof>
+  562 |             if (!isHoSoRecovery || isSpecialReceivableRecovery) {
+  563 |                     amount: parseFloat(data.debit) || parseFloat(data.amount) || 0,
+> 564 |                     status: chiStatus,
+      |                           ^
+  565 |                     note: debtNoteChi
+  566 |                 });
+  567 |             }
+
+Parsing ecmascript source code failed
+
+Import traces:
+  Client Component Browser:
+    ./components/InputForm.jsx [Client Component Browser]
+    ./app/page.js [Client Component Browser]
+    ./app/page.js [Server Component]
+
+  Client Component SSR:
+    ./components/InputForm.jsx [Client Component SSR]
+    ./app/page.js [Client Component SSR]
+    ./app/page.js [Server Component] 
+    at handleErrors (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+    at processMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2835:28)
+    at <unknown> (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2680:13)
+    at WebSocket.handleMessage (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2325:17) (file://D:/0. WORKING/CODE WEB/01. INTERNATIONAL PK/internationalpk/.next/dev/static/chunks/node_modules_next_dist_client_0pe1dg-._.js:2774:21)
+✓ Compiled in 119ms
+ GET / 200 in 385ms (next.js: 55ms, application-code: 330ms)
+✓ Compiled in 290ms
+ GET / 200 in 274ms (next.js: 169ms, application-code: 105ms)
+✓ Compiled in 386ms
+ GET / 200 in 149ms (next.js: 96ms, application-code: 52ms)
+ GET / 200 in 255ms (next.js: 5ms, application-code: 250ms)
+✓ Compiled in 141ms
+ GET / 200 in 178ms (next.js: 115ms, application-code: 63ms)
+✓ Compiled in 112ms
+ GET / 200 in 115ms (next.js: 65ms, application-code: 50ms)
+✓ Compiled in 123ms
+ GET / 200 in 114ms (next.js: 75ms, application-code: 39ms)
+✓ Compiled in 130ms
+ GET / 200 in 98ms (next.js: 64ms, application-code: 34ms)
+✓ Compiled in 129ms
+ GET / 200 in 124ms (next.js: 84ms, application-code: 40ms)
+✓ Compiled in 117ms
+ GET / 200 in 118ms (next.js: 76ms, application-code: 41ms)
+✓ Compiled in 130ms
+ GET / 200 in 111ms (next.js: 80ms, application-code: 31ms)
+✓ Compiled in 99ms
+ GET / 200 in 110ms (next.js: 70ms, application-code: 40ms)
+✓ Compiled in 110ms
+ GET / 200 in 126ms (next.js: 86ms, application-code: 40ms)
+✓ Compiled in 94ms
+ GET / 200 in 92ms (next.js: 62ms, application-code: 30ms)
+✓ Compiled in 192ms
+ GET / 200 in 77ms (next.js: 51ms, application-code: 26ms)
+✓ Compiled in 125ms
+ GET / 200 in 90ms (next.js: 56ms, application-code: 34ms)
+✓ Compiled in 126ms
+ GET / 200 in 91ms (next.js: 62ms, application-code: 28ms)
+✓ Compiled in 126ms
+ GET / 200 in 117ms (next.js: 70ms, application-code: 48ms)
+✓ Compiled in 185ms
+ GET / 200 in 91ms (next.js: 55ms, application-code: 37ms)
+ GET / 200 in 267ms (next.js: 4ms, application-code: 262ms)
+✓ Compiled in 108ms
+ GET / 200 in 182ms (next.js: 123ms, application-code: 59ms)
+✓ Compiled in 110ms
+ GET / 200 in 126ms (next.js: 72ms, application-code: 53ms)
+✓ Compiled in 117ms
+ GET / 200 in 123ms (next.js: 82ms, application-code: 41ms)
+✓ Compiled in 108ms
+ GET / 200 in 131ms (next.js: 80ms, application-code: 52ms)
+✓ Compiled in 100ms
+ GET / 200 in 106ms (next.js: 66ms, application-code: 40ms)
+✓ Compiled in 197ms
+ GET / 200 in 97ms (next.js: 69ms, application-code: 27ms)
+✓ Compiled in 115ms
+ GET / 200 in 131ms (next.js: 84ms, application-code: 47ms)
+✓ Compiled in 147ms
+ GET / 200 in 120ms (next.js: 77ms, application-code: 43ms)
+✓ Compiled in 135ms
+ GET / 200 in 126ms (next.js: 89ms, application-code: 37ms)
+✓ Compiled in 166ms
+ GET / 200 in 125ms (next.js: 80ms, application-code: 45ms)
+✓ Compiled in 224ms
+ GET / 200 in 134ms (next.js: 91ms, application-code: 43ms)
+ GET / 200 in 292ms (next.js: 6ms, application-code: 286ms)
+✓ Compiled in 131ms
+ GET / 200 in 123ms (next.js: 80ms, application-code: 43ms)
+✓ Compiled in 189ms
+ GET / 200 in 193ms (next.js: 139ms, application-code: 54ms)
+✓ Compiled in 123ms
+ GET / 200 in 111ms (next.js: 78ms, application-code: 33ms)
+✓ Compiled in 97ms
+ GET / 200 in 117ms (next.js: 75ms, application-code: 42ms)
+✓ Compiled in 109ms
+ GET / 200 in 107ms (next.js: 74ms, application-code: 34ms)
+✓ Compiled in 233ms
+ GET / 200 in 107ms (next.js: 71ms, application-code: 35ms)
+✓ Compiled in 104ms
+ GET / 200 in 91ms (next.js: 65ms, application-code: 26ms)
+✓ Compiled in 88ms
+ GET / 200 in 90ms (next.js: 62ms, application-code: 28ms)
+✓ Compiled in 133ms
+ GET / 200 in 100ms (next.js: 63ms, application-code: 37ms)
+✓ Compiled in 106ms
+ GET / 200 in 88ms (next.js: 60ms, application-code: 28ms)
+ GET / 200 in 246ms (next.js: 4ms, application-code: 242ms)
+✓ Compiled in 149ms
+ GET / 200 in 87ms (next.js: 55ms, application-code: 32ms)
+✓ Compiled in 162ms
+ GET / 200 in 102ms (next.js: 72ms, application-code: 30ms)
+ GET / 200 in 225ms (next.js: 3ms, application-code: 222ms)
+✓ Compiled in 147ms
+ GET / 200 in 106ms (next.js: 78ms, application-code: 28ms)
+ GET / 200 in 257ms (next.js: 5ms, application-code: 252ms)
