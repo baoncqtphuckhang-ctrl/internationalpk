@@ -69,7 +69,7 @@ export default function Sidebar({
     }, [projects, projectSearchTerm]);
     
     // Compute pending approvals badge
-    const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS';
+    const canApproveQS = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role === 'QS' || currentUser?.role === 'QS TRƯỞNG';
     const canApproveKT = canManageSystem || currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN');
     const canPay = canApproveKT || isThuKy;
 

@@ -3226,6 +3226,7 @@ export default function Home() {
                         showToast={showToast}
                         usersList={usersList}
                         deleteRequests={deleteRequests}
+                        refreshData={fetchData}
                         onNavigateToProject={(projectName) => {
                             setSelectedProject(projectName);
                             setActiveTab('project-detail');

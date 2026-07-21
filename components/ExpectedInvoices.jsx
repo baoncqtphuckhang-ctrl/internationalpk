@@ -228,7 +228,7 @@ const quarantineExpectedInvoices = (previousRows = [], nextRows = [], reason = '
     }
 };
 
-export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [] }) {
+export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [], refreshData }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [invoices, setInvoices] = useState([]);
     const [isLoaded, setIsLoaded] = useState(false);
@@ -238,6 +238,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [confirmDeleteId, setConfirmDeleteId] = useState(null);
     const [requestDeleteInvoice, setRequestDeleteInvoice] = useState(null);
     const [isDeleteAllConfirmOpen, setIsDeleteAllConfirmOpen] = useState(false);
+    const [collapsedGroups, setCollapsedGroups] = useState({});
+    const [editingDueDateId, setEditingDueDateId] = useState(null);
+    const [editingDueDateVal, setEditingDueDateVal] = useState('');
     const [deletePeriodState, setDeletePeriodState] = useState({ isOpen: false, periodName: '', periodInvoices: [], password: '', error: '' });
     const [isBulkAddModalOpen, setIsBulkAddModalOpen] = useState(false);
     const [bulkAddMonth, setBulkAddMonth] = useState('');
@@ -509,8 +512,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             invoices.forEach(inv => {
                 if (!inv.teamName) return;
                 const exists = list.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
-                const hasBankInfo = inv.account_name || inv.account_number || inv.bank_name;
-                if (!exists && hasBankInfo) {
+                if (!exists) {
                     const alreadyAdded = missingTeams.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
                     if (!alreadyAdded) {
                         missingTeams.push({
@@ -552,28 +554,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             invoices.forEach(inv => {
                 if (!inv.teamName) return;
                 const existing = list.find(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
-                const hasBankInfo = inv.account_name || inv.account_number || inv.bank_name;
                 
-                if (hasBankInfo) {
-                    const payload = {
-                        team_name: inv.teamName.trim(),
-                        account_name: (inv.account_name || '').trim(),
-                        account_number: (inv.account_number || '').trim(),
-                        bank_name: (inv.bank_name || '').trim()
-                    };
+                const payload = {
+                    team_name: inv.teamName.trim(),
+                    account_name: (inv.account_name || '').trim(),
+                    account_number: (inv.account_number || '').trim(),
+                    bank_name: (inv.bank_name || '').trim()
+                };
 
-                    const alreadyInSyncList = syncedTeams.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
-                    if (!alreadyInSyncList) {
-                        if (!existing) {
-                            syncedTeams.push({ action: 'insert', payload });
-                        } else {
-                            const hasChanges = 
-                                (payload.account_name && payload.account_name !== existing.account_name) ||
-                                (payload.account_number && payload.account_number !== existing.account_number) ||
-                                (payload.bank_name && payload.bank_name !== existing.bank_name);
-                            if (hasChanges) {
-                                syncedTeams.push({ action: 'update', id: existing.id, payload });
-                            }
+                const alreadyInSyncList = syncedTeams.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                if (!alreadyInSyncList) {
+                    if (!existing) {
+                        syncedTeams.push({ action: 'insert', payload });
+                    } else {
+                        const hasChanges = 
+                            (payload.account_name && payload.account_name !== existing.account_name) ||
+                            (payload.account_number && payload.account_number !== existing.account_number) ||
+                            (payload.bank_name && payload.bank_name !== existing.bank_name);
+                        if (hasChanges) {
+                            syncedTeams.push({ action: 'update', id: existing.id, payload });
                         }
                     }
                 }
@@ -634,6 +633,42 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (projectList.length === 0) return '-';
         return projectList.join(', ');
     };
+
+    const processedTeamList = useMemo(() => {
+        return teamInfoList
+            .map(t => {
+                const projectsStr = getProjectsForTeam(t.team_name);
+                let projectsCount = 0;
+                if (projectsStr && projectsStr !== '-') {
+                    projectsCount = projectsStr.split(',').map(p => p.trim()).filter(Boolean).length;
+                }
+                
+                let category = 2;
+                if (projectsCount === 1) {
+                    category = 0;
+                } else if (projectsCount > 1) {
+                    category = 1;
+                }
+                
+                return {
+                    ...t,
+                    projectsStr,
+                    projectsCount,
+                    category
+                };
+            })
+            .filter(t => !searchTerm || t.team_name.toLowerCase().includes(searchTerm.toLowerCase()) || t.projectsStr.toLowerCase().includes(searchTerm.toLowerCase()))
+            .sort((a, b) => {
+                if (a.category !== b.category) {
+                    return a.category - b.category;
+                }
+                if (a.category === 0 || a.category === 1) {
+                    const projCompare = a.projectsStr.localeCompare(b.projectsStr, 'vi', { sensitivity: 'base' });
+                    if (projCompare !== 0) return projCompare;
+                }
+                return a.team_name.localeCompare(b.team_name, 'vi', { sensitivity: 'base' });
+            });
+    }, [teamInfoList, invoices, transactions, searchTerm]);
 
     const [collapsedPhases, setCollapsedPhases] = useState({});
     const [collapsedProjects, setCollapsedProjects] = useState({});
@@ -1809,10 +1844,35 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
                 let due_date_str = '';
                 let overdue_days = '';
+                let manual_due_date = '';
+                let default_due_date_raw = '';
 
                 if (invoice_date) {
                     const dueDateObj = addBusinessDays(invoice_date, 15);
                     if (dueDateObj) {
+                        const yyyy = dueDateObj.getFullYear();
+                        const mm = String(dueDateObj.getMonth() + 1).padStart(2, '0');
+                        const dd = String(dueDateObj.getDate()).padStart(2, '0');
+                        default_due_date_raw = `${yyyy}-${mm}-${dd}`;
+                    }
+                }
+
+                for (const inv of phaseIncs) {
+                    if (inv.note) {
+                        try {
+                            const parsed = JSON.parse(inv.note);
+                            if (parsed && parsed.due_date) {
+                                manual_due_date = parsed.due_date;
+                                break;
+                            }
+                        } catch(e){}
+                    }
+                }
+
+                const finalDueDateRaw = manual_due_date || default_due_date_raw;
+                if (finalDueDateRaw) {
+                    const dueDateObj = new Date(finalDueDateRaw);
+                    if (!isNaN(dueDateObj.getTime())) {
                         due_date_str = dueDateObj.toLocaleDateString('vi-VN');
                         
                         const now = new Date();
@@ -1841,6 +1901,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         invoice_no: invoice_no,
                         invoice_date: invoice_date ? new Date(invoice_date).toLocaleDateString('vi-VN') : '',
                         due_date: due_date_str,
+                        due_date_raw: finalDueDateRaw,
                         overdue_days: overdue_days,
                         voucher_no: uniqueVouchers
                     });
@@ -1930,6 +1991,44 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setCustomerDebtVisibleColumns(prev => ({ ...prev, [key]: prev[key] === false }));
     };
 
+    const handleUpdateDueDate = async (projectName, phase, newDueDate) => {
+        const projIncs = incomes.filter(i => i.project_name === projectName && i.phase === phase);
+        if (projIncs.length === 0) {
+            showToast?.('Không tìm thấy bản ghi đợt thu nào để cập nhật ngày tới hạn!', 'error');
+            return;
+        }
+
+        const targetIncome = projIncs[0];
+        let parsedNote = {};
+        if (targetIncome.note) {
+            try {
+                parsedNote = JSON.parse(targetIncome.note);
+                if (typeof parsedNote !== 'object' || parsedNote === null) {
+                    parsedNote = {};
+                }
+            } catch (e) {
+                parsedNote = { description: targetIncome.note };
+            }
+        }
+
+        parsedNote.due_date = newDueDate;
+
+        try {
+            const { error } = await supabase
+                .from('incomes')
+                .update({ note: JSON.stringify(parsedNote) })
+                .eq('id', targetIncome.id);
+
+            if (error) throw error;
+            
+            showToast?.('Cập nhật ngày tới hạn thành công!', 'success');
+            if (refreshData) refreshData();
+        } catch (err) {
+            console.error('Lỗi khi cập nhật ngày tới hạn:', err);
+            showToast?.('Lỗi khi cập nhật ngày tới hạn: ' + err.message, 'error');
+        }
+    };
+
     const renderCustomerDebtCell = (debt, idx, key) => {
         switch (key) {
             case 'stt':
@@ -1944,8 +2043,51 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 return `${formatCurrency(debt.actual)} VNĐ`;
             case 'remaining':
                 return `${formatCurrency(debt.remaining)} VNĐ`;
-            case 'dueDate':
-                return debt.due_date || '-';
+            case 'dueDate': {
+                const isEditing = editingDueDateId === debt.id;
+                if (isEditing) {
+                    return (
+                        <div className="flex items-center gap-1 justify-center" onClick={(e) => e.stopPropagation()}>
+                            <input
+                                type="date"
+                                value={editingDueDateVal}
+                                onChange={(e) => setEditingDueDateVal(e.target.value)}
+                                className="border border-slate-300 rounded px-1.5 py-0.5 text-xs font-bold text-slate-800 focus:border-indigo-500 outline-none w-28 bg-white"
+                                autoFocus
+                                onBlur={() => {
+                                    if (editingDueDateVal !== debt.due_date_raw) {
+                                        handleUpdateDueDate(debt.projectName, debt.phase, editingDueDateVal);
+                                    }
+                                    setEditingDueDateId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter') {
+                                        if (editingDueDateVal !== debt.due_date_raw) {
+                                            handleUpdateDueDate(debt.projectName, debt.phase, editingDueDateVal);
+                                        }
+                                        setEditingDueDateId(null);
+                                    } else if (e.key === 'Escape') {
+                                        setEditingDueDateId(null);
+                                    }
+                                }}
+                            />
+                        </div>
+                    );
+                }
+                return (
+                    <div 
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingDueDateId(debt.id);
+                            setEditingDueDateVal(debt.due_date_raw || '');
+                        }}
+                        className="cursor-pointer hover:bg-slate-100 px-2 py-1 rounded transition text-center min-h-[28px] flex items-center justify-center font-bold text-slate-800 border border-transparent hover:border-slate-300"
+                        title="Click để nhập ngày tới hạn thủ công"
+                    >
+                        {debt.due_date || <span className="text-slate-400 italic font-normal text-[11px]">Chưa nhập</span>}
+                    </div>
+                );
+            }
             case 'status':
                 return (
                     debt.overdue_days > 0 ? (
@@ -2254,6 +2396,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             </button>
                         );
                     })}
+                    <div className="h-4 w-px bg-slate-200 mx-2" />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            const anyExpanded = groupedCustomerDebts.some(([groupName]) => !collapsedGroups[groupName]);
+                            if (anyExpanded) {
+                                const newCollapsed = {};
+                                groupedCustomerDebts.forEach(([groupName]) => {
+                                    newCollapsed[groupName] = true;
+                                });
+                                setCollapsedGroups(newCollapsed);
+                            } else {
+                                setCollapsedGroups({});
+                            }
+                        }}
+                        className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 hover:bg-indigo-100 transition"
+                    >
+                        {groupedCustomerDebts.some(([groupName]) => !collapsedGroups[groupName]) ? 'Ẩn tất cả công trình' : 'Hiện tất cả công trình'}
+                    </button>
                 </div>
             )}
 
@@ -2635,16 +2796,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 </tr>
                             </thead>
                             <tbody className="divide-y divide-slate-100">
-                                {teamInfoList.filter(t => !searchTerm || t.team_name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 ? (
+                                {processedTeamList.length === 0 ? (
                                     <tr>
                                         <td colSpan="7" className="p-8 text-center text-slate-500">Chưa có dữ liệu thông tin tổ đội phù hợp.</td>
                                     </tr>
                                 ) : (
-                                    teamInfoList.filter(t => !searchTerm || t.team_name.toLowerCase().includes(searchTerm.toLowerCase())).map((t, idx) => (
+                                    processedTeamList.map((t, idx) => (
                                         <tr key={t.id} className="hover:bg-slate-50 transition">
                                             <td className="p-4 text-center font-bold text-slate-500">{idx + 1}</td>
                                             <td className="p-4 text-sm font-black text-slate-800">{t.team_name}</td>
-                                            <td className="p-4 text-sm font-bold text-amber-700">{getProjectsForTeam(t.team_name)}</td>
+                                            <td className="p-4 text-sm font-bold text-amber-700">{t.projectsStr}</td>
                                             <td className="p-4 text-sm font-semibold text-slate-600">{t.account_name || '-'}</td>
                                             <td className="p-4 text-sm font-mono text-slate-600">{t.account_number || '-'}</td>
                                             <td className="p-4 text-sm font-bold text-slate-600">{t.bank_name || '-'}</td>
@@ -2850,17 +3011,30 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         let globalIdx = 0;
                                         return groupedCustomerDebts.map(([groupName, debts]) => {
                                             const printableDebts = getPrintableCustomerDebtRows(debts);
+                                            const isCollapsed = collapsedGroups[groupName];
                                             return (
                                             <React.Fragment key={groupName}>
-                                                <tr className={`bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black ${printableDebts.length === 0 ? 'print:hidden' : ''}`}>
+                                                <tr 
+                                                    onClick={() => {
+                                                        setCollapsedGroups(prev => ({
+                                                            ...prev,
+                                                            [groupName]: !prev[groupName]
+                                                        }));
+                                                    }}
+                                                    className={`bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black cursor-pointer select-none hover:bg-indigo-100/70 transition-colors ${printableDebts.length === 0 ? 'print:hidden' : ''}`}
+                                                >
                                                     {visibleCustomerDebtColumns.map(col => {
                                                         if (col.key === 'stt') {
-                                                            return <td key={col.key} className="p-4 text-center text-[16px] print:text-black">🏢</td>;
+                                                            return (
+                                                                <td key={col.key} className="p-4 text-center text-[12px] print:text-black font-black text-indigo-900">
+                                                                    {isCollapsed ? '▶' : '▼'}
+                                                                </td>
+                                                            );
                                                         }
                                                         if (col.key === 'name') {
                                                             return (
                                                                 <td key={col.key} className="p-4 text-left font-black text-[16px] text-indigo-950 uppercase tracking-wider print:text-black print:text-[16px] print:font-black">
-                                                                    {groupName}
+                                                                    🏢 {groupName}
                                                                 </td>
                                                             );
                                                         }
@@ -2888,7 +3062,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         return <td key={col.key} className="p-4 text-center text-slate-400 text-[12px] font-bold print:text-slate-600">---</td>;
                                                     })}
                                                 </tr>
-                                                {debts.map((debt) => {
+                                                {!isCollapsed && debts.map((debt) => {
                                                     const currentIdx = globalIdx++;
                                                     const hideUnissuedDebtInPrint = hideUnissuedCustomerDebtRowsOnPrint && !hasCustomerDebtInvoice(debt);
                                                     return (

@@ -176,6 +176,70 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         }));
     };
 
+    const normalizeSalaryHistoryRecord = (item) => {
+        const emps = item.employees_data || [];
+        const metadata = emps.find(e => e.id === 'metadata_holidays');
+        return {
+            timestamp: item.timestamp,
+            globalStandardDays: item.global_standard_days,
+            holidays: metadata ? cloneData(metadata.holidays) : [],
+            base_month: metadata?.base_month,
+            employees: cloneData(emps.filter(e => e.id !== 'metadata_holidays'))
+        };
+    };
+
+    const upsertDraftRecordToDb = async (monthId, draftData) => {
+        if (!monthId || !draftData?.employees?.length || historyRecordsRef.current[monthId]) return;
+        const { error } = await supabase.from('salary_history').upsert([{
+            month_id: `${monthId}-DRAFT`,
+            timestamp: draftData.timestamp || new Date().toISOString(),
+            global_standard_days: draftData.globalStandardDays,
+            employees_data: draftData.employees
+        }], { onConflict: 'month_id' });
+        if (error) throw error;
+    };
+
+    const applySalaryHistoryRows = (rows, { replace = false } = {}) => {
+        const nextHistory = {};
+        const serverDrafts = {};
+
+        (rows || []).forEach(item => {
+            const recordData = normalizeSalaryHistoryRecord(item);
+            if (item.month_id.endsWith('-DRAFT')) {
+                serverDrafts[item.month_id.replace('-DRAFT', '')] = recordData;
+            } else {
+                nextHistory[item.month_id] = recordData;
+            }
+        });
+
+        setHistoryRecords(prev => replace ? nextHistory : { ...prev, ...nextHistory });
+        setDraftRecords(prev => {
+            const merged = replace ? {} : { ...prev };
+            Object.keys(nextHistory).forEach(monthId => delete merged[monthId]);
+            Object.entries(serverDrafts).forEach(([monthId, draft]) => {
+                if (!nextHistory[monthId]) merged[monthId] = draft;
+            });
+            return merged;
+        });
+
+        const activeMonth = selectedMonthRef.current;
+        if (activeMonth && serverDrafts[activeMonth] && !nextHistory[activeMonth] && !viewingHistoryId) {
+            const draft = serverDrafts[activeMonth];
+            skipDraftSyncRef.current = true;
+            setGlobalStandardDays(draft.globalStandardDays || globalStandardDaysRef.current);
+            setEmployees(draft.employees?.length ? cloneData(draft.employees) : []);
+            queueMicrotask(() => { skipDraftSyncRef.current = false; });
+        }
+
+        return { historyMap: nextHistory, draftMap: serverDrafts };
+    };
+
+    const fetchSalaryHistoryFromDb = async ({ replace = false } = {}) => {
+        const { data, error } = await supabase.from('salary_history').select('*');
+        if (error) throw error;
+        return applySalaryHistoryRows(data, { replace });
+    };
+
     const loadPeriodIntoEditor = (periodId) => {
         skipDraftSyncRef.current = true;
         if (!periodId) {
@@ -598,6 +662,12 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             try {
                 localStorage.setItem('misa_draft_records', JSON.stringify(draftRecords));
             } catch (e) {}
+
+            Object.entries(draftRecords).forEach(([monthId, draft]) => {
+                upsertDraftRecordToDb(monthId, draft).catch(err => {
+                    console.error('Error syncing salary draft to DB:', err);
+                });
+            });
         }, 500);
         return () => clearTimeout(timer);
     }, [draftRecords, initialLoaded]);
@@ -619,13 +689,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             let historyMap = {};
             let draftMap = {};
             try {
-                const savedHistory = localStorage.getItem('misa_salary_history');
-                if (savedHistory) {
-                    try { historyMap = JSON.parse(savedHistory); } catch (e) {}
-                }
                 const savedDrafts = localStorage.getItem('misa_draft_records');
                 if (savedDrafts) {
-                    try { draftMap = JSON.parse(savedDrafts); } catch (e) {}
+                    try { draftMap = JSON.parse(savedDrafts) || {}; } catch (e) {}
                 }
             } catch (e) {}
 
@@ -634,20 +700,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 if (error) throw error;
                 if (data && data.length > 0) {
                     data.forEach(item => {
-                        const emps = item.employees_data || [];
-                        const metadata = emps.find(e => e.id === 'metadata_holidays');
-                        const recordData = {
-                            timestamp: item.timestamp,
-                            globalStandardDays: item.global_standard_days,
-                            holidays: metadata ? cloneData(metadata.holidays) : [],
-                            base_month: metadata?.base_month,
-                            employees: cloneData(emps.filter(e => e.id !== 'metadata_holidays'))
-                        };
+                        const recordData = normalizeSalaryHistoryRecord(item);
                         if (item.month_id.endsWith('-DRAFT')) {
                             const m = item.month_id.replace('-DRAFT', '');
-                            if (!draftMap[m] || new Date(recordData.timestamp) > new Date(draftMap[m].timestamp || 0)) {
-                                draftMap[m] = recordData;
-                            }
+                            // DB is the source of truth if available; local draft only rescues periods missing on DB.
+                            draftMap[m] = recordData;
                         } else {
                             // History records are finalized and DB is source of truth, always overwrite
                             historyMap[item.month_id] = recordData;
@@ -716,7 +773,88 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         loadInitialData();
     }, []);
 
-    // Removed auto-save timer as requested by user. Saves are now manual.
+    useEffect(() => {
+        if (!initialLoaded) return;
+
+        const channel = supabase
+            .channel('employee-salary-history-sync')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'salary_history' }, (payload) => {
+                const row = payload.new || payload.old;
+                const monthId = row?.month_id;
+                if (!monthId) return;
+
+                const isDraft = monthId.endsWith('-DRAFT');
+                const period = isDraft ? monthId.replace('-DRAFT', '') : monthId;
+
+                if (payload.eventType === 'DELETE') {
+                    if (isDraft) {
+                        setDraftRecords(prev => {
+                            const next = { ...prev };
+                            delete next[period];
+                            return next;
+                        });
+                    } else {
+                        setHistoryRecords(prev => {
+                            const next = { ...prev };
+                            delete next[period];
+                            return next;
+                        });
+                    }
+                    return;
+                }
+
+                const recordData = normalizeSalaryHistoryRecord(payload.new);
+                if (isDraft) {
+                    setDraftRecords(prev => {
+                        const existing = prev[period];
+                        if (existing?.timestamp && recordData.timestamp && new Date(existing.timestamp) >= new Date(recordData.timestamp)) {
+                            return prev;
+                        }
+                        return { ...prev, [period]: recordData };
+                    });
+
+                    if (selectedMonthRef.current === period && !viewingHistoryId) {
+                        skipDraftSyncRef.current = true;
+                        setGlobalStandardDays(recordData.globalStandardDays || globalStandardDaysRef.current);
+                        setEmployees(recordData.employees?.length ? cloneData(recordData.employees) : []);
+                        queueMicrotask(() => { skipDraftSyncRef.current = false; });
+                    }
+                } else {
+                    setHistoryRecords(prev => ({ ...prev, [period]: recordData }));
+                    setDraftRecords(prev => {
+                        if (!prev[period]) return prev;
+                        const next = { ...prev };
+                        delete next[period];
+                        return next;
+                    });
+                }
+            })
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [initialLoaded, viewingHistoryId]);
+
+    useEffect(() => {
+        if (!initialLoaded) return;
+
+        const syncFromDb = () => {
+            fetchSalaryHistoryFromDb().catch(err => {
+                console.error('Error refreshing salary history from DB:', err);
+            });
+        };
+
+        const timer = setInterval(syncFromDb, 10000);
+        window.addEventListener('focus', syncFromDb);
+
+        return () => {
+            clearInterval(timer);
+            window.removeEventListener('focus', syncFromDb);
+        };
+    }, [initialLoaded, viewingHistoryId]);
+
+    // Drafts are auto-synced to DB so other salary users see the same working period.
 
     useEffect(() => {
         if (!initialLoaded || skipDraftSyncRef.current || !selectedMonth || viewingHistoryId) return;
@@ -1175,7 +1313,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 });
                 
                 if (updatedMonthData) {
-                    const metadata = prev[monthId]?.holidays ? { id: 'metadata_holidays', holidays: prev[monthId].holidays, base_month: monthId } : { id: 'metadata_holidays', holidays: [], base_month: monthId };
+                    const metadata = {
+                        id: 'metadata_holidays',
+                        holidays: updatedMonthData.holidays || [],
+                        base_month: updatedMonthData.base_month || monthId
+                    };
                     const { error } = await supabase.from('salary_history').update({ employees_data: [...updatedMonthData.employees, metadata] }).eq('month_id', monthId);
                     if (error) console.error('Error updating salary_history:', error);
                 }
@@ -1842,7 +1984,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 {emp.isCustomDept ? (
                                     <input 
                                         type="text" 
-                                        value={emp.department} 
+                                        value={emp.department || ''} 
                                         onChange={(e) => handleChange(emp.id, 'department', e.target.value)}
                                         className="w-full bg-white border border-slate-300 rounded px-2 py-1 outline-none font-bold text-slate-800 uppercase focus:border-blue-500"
                                         placeholder="Nhập tên phòng ban..."
@@ -1876,7 +2018,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     <tr key={emp.id} className="hover:bg-blue-50/50 transition-colors group">
                         <td className="border border-slate-300 p-1 text-center text-slate-500">{localStt}</td>
                         <td className="border border-slate-300 p-0 sticky left-0 z-20 bg-white group-hover:bg-blue-50/50">
-                            <input type="text" value={emp.name} onChange={(e) => handleChange(emp.id, 'name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent" placeholder="Tên nhân viên..." />
+                            <input type="text" value={emp.name || ''} onChange={(e) => handleChange(emp.id, 'name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent" placeholder="Tên nhân viên..." />
                         </td>
                         <td className="border border-slate-300 p-0">
                             <NumberInput value={emp.basic_salary} onChange={(val) => handleChange(emp.id, 'basic_salary', val)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-right" />
@@ -1946,16 +2088,16 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         <td className="border border-slate-300 p-1 px-2 text-right font-bold text-slate-700">{formatCurrency(emp.calculated.remaining).replace('₫', '')}</td>
                         
                         <td className="border border-slate-300 p-0">
-                            <input type="text" value={emp.notes} onChange={(e) => handleChange(emp.id, 'notes', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
+                            <input type="text" value={emp.notes || ''} onChange={(e) => handleChange(emp.id, 'notes', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
                         </td>
                         <td className="border border-slate-300 p-0">
-                            <input type="text" value={emp.bank_account} onChange={(e) => handleChange(emp.id, 'bank_account', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
+                            <input type="text" value={emp.bank_account || ''} onChange={(e) => handleChange(emp.id, 'bank_account', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px]" />
                         </td>
                         <td className="border border-slate-300 p-0">
-                            <input type="text" value={emp.bank_account_name} onChange={(e) => handleChange(emp.id, 'bank_account_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
+                            <input type="text" value={emp.bank_account_name || ''} onChange={(e) => handleChange(emp.id, 'bank_account_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
                         </td>
                         <td className="border border-slate-300 p-0">
-                            <input type="text" value={emp.bank_name} onChange={(e) => handleChange(emp.id, 'bank_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
+                            <input type="text" value={emp.bank_name || ''} onChange={(e) => handleChange(emp.id, 'bank_name', e.target.value)} className="w-full h-full p-1 px-2 outline-none bg-transparent text-[10px] uppercase" />
                         </td>
                         <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
                             <div className="flex items-center justify-center gap-1">
@@ -2762,7 +2904,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 <div className="space-y-4">
                     {getDraftPeriods().length === 0 ? (
                         <div className="text-center text-slate-500 py-10 bg-slate-50 rounded-xl border border-slate-200">
-                            Chưa có kỳ lương nào. Hãy bấm "Tạo Kỳ" để bắt đầu.
+                            Chưa có kỳ lương nào. Hãy bấm &quot;Tạo Kỳ&quot; để bắt đầu.
                         </div>
                     ) : (
                         getDraftPeriods().map(period => {
