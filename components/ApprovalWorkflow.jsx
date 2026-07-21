@@ -453,11 +453,7 @@ export default function ApprovalWorkflow({
             invoice_no: d.invoiceNumber
         }));
 
-        if (status === 'ĐÃ XONG') {
-            onAccountDNTT(distributeItem.id, payload);
-        } else {
-            onAccountDNTT(distributeItem.id, []);
-        }
+        onAccountDNTT(distributeItem.id, payload);
 
         if (onAddDebt) {
             const hasVatTu = distributionData.some(d => ['621', '623'].includes(d.code));
@@ -964,7 +960,7 @@ export default function ApprovalWorkflow({
                                                         </span>
                                                     );
                                                 }
-                                                const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
                                                 return (
                                                     <button 
                                                         onClick={() => { 

@@ -288,6 +288,353 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const [isAdvanceModalOpen, setIsAdvanceModalOpen] = useState(false);
     const [advanceData, setAdvanceData] = useState(null);
 
+    const [teamInfoList, setTeamInfoList] = useState([]);
+    const [isTeamInfoFormOpen, setIsTeamInfoFormOpen] = useState(false);
+    const [teamInfoForm, setTeamInfoForm] = useState({
+        team_name: '',
+        account_name: '',
+        account_number: '',
+        bank_name: ''
+    });
+    const [isCustomTeamInfoName, setIsCustomTeamInfoName] = useState(false);
+    const [confirmDeleteTeamInfoId, setConfirmDeleteTeamInfoId] = useState(null);
+
+    const allProjectTeamNames = useMemo(() => {
+        const names = new Set();
+        if (transactions && transactions.length > 0) {
+            transactions.forEach(t => {
+                if (t.recipient) names.add(t.recipient.trim());
+            });
+        }
+        if (invoices && invoices.length > 0) {
+            invoices.forEach(i => {
+                if (i.teamName) names.add(i.teamName.trim());
+            });
+        }
+        return [...names].filter(Boolean).sort();
+    }, [transactions, invoices]);
+
+    const fetchTeamInfo = async () => {
+        try {
+            const { data, error } = await supabase.from('team_info').select('*').order('team_name', { ascending: true });
+            if (error) throw error;
+            setTeamInfoList(data || []);
+        } catch (err) {
+            console.warn('Lỗi khi lấy thông tin tổ đội từ database, fallback sang localStorage:', err);
+            const saved = localStorage.getItem('system_team_info');
+            setTeamInfoList(saved ? JSON.parse(saved) : []);
+        }
+    };
+
+    const handleSaveTeamInfo = async (e) => {
+        if (e) e.preventDefault();
+        
+        if (!teamInfoForm.team_name) {
+            showToast?.('Vui lòng chọn hoặc nhập tên tổ đội!', 'error');
+            return;
+        }
+
+        setIsLoaded(false);
+        try {
+            const payload = {
+                team_name: teamInfoForm.team_name.trim(),
+                account_name: teamInfoForm.account_name.trim(),
+                account_number: teamInfoForm.account_number.trim(),
+                bank_name: teamInfoForm.bank_name.trim()
+            };
+
+            if (editingId) {
+                const { error } = await supabase
+                    .from('team_info')
+                    .update(payload)
+                    .eq('id', editingId);
+
+                if (error) throw error;
+
+                // Propagate updates to all matching expected invoices
+                try {
+                    await supabase
+                        .from('expected_invoices')
+                        .update({
+                            account_name: payload.account_name,
+                            account_number: payload.account_number,
+                            bank_name: payload.bank_name
+                        })
+                        .eq('teamName', payload.team_name);
+                    
+                    setInvoices(prev => prev.map(inv => {
+                        if (inv.teamName && inv.teamName.toLowerCase() === payload.team_name.toLowerCase()) {
+                            return {
+                                ...inv,
+                                account_name: payload.account_name,
+                                account_number: payload.account_number,
+                                bank_name: payload.bank_name
+                            };
+                        }
+                        return inv;
+                    }));
+                } catch (e) {
+                    console.warn('Failed to propagate bank info to expected invoices:', e);
+                }
+
+                showToast?.('Cập nhật thông tin tổ đội thành công!', 'success');
+            } else {
+                const dup = teamInfoList.find(t => t.team_name.toLowerCase() === payload.team_name.toLowerCase());
+                if (dup) {
+                    showToast?.('Tổ đội này đã tồn tại thông tin tài khoản!', 'error');
+                    setIsLoaded(true);
+                    return;
+                }
+
+                const { error } = await supabase
+                    .from('team_info')
+                    .insert([payload]);
+
+                if (error) throw error;
+                showToast?.('Thêm thông tin tổ đội thành công!', 'success');
+            }
+
+            setEditingId(null);
+            setIsTeamInfoFormOpen(false);
+            setTeamInfoForm({ team_name: '', account_name: '', account_number: '', bank_name: '' });
+            fetchTeamInfo();
+        } catch (err) {
+            console.error('Error saving team info:', err);
+            let localList = [...teamInfoList];
+            const payload = {
+                team_name: teamInfoForm.team_name.trim(),
+                account_name: teamInfoForm.account_name.trim(),
+                account_number: teamInfoForm.account_number.trim(),
+                bank_name: teamInfoForm.bank_name.trim()
+            };
+
+            if (editingId) {
+                localList = localList.map(t => t.id === editingId ? { ...t, ...payload } : t);
+            } else {
+                const newId = `local_${Date.now()}`;
+                localList.push({ id: newId, ...payload });
+            }
+            setTeamInfoList(localList);
+            localStorage.setItem('system_team_info', JSON.stringify(localList));
+            
+            setEditingId(null);
+            setIsTeamInfoFormOpen(false);
+            setTeamInfoForm({ team_name: '', account_name: '', account_number: '', bank_name: '' });
+            showToast?.('Đã lưu thông tin tổ đội (Local)!', 'success');
+        } finally {
+            setIsLoaded(true);
+        }
+    };
+
+    const handleDeleteTeamInfo = async (id) => {
+        setIsLoaded(false);
+        try {
+            if (!id.toString().startsWith('local_')) {
+                const { error } = await supabase
+                    .from('team_info')
+                    .delete()
+                    .eq('id', id);
+                if (error) throw error;
+            }
+            
+            const newValues = teamInfoList.filter(t => t.id !== id);
+            setTeamInfoList(newValues);
+            localStorage.setItem('system_team_info', JSON.stringify(newValues));
+            showToast?.('Đã xóa thông tin tổ đội!', 'success');
+        } catch (err) {
+            console.error('Error deleting team info:', err);
+            showToast?.('Lỗi khi xóa thông tin tổ đội!', 'error');
+        } finally {
+            setIsLoaded(true);
+            setConfirmDeleteTeamInfoId(null);
+        }
+    };
+
+    const syncExpectedInvoiceBankInfoToTeamInfo = async (teamName, accountName, accountNumber, bankName) => {
+        if (!teamName || (!accountName && !accountNumber && !bankName)) return;
+        
+        try {
+            const existing = teamInfoList.find(t => t.team_name.toLowerCase() === teamName.toLowerCase());
+            const payload = {
+                team_name: teamName.trim(),
+                account_name: (accountName || '').trim(),
+                account_number: (accountNumber || '').trim(),
+                bank_name: (bankName || '').trim()
+            };
+
+            if (existing) {
+                const hasChanges = 
+                    (payload.account_name && payload.account_name !== existing.account_name) ||
+                    (payload.account_number && payload.account_number !== existing.account_number) ||
+                    (payload.bank_name && payload.bank_name !== existing.bank_name);
+                
+                if (hasChanges) {
+                    await supabase
+                        .from('team_info')
+                        .update(payload)
+                        .eq('id', existing.id);
+                    fetchTeamInfo();
+                }
+            } else {
+                await supabase
+                    .from('team_info')
+                    .insert([payload]);
+                fetchTeamInfo();
+            }
+        } catch (e) {
+            console.warn('Không thể tự động đồng bộ thông tin tài khoản tổ đội sang team_info table:', e);
+            let localList = [...teamInfoList];
+            const existing = localList.find(t => t.team_name.toLowerCase() === teamName.toLowerCase());
+            const payload = {
+                team_name: teamName.trim(),
+                account_name: (accountName || '').trim(),
+                account_number: (accountNumber || '').trim(),
+                bank_name: (bankName || '').trim()
+            };
+
+            if (existing) {
+                localList = localList.map(t => t.team_name.toLowerCase() === teamName.toLowerCase() ? { ...t, ...payload } : t);
+            } else {
+                localList.push({ id: `local_${Date.now()}`, ...payload });
+            }
+            setTeamInfoList(localList);
+            localStorage.setItem('system_team_info', JSON.stringify(localList));
+        }
+    };
+
+    useEffect(() => {
+        if (isLoaded && invoices.length > 0 && teamInfoList.length > 0) {
+            const list = teamInfoList;
+            const missingTeams = [];
+            invoices.forEach(inv => {
+                if (!inv.teamName) return;
+                const exists = list.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                const hasBankInfo = inv.account_name || inv.account_number || inv.bank_name;
+                if (!exists && hasBankInfo) {
+                    const alreadyAdded = missingTeams.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                    if (!alreadyAdded) {
+                        missingTeams.push({
+                            team_name: inv.teamName.trim(),
+                            account_name: (inv.account_name || '').trim(),
+                            account_number: (inv.account_number || '').trim(),
+                            bank_name: (inv.bank_name || '').trim()
+                        });
+                    }
+                }
+            });
+
+            if (missingTeams.length > 0) {
+                const autoSync = async () => {
+                    let updated = false;
+                    for (const team of missingTeams) {
+                        try {
+                            const { error } = await supabase.from('team_info').insert([team]);
+                            if (!error) updated = true;
+                        } catch (e) {
+                            console.warn('Lỗi khi chèn tự động tổ đội:', e);
+                        }
+                    }
+                    if (updated) {
+                        fetchTeamInfo();
+                    }
+                };
+                autoSync();
+            }
+        }
+    }, [invoices, isLoaded, teamInfoList]);
+
+    const handleManualSyncTeamInfo = async () => {
+        setIsLoaded(false);
+        try {
+            const list = teamInfoList;
+            const syncedTeams = [];
+            
+            invoices.forEach(inv => {
+                if (!inv.teamName) return;
+                const existing = list.find(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                const hasBankInfo = inv.account_name || inv.account_number || inv.bank_name;
+                
+                if (hasBankInfo) {
+                    const payload = {
+                        team_name: inv.teamName.trim(),
+                        account_name: (inv.account_name || '').trim(),
+                        account_number: (inv.account_number || '').trim(),
+                        bank_name: (inv.bank_name || '').trim()
+                    };
+
+                    const alreadyInSyncList = syncedTeams.some(t => t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                    if (!alreadyInSyncList) {
+                        if (!existing) {
+                            syncedTeams.push({ action: 'insert', payload });
+                        } else {
+                            const hasChanges = 
+                                (payload.account_name && payload.account_name !== existing.account_name) ||
+                                (payload.account_number && payload.account_number !== existing.account_number) ||
+                                (payload.bank_name && payload.bank_name !== existing.bank_name);
+                            if (hasChanges) {
+                                syncedTeams.push({ action: 'update', id: existing.id, payload });
+                            }
+                        }
+                    }
+                }
+            });
+
+            if (syncedTeams.length === 0) {
+                showToast?.('Thông tin tài khoản của các tổ đội đã được đồng bộ đầy đủ!', 'info');
+                setIsLoaded(true);
+                return;
+            }
+
+            let count = 0;
+            for (const item of syncedTeams) {
+                try {
+                    if (item.action === 'insert') {
+                        const { error } = await supabase.from('team_info').insert([item.payload]);
+                        if (!error) count++;
+                    } else {
+                        const { error } = await supabase.from('team_info').update(item.payload).eq('id', item.id);
+                        if (!error) count++;
+                    }
+                } catch (e) {
+                    console.warn('Lỗi khi đồng bộ tổ đội:', e);
+                }
+            }
+
+            await fetchTeamInfo();
+            showToast?.(`Đã đồng bộ thành công ${count} tổ đội từ Giá Trị Tổ Đội!`, 'success');
+        } catch (err) {
+            console.error(err);
+            showToast?.('Lỗi xảy ra trong quá trình đồng bộ!', 'error');
+        } finally {
+            setIsLoaded(true);
+        }
+    };
+
+    const getProjectsForTeam = (teamName) => {
+        if (!teamName) return '-';
+        const projectSet = new Set();
+        
+        if (invoices && invoices.length > 0) {
+            invoices.forEach(i => {
+                if (i.teamName && i.teamName.toLowerCase() === teamName.toLowerCase() && i.projectName) {
+                    projectSet.add(i.projectName);
+                }
+            });
+        }
+        
+        if (transactions && transactions.length > 0) {
+            transactions.forEach(t => {
+                if (t.recipient && t.recipient.toLowerCase() === teamName.toLowerCase() && t.project_name) {
+                    projectSet.add(t.project_name);
+                }
+            });
+        }
+
+        const projectList = [...projectSet].filter(Boolean).sort();
+        if (projectList.length === 0) return '-';
+        return projectList.join(', ');
+    };
+
     const [collapsedPhases, setCollapsedPhases] = useState({});
     const [collapsedProjects, setCollapsedProjects] = useState({});
     const [isConfirmTransferModalOpen, setIsConfirmTransferModalOpen] = useState(false);
@@ -349,12 +696,34 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     }, [invoices]);
 
     const allPeriods = useMemo(() => {
-        const periods = new Set();
+        const periodMap = new Map();
         invoices.forEach(i => {
-            if (i.payment_period) periods.add(i.payment_period);
+            if (i.payment_period) {
+                const period = i.payment_period;
+                const isClosed = i.is_completed || i.is_closed || i.accountant_approved;
+                if (!periodMap.has(period)) {
+                    periodMap.set(period, isClosed);
+                } else {
+                    if (!isClosed) {
+                        periodMap.set(period, false);
+                    }
+                }
+            }
         });
-        return Array.from(periods).sort();
-    }, [invoices]);
+
+        const activePeriods = [];
+        periodMap.forEach((isClosed, period) => {
+            if (!isClosed) {
+                activePeriods.push(period);
+            }
+        });
+
+        if (formData?.payment_period && !activePeriods.includes(formData.payment_period)) {
+            activePeriods.push(formData.payment_period);
+        }
+
+        return activePeriods.sort();
+    }, [invoices, formData?.payment_period]);
 
     useEffect(() => {
         try {
@@ -411,6 +780,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     useEffect(() => {
         const timer = setTimeout(() => {
             fetchInvoices();
+            fetchTeamInfo();
         }, 0);
         return () => clearTimeout(timer);
     }, []);
@@ -488,16 +858,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         });
 
         if (activeSubTab === 'team') {
-            const existingPeriod = invoices.find(i => 
+            const teamExistsInProject = invoices.some(i => 
+                i.id !== editingId &&
                 i.projectName === formData.projectName && 
-                i.teamName === formData.teamName && 
-                formData.phase &&
-                i.phase === formData.phase &&
-                !i.is_completed
+                i.teamName && 
+                i.teamName.trim().toLowerCase() === (formData.teamName || '').trim().toLowerCase()
             );
-            if (existingPeriod && !editingId) {
-                if (showToast) showToast(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`, 'error');
-                else alert(`Kỳ ${formData.phase} của tổ đội này đã tồn tại! Vui lòng chọn kỳ khác.`);
+            if (teamExistsInProject) {
+                const errMsg = `Tổ đội "${formData.teamName}" đã tồn tại trong công trình "${formData.projectName}"! Không thể tạo trùng lặp.`;
+                if (showToast) showToast(errMsg, 'error');
+                else alert(errMsg);
                 return;
             }
         }
@@ -544,6 +914,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         setInvoices(prev => dedupeExpectedInvoices([...prev, data[0]]));
                     }
                 }
+            }
+            if (activeSubTab === 'team') {
+                syncExpectedInvoiceBankInfoToTeamInfo(
+                    formData.teamName,
+                    formData.account_name,
+                    formData.account_number,
+                    formData.bank_name
+                );
             }
             resetForm();
         } catch (error) {
@@ -692,14 +1070,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         try {
             const periodInvoices = invoices.filter(inv => inv.payment_period === sourcePeriod);
             const newInvoices = periodInvoices.map(inv => {
-                const oldTotal = (parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0);
                 return {
                     projectName: inv.projectName,
                     phase: inv.phase,
                     teamName: inv.teamName,
                     preTaxValue: 0,
                     deductionAmount: 0,
-                    accumulatedAdvance: oldTotal,
+                    accumulatedAdvance: 0,
                     teamValue: 0,
                     account_name: inv.account_name,
                     account_number: inv.account_number,
@@ -952,7 +1329,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     };
 
     const handleDeleteClick = (inv) => {
-        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
         if (isAuthorizer) {
             setConfirmDeleteId(inv.id);
         } else {
@@ -1675,7 +2052,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <span className="hidden sm:inline">Thêm theo tháng</span>
                         </button>
                     )}
-                    {activeSubTab !== 'customer_debt' && (
+                    {activeSubTab !== 'customer_debt' && activeSubTab !== 'team_info' && (
                         <button 
                             onClick={() => { resetForm(); setIsFormOpen(true); }}
                             className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
@@ -1683,6 +2060,30 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             <Plus size={20} />
                             Thêm mới
                         </button>
+                    )}
+                    {activeSubTab === 'team_info' && (
+                        <div className="flex gap-2">
+                            <button 
+                                onClick={handleManualSyncTeamInfo}
+                                className="bg-sky-50 text-sky-600 hover:bg-sky-100 px-4 py-2.5 rounded-xl font-bold transition flex items-center gap-2 border border-sky-100"
+                                title="Đồng bộ thông tin tài khoản ngân hàng từ Giá Trị Tổ Đội sang"
+                            >
+                                <RotateCcw size={20} />
+                                Cập nhật từ Giá Trị Tổ Đội
+                            </button>
+                            <button 
+                                onClick={() => {
+                                    setEditingId(null);
+                                    setTeamInfoForm({ team_name: '', account_name: '', account_number: '', bank_name: '' });
+                                    setIsCustomTeamInfoName(false);
+                                    setIsTeamInfoFormOpen(true);
+                                }}
+                                className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-2.5 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-emerald-600/20"
+                            >
+                                <Plus size={20} />
+                                Thêm mới tổ đội
+                            </button>
+                        </div>
                     )}
                 </div>
             </header>
@@ -1712,6 +2113,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 >
                     LỊCH SỬ CHI TỔ ĐỘI
                 </button>
+                <button 
+                    onClick={() => setActiveSubTab('team_info')}
+                    className={`pb-3 font-black text-sm px-2 border-b-[3px] transition-colors whitespace-nowrap ${activeSubTab === 'team_info' ? 'border-sky-600 text-sky-700' : 'border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300'}`}
+                >
+                    THÔNG TIN TỔ ĐỘI
+                </button>
             </div>
 
             <div className="bg-white p-4 rounded-3xl shadow-sm border border-slate-200 mb-6 flex flex-col md:flex-row gap-4 print:hidden">
@@ -1731,33 +2138,38 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl pl-12 pr-4 py-3 text-sm font-bold outline-none focus:border-emerald-500 focus:bg-white transition"
                     />
                 </div>
-                <div className="w-full md:w-64">
-                    <select
-                        value={filterProject}
-                        onChange={(e) => {
-                            setFilterProject(e.target.value);
-                            setFilterPhase('');
-                        }}
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
-                    >
-                        <option value="">Tất cả công trình</option>
-                        {projects.map(p => (
-                            <option key={p.id} value={p.name}>{p.name}</option>
-                        ))}
-                    </select>
-                </div>
-                <div className="w-full md:w-48">
-                    <select
-                        value={filterPhase}
-                        onChange={(e) => setFilterPhase(e.target.value)}
-                        className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
-                    >
-                        <option value="">Tất cả các đợt</option>
-                        {availablePhases.map(ph => (
-                            <option key={ph} value={ph}>{ph}</option>
-                        ))}
-                    </select>
-                </div>
+                {activeSubTab !== 'team_info' && (
+                    <>
+                        <div className="w-full md:w-64">
+                            <select
+                                value={filterProject}
+                                onChange={(e) => {
+                                    setFilterProject(e.target.value);
+                                    setFilterPhase('');
+                                }}
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
+                            >
+                                <option value="">Tất cả công trình</option>
+                                {projects.map(p => (
+                                    <option key={p.id} value={p.name}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div className="w-full md:w-48">
+                            <select
+                                value={filterPhase}
+                                onChange={(e) => setFilterPhase(e.target.value)}
+                                className="w-full bg-slate-50 border-2 border-slate-100 rounded-2xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-emerald-500 focus:bg-white transition"
+                            >
+                                <option value="">Tất cả các đợt</option>
+                                {availablePhases.map(ph => (
+                                    <option key={ph} value={ph}>{ph}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </>
+                )}
+
                 {activeSubTab === 'invoice' && (
                     <div className="w-full md:w-52">
                         <select
@@ -2020,16 +2432,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             value={isCustomTeamName ? 'Khác' : (availableTeamNames.includes(formData.teamName) ? formData.teamName : (formData.teamName ? 'Khác' : ''))}
                                             onChange={(e) => {
                                                 const val = e.target.value;
-                                                let tName = val;
                                                 if (val === 'Khác') {
                                                     setIsCustomTeamName(true);
                                                     setFormData(prev => ({ ...prev, teamName: '', accumulatedAdvance: '', account_name: '', account_number: '', bank_name: '' }));
-                                                    tName = '';
                                                 } else {
                                                     setIsCustomTeamName(false);
                                                     const teamInvoices = invoices.filter(i => i.projectName === formData.projectName && i.teamName === val && !i.is_completed);
                                                     const lastInvoice = teamInvoices.length > 0 ? teamInvoices[teamInvoices.length - 1] : null;
                                                     const lastAdvance = lastInvoice ? ((parseFloat(lastInvoice.accumulatedAdvance) || 0) + (parseFloat(lastInvoice.teamValue) || 0)) : 0;
+                                                    
+                                                    const matchedTeamInfo = teamInfoList.find(t => t.team_name.toLowerCase() === val.toLowerCase());
                                                     
                                                     setFormData(prev => ({ 
                                                         ...prev, 
@@ -2105,7 +2517,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 </div>
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                                     <div>
-                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lũy kế tạm ứng</label>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lũy kế kỳ trước</label>
                                         <input 
                                             type="text" 
                                             name="accumulatedAdvance" 
@@ -2183,7 +2595,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             </>
                         )}
                         
-                        {activeSubTab === 'invoice' && (
+{activeSubTab === 'invoice' && (
                             <div>
                                 <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
                                 <input 
@@ -2207,7 +2619,72 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             </div>
             )}
 
-            <div className="expected-print-report bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print:rounded-none print:border-none print:shadow-none print:overflow-visible">
+            {activeSubTab === 'team_info' ? (
+                <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
+                    <div className="overflow-x-auto">
+                        <table className="w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-900 text-white border-b border-slate-200">
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider w-16 text-center">STT</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider">Tên Tổ Đội</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider">Công Trình</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider">Tên TK</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider">Số TK</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider">Ngân hàng</th>
+                                    <th className="p-4 font-black uppercase text-xs tracking-wider text-center w-32">Thao tác</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {teamInfoList.filter(t => !searchTerm || t.team_name.toLowerCase().includes(searchTerm.toLowerCase())).length === 0 ? (
+                                    <tr>
+                                        <td colSpan="7" className="p-8 text-center text-slate-500">Chưa có dữ liệu thông tin tổ đội phù hợp.</td>
+                                    </tr>
+                                ) : (
+                                    teamInfoList.filter(t => !searchTerm || t.team_name.toLowerCase().includes(searchTerm.toLowerCase())).map((t, idx) => (
+                                        <tr key={t.id} className="hover:bg-slate-50 transition">
+                                            <td className="p-4 text-center font-bold text-slate-500">{idx + 1}</td>
+                                            <td className="p-4 text-sm font-black text-slate-800">{t.team_name}</td>
+                                            <td className="p-4 text-sm font-bold text-amber-700">{getProjectsForTeam(t.team_name)}</td>
+                                            <td className="p-4 text-sm font-semibold text-slate-600">{t.account_name || '-'}</td>
+                                            <td className="p-4 text-sm font-mono text-slate-600">{t.account_number || '-'}</td>
+                                            <td className="p-4 text-sm font-bold text-slate-600">{t.bank_name || '-'}</td>
+                                            <td className="p-4 text-center">
+                                                <div className="flex items-center justify-center gap-2">
+                                                    <button
+                                                        onClick={() => {
+                                                            setEditingId(t.id);
+                                                            setTeamInfoForm({
+                                                                team_name: t.team_name,
+                                                                account_name: t.account_name || '',
+                                                                account_number: t.account_number || '',
+                                                                bank_name: t.bank_name || ''
+                                                            });
+                                                            setIsCustomTeamInfoName(!allProjectTeamNames.includes(t.team_name));
+                                                            setIsTeamInfoFormOpen(true);
+                                                        }}
+                                                        className="p-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 border border-blue-200 rounded-lg transition"
+                                                        title="Sửa"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={() => setConfirmDeleteTeamInfoId(t.id)}
+                                                        className="p-1.5 bg-red-50 hover:bg-red-100 text-red-500 border border-red-200 rounded-lg transition"
+                                                        title="Xóa"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            ) : (
+                <div className="expected-print-report bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print:rounded-none print:border-none print:shadow-none print:overflow-visible">
                 <div className="expected-print-scroll overflow-x-auto overflow-y-auto max-h-[calc(100vh-250px)] print:overflow-visible print:max-h-none">
                     <div className="expected-print-zoom" style={{ zoom: tableZoom }}>
                     {activeSubTab === 'customer_debt' && (
@@ -2640,9 +3117,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className={`p-4 text-sm text-center tabular-nums font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-indigo-600'}`}>{formatCurrency((parseFloat(inv.accumulatedAdvance) || 0) + (parseFloat(inv.preTaxValue) || 0))}</td>
-                                                            <td className={`p-4 text-sm text-center font-medium whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_name || '-'}</td>
-                                                            <td className={`p-4 text-sm text-center font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.account_number || '-'}</td>
-                                                            <td className={`p-4 text-sm text-center font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{inv.bank_name || '-'}</td>
+                                                            {(() => {
+                                                                const teamAccount = teamInfoList.find(t => t.team_name && inv.teamName && t.team_name.toLowerCase() === inv.teamName.toLowerCase());
+                                                                const displayAccountName = inv.account_name || teamAccount?.account_name || '-';
+                                                                const displayAccountNumber = inv.account_number || teamAccount?.account_number || '-';
+                                                                const displayBankName = inv.bank_name || teamAccount?.bank_name || '-';
+                                                                return (
+                                                                    <>
+                                                                        <td className={`p-4 text-sm text-center font-medium whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{displayAccountName}</td>
+                                                                        <td className={`p-4 text-sm text-center font-medium whitespace-nowrap ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{displayAccountNumber}</td>
+                                                                        <td className={`p-4 text-sm text-center font-medium uppercase whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-600'}`}>{displayBankName}</td>
+                                                                    </>
+                                                                );
+                                                            })()}
                                                             <td className={`p-4 text-sm text-center break-words ${isZero ? 'text-slate-400' : 'text-slate-500'}`} title={inv.note}>{inv.note || '-'}</td>
                                                             <td className={`p-4 text-sm text-center font-medium whitespace-nowrap print:hidden ${isZero ? 'text-slate-400' : 'text-slate-700'}`}>{inv.phase || '-'}</td>
                                                             
@@ -2836,7 +3323,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                 </span>
                                                             );
                                                         }
-                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
                                                         return (
                                                             <>
                                                                 <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
@@ -2906,6 +3393,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     </div>
                 </div>
             </div>
+            )}
             
             <ConfirmModal
                 isOpen={!!confirmDeleteId}
@@ -2990,8 +3478,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 <p className="font-bold mb-1">Quy tắc nhân bản:</p>
                                 <ul className="list-disc pl-5 space-y-1">
                                     <li>Sao chép toàn bộ danh sách tổ đội từ kỳ cũ sang kỳ mới.</li>
-                                    <li>Lũy kế tạm ứng (kỳ mới) = Tổng cộng (kỳ cũ).</li>
-                                    <li>Giá trị KL, Thu lại đội = 0.</li>
+                                    <li>Số liệu (Lũy kế kỳ trước, Giá trị KL, Thu lại đội) = 0 để nhập tay lại.</li>
                                 </ul>
                             </div>
                             <div>
@@ -3241,6 +3728,110 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     </div>
                 </div>
             )}
+
+            {isTeamInfoFormOpen && (
+                <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+                        <div className="bg-slate-900 px-6 py-4 flex justify-between items-center text-white">
+                            <h3 className="font-bold text-lg">{editingId ? 'Cập nhật' : 'Thêm mới'} thông tin tổ đội</h3>
+                            <button onClick={() => { setIsTeamInfoFormOpen(false); setEditingId(null); }} className="text-slate-400 hover:text-white transition"><X /></button>
+                        </div>
+                        <form onSubmit={handleSaveTeamInfo} className="p-6 flex flex-col gap-6">
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên tổ đội *</label>
+                                    <select 
+                                        value={isCustomTeamInfoName ? 'Khác' : (allProjectTeamNames.includes(teamInfoForm.team_name) ? teamInfoForm.team_name : (teamInfoForm.team_name ? 'Khác' : ''))}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Khác') {
+                                                setIsCustomTeamInfoName(true);
+                                                setTeamInfoForm(prev => ({ ...prev, team_name: '' }));
+                                            } else {
+                                                setIsCustomTeamInfoName(false);
+                                                setTeamInfoForm(prev => ({ ...prev, team_name: val }));
+                                            }
+                                        }}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                    >
+                                        <option value="">-- Chọn tổ đội từ công trình --</option>
+                                        {allProjectTeamNames.map(name => (
+                                            <option key={name} value={name}>{name}</option>
+                                        ))}
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {(isCustomTeamInfoName || (!allProjectTeamNames.includes(teamInfoForm.team_name) && teamInfoForm.team_name)) && (
+                                        <input 
+                                            type="text" 
+                                            value={teamInfoForm.team_name || ''}
+                                            onChange={(e) => setTeamInfoForm(prev => ({ ...prev, team_name: e.target.value }))}
+                                            className="w-full mt-2 bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            placeholder="Nhập tên tổ đội..."
+                                            required
+                                        />
+                                    )}
+                                </div>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tên tài khoản</label>
+                                        <input 
+                                            type="text" 
+                                            value={teamInfoForm.account_name || ''}
+                                            onChange={(e) => setTeamInfoForm(prev => ({ ...prev, account_name: e.target.value }))}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: NGUYEN VAN A"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Số tài khoản</label>
+                                        <input 
+                                            type="text" 
+                                            value={teamInfoForm.account_number || ''}
+                                            onChange={(e) => setTeamInfoForm(prev => ({ ...prev, account_number: e.target.value }))}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            placeholder="Nhập số tài khoản..."
+                                        />
+                                    </div>
+                                </div>
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ngân hàng</label>
+                                    <input 
+                                        type="text" 
+                                        value={teamInfoForm.bank_name || ''}
+                                        onChange={(e) => setTeamInfoForm(prev => ({ ...prev, bank_name: e.target.value }))}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                        placeholder="Ví dụ: VIETINBANK"
+                                    />
+                                </div>
+                            </div>
+                            <div className="flex gap-3 w-full justify-end border-t border-slate-100 pt-4">
+                                <button 
+                                    type="button" 
+                                    onClick={() => { setIsTeamInfoFormOpen(false); setEditingId(null); }}
+                                    className="px-6 py-3 rounded-xl font-bold text-slate-500 hover:bg-slate-100 transition text-sm whitespace-nowrap"
+                                >
+                                    Hủy
+                                </button>
+                                <button 
+                                    type="submit" 
+                                    className="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold transition text-sm whitespace-nowrap"
+                                >
+                                    Lưu lại
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            <ConfirmModal
+                isOpen={confirmDeleteTeamInfoId !== null}
+                title="Xác nhận xóa"
+                message="Bạn có chắc chắn muốn xóa thông tin tài khoản của tổ đội này? Hành động này không thể hoàn tác."
+                onConfirm={() => handleDeleteTeamInfo(confirmDeleteTeamInfoId)}
+                onCancel={() => setConfirmDeleteTeamInfoId(null)}
+                type="danger"
+            />
         </div>
     );
 }

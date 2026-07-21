@@ -435,7 +435,7 @@ export default function PartnerDebts({
                                                             </span>
                                                         );
                                                     }
-                                                    const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                    const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
                                                     return (
                                                         <button 
                                                             onClick={() => {

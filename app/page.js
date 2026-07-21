@@ -1619,7 +1619,7 @@ export default function Home() {
     };
 
     const handleDeleteTransaction = async (id) => {
-        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        const isAuthorizer = role === 'ADMIN';
         if (!isAuthorizer) {
             const tx = transactions.find(t => t.id === id);
             const amount = tx ? (tx.debit || tx.credit || 0) : 0;
@@ -1791,7 +1791,7 @@ export default function Home() {
     };
 
     const handleDeleteIncome = async (id) => {
-        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        const isAuthorizer = role === 'ADMIN';
         if (!isAuthorizer) {
             const inc = incomes.find(i => i.id === id);
             const amount = inc ? (inc.post_tax_amount || inc.amount || 0) : 0;
@@ -1993,7 +1993,7 @@ export default function Home() {
     };
 
     const handleDeleteApproval = async (id) => {
-        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        const isAuthorizer = role === 'ADMIN';
         const appReq = dnttList.find(a => a.id === id);
         const isMaterial = appReq?.doc_type === 'Đơn Vật Tư';
         const typeLabel = isMaterial ? 'đơn đặt hàng vật tư' : 'phiếu DNTT';
@@ -2405,7 +2405,7 @@ export default function Home() {
     };
 
     const handleDeleteDebt = async (id) => {
-        const isAuthorizer = role === 'ADMIN' || role === 'QS TRƯỞNG';
+        const isAuthorizer = role === 'ADMIN';
         if (!isAuthorizer) {
             const debt = partnerDebts.find(d => d.id === id);
             const amount = debt ? (debt.amount || 0) : 0;
@@ -3080,7 +3080,7 @@ export default function Home() {
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedDetailedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedDetailedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
+                {activeTab === 'history' && <HistoryTable transactions={allowedDetailedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
                 
                 {activeTab === 'input' && <InputForm transactions={allowedDetailedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
@@ -3757,7 +3757,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedDetailedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN' || role === 'QS TRƯỞNG'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
+                                <HistoryTable transactions={allowedDetailedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (
@@ -3964,7 +3964,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                     </div>
                 )}
 
-                {activeTab === 'delete-approvals' && (role === 'ADMIN' || role === 'QS TRƯỞNG') && (
+                {activeTab === 'delete-approvals' && role === 'ADMIN' && (
                     <DeleteApprovals
                         deleteRequests={deleteRequests}
                         onApprove={handleApproveDeleteRequest}
@@ -3980,6 +3980,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                         isLoading={isLoading}
                         setIsLoading={setIsLoading}
                         showToast={showToast}
+                        adminPassword={usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456'}
                     />
                 )}
             </main>
@@ -3997,6 +3998,13 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                 message={confirmModal.message} 
                 onConfirm={confirmModal.onConfirm} 
                 onCancel={() => setConfirmModal({ isOpen: false, message: '', onConfirm: null })} 
+                type={confirmModal.type}
+                title={confirmModal.title}
+                requirePassword={confirmModal.requirePassword}
+                requireReason={confirmModal.requireReason}
+                reasonLabel={confirmModal.reasonLabel}
+                reasonPlaceholder={confirmModal.reasonPlaceholder}
+                confirmText={confirmModal.confirmText}
             />
 
             <UserModal

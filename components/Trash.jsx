@@ -6,11 +6,11 @@ import ConfirmModal from '@/components/ConfirmModal';
 
 const TRASH_RETENTION_DAYS = 90;
 
-export default function Trash({ onRestore, isLoading, setIsLoading, showToast }) {
+export default function Trash({ onRestore, isLoading, setIsLoading, showToast, adminPassword = '0000' }) {
     const [trashItems, setTrashItems] = useState([]);
     const [confirmState, setConfirmState] = useState({ isOpen: false, item: null, action: '', title: '', message: '', requirePassword: false });
     const [selectedIds, setSelectedIds] = useState([]);
-    const [filters, setFilters] = useState({ type: '', date: '' });
+    const [filters, setFilters] = useState({ type: '', date: '', project: '' });
 
     const getTableName = (itemOrTable) => {
         const table = typeof itemOrTable === 'object' ? itemOrTable.original_table : itemOrTable;
@@ -85,14 +85,31 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
         return date.toISOString().slice(0, 10);
     };
 
+    const getProjectName = (item) => {
+        try {
+            const data = typeof item.record_data === 'string' ? JSON.parse(item.record_data) : item.record_data;
+            if (!data) return '-';
+            if (item.original_table === 'projects') return data.name || '-';
+            return data.project_name || data.project || data.projectName || '-';
+        } catch (e) {
+            return '-';
+        }
+    };
+
     const availableTypes = useMemo(() => {
         return [...new Set(trashItems.map(item => item.original_table).filter(Boolean))].sort();
+    }, [trashItems]);
+
+    const availableProjects = useMemo(() => {
+        const projects = trashItems.map(getProjectName).filter(name => name && name !== '-');
+        return [...new Set(projects)].sort();
     }, [trashItems]);
 
     const filteredTrashItems = useMemo(() => {
         return trashItems.filter(item => {
             if (filters.type && item.original_table !== filters.type) return false;
             if (filters.date && getDeletedDateKey(item.deleted_at) !== filters.date) return false;
+            if (filters.project && getProjectName(item) !== filters.project) return false;
             return true;
         });
     }, [trashItems, filters]);
@@ -242,7 +259,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
     };
 
     const handleEmptyTrash = async (pwd) => {
-        if (pwd !== '0000') {
+        if (pwd !== adminPassword) {
             alert('Mật khẩu không đúng!');
             return;
         }
@@ -337,7 +354,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
             {trashItems.length > 0 && (
                 <div className="mb-5 rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
                     <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                        <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-3">
+                        <div className="grid flex-1 grid-cols-1 gap-3 md:grid-cols-4">
                             <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
                                 <Filter size={16} className="text-slate-400" />
                                 <select
@@ -351,6 +368,22 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                     <option value="">Tất cả loại dữ liệu</option>
                                     {availableTypes.map(type => (
                                         <option key={type} value={type}>{getTableName(type)}</option>
+                                    ))}
+                                </select>
+                            </label>
+                            <label className="flex items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                <Filter size={16} className="text-slate-400" />
+                                <select
+                                    value={filters.project}
+                                    onChange={(e) => {
+                                        setFilters(prev => ({ ...prev, project: e.target.value }));
+                                        setSelectedIds([]);
+                                    }}
+                                    className="w-full bg-transparent text-sm font-bold text-slate-700 outline-none"
+                                >
+                                    <option value="">Tất cả công trình</option>
+                                    {availableProjects.map(proj => (
+                                        <option key={proj} value={proj}>{proj}</option>
                                     ))}
                                 </select>
                             </label>
@@ -369,7 +402,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                             <button
                                 type="button"
                                 onClick={() => {
-                                    setFilters({ type: '', date: '' });
+                                    setFilters({ type: '', date: '', project: '' });
                                     setSelectedIds([]);
                                 }}
                                 className="flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white px-3 py-2 text-sm font-black text-slate-600 hover:bg-slate-100"
@@ -389,8 +422,8 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                     action: 'deleteMany',
                                     items: selectedItems,
                                     title: 'Xóa các mục đã chọn',
-                                    message: `Bạn có chắc chắn muốn xóa vĩnh viễn ${selectedItems.length} mục đã chọn không?`,
-                                    requirePassword: false
+                                    message: `Bạn có chắc chắn muốn xóa vĩnh viễn ${selectedItems.length} mục đã chọn không? Nhập mật khẩu admin để tiếp tục:`,
+                                    requirePassword: true
                                 })}
                                 className={`rounded-xl px-3 py-2 text-xs font-black transition ${selectedItems.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
                             >
@@ -404,8 +437,8 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                     action: 'deleteMany',
                                     items: filteredTrashItems,
                                     title: 'Xóa theo bộ lọc',
-                                    message: `Bạn có chắc chắn muốn xóa vĩnh viễn ${filteredTrashItems.length} mục đang được lọc không?`,
-                                    requirePassword: false
+                                    message: `Bạn có chắc chắn muốn xóa vĩnh viễn ${filteredTrashItems.length} mục đang được lọc không? Nhập mật khẩu admin để tiếp tục:`,
+                                    requirePassword: true
                                 })}
                                 className={`rounded-xl px-3 py-2 text-xs font-black transition ${filteredTrashItems.length === 0 ? 'bg-slate-100 text-slate-400 cursor-not-allowed' : 'bg-rose-600 text-white hover:bg-rose-700'}`}
                             >
@@ -432,6 +465,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                     </button>
                                 </th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Thời gian xóa</th>
+                                <th className="p-4 font-black uppercase text-xs tracking-wider">Công trình</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider text-center">Còn lại</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Người xóa</th>
                                 <th className="p-4 font-black uppercase text-xs tracking-wider">Người đề nghị</th>
@@ -443,7 +477,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                         <tbody className="divide-y divide-slate-100">
                             {filteredTrashItems.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" className="p-8 text-center text-slate-500">{trashItems.length === 0 ? 'Thùng rác trống.' : 'Không có mục nào khớp bộ lọc.'}</td>
+                                    <td colSpan="9" className="p-8 text-center text-slate-500">{trashItems.length === 0 ? 'Thùng rác trống.' : 'Không có mục nào khớp bộ lọc.'}</td>
                                 </tr>
                             ) : (
                                 filteredTrashItems.map(item => {
@@ -463,6 +497,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                                 </button>
                                             </td>
                                             <td className="p-4 text-sm text-slate-600">{formatDateVN(item.deleted_at)}</td>
+                                            <td className="p-4 text-sm font-bold text-indigo-600">{getProjectName(item)}</td>
                                             <td className="p-4 text-center">
                                                 <span className={`inline-flex min-w-20 justify-center rounded-full px-3 py-1 text-xs font-black border ${
                                                     daysRemaining <= 3
@@ -488,8 +523,8 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                                             item,
                                                             action: 'restore',
                                                             title: 'Khôi phục dữ liệu',
-                                                            message: 'Bạn có chắc chắn muốn khôi phục dữ liệu này về vị trí ban đầu?',
-                                                            requirePassword: false
+                                                            message: 'Bạn có chắc chắn muốn khôi phục dữ liệu này về vị trí ban đầu? Nhập mật khẩu admin để tiếp tục:',
+                                                            requirePassword: true
                                                         })}
                                                         className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 p-2 rounded-lg transition font-bold text-xs flex items-center gap-1"
                                                         title="Khôi phục"
@@ -502,8 +537,8 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                                                             item,
                                                             action: 'delete',
                                                             title: 'Xóa vĩnh viễn',
-                                                            message: 'Bạn có chắc chắn muốn xóa vĩnh viễn dữ liệu này? Hành động này không thể hoàn tác.',
-                                                            requirePassword: false
+                                                            message: 'Bạn có chắc chắn muốn xóa vĩnh viễn dữ liệu này? Hành động này không thể hoàn tác. Nhập mật khẩu admin để tiếp tục:',
+                                                            requirePassword: true
                                                         })}
                                                         className="bg-red-100 hover:bg-red-200 text-red-700 p-2 rounded-lg transition font-bold text-xs flex items-center gap-1"
                                                         title="Xóa vĩnh viễn"
@@ -528,6 +563,10 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast })
                 requirePassword={confirmState.requirePassword}
                 confirmText={confirmState.action === 'empty' ? 'Xóa sạch' : (confirmState.action === 'delete' || confirmState.action === 'deleteMany') ? 'Xóa vĩnh viễn' : 'Khôi phục'}
                 onConfirm={(pwd) => {
+                    if (pwd !== adminPassword) {
+                        alert('Mật khẩu không đúng!');
+                        return;
+                    }
                     if (confirmState.action === 'empty') {
                         handleEmptyTrash(pwd);
                     } else if (confirmState.action === 'deleteMany') {

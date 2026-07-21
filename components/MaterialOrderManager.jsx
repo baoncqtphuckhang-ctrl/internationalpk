@@ -310,7 +310,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     const handleDeleteOrder = (orderId, e, reqId) => {
         if (e) e.stopPropagation();
         
-        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
         if (!isAuthorizer) {
             const order = orders.find(o => o.id === orderId);
             const recordName = `Đơn hàng vật tư ${order?.order_code || ''} công trình ${order?.project_name || ''}`;
@@ -1835,7 +1835,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                                 </span>
                                                                             );
                                                                         }
-                                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.role?.toUpperCase() === 'QS TRƯỞNG';
+                                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
                                                                         const canDelete = status === 'Draft' || status === 'Rejected' || isAuthorizer;
                                                                         if (!canDelete) return null;
                                                                         return (
