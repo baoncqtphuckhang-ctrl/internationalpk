@@ -44,7 +44,7 @@ export const matchesWarehouseInventoryItem = (t, criteria, excludeId = null) => 
 };
 
 export default function MaterialWarehouse({ currentUser, projects, showToast, realtimeVersion }) {
-    const isCHT = currentUser?.role?.toUpperCase() === 'CHỈ HUY TRƯỞNG' || currentUser?.role?.toUpperCase() === 'CHT';
+    const isCHT = ['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase());
     const [transactions, setTransactions] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
 
@@ -1118,7 +1118,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                     </tr>
                                 ) : (
                                     filteredTransactions.map((t) => {
-                                        const isLocalCHT = currentUser?.role?.toUpperCase() === 'CHT' || currentUser?.role?.toUpperCase() === 'CHỈ HUY TRƯỞNG';
+                                        const isLocalCHT = ['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase());
                                         let parsedPhase = '';
                                         let parsedNoteText = t.note || '';
                                         if (parsedNoteText) {

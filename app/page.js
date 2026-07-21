@@ -65,6 +65,50 @@ const normalizeRoleName = (value) => {
         .trim();
 };
 
+const isTabAllowed = (tabId, user, systemConfig) => {
+    if (!user) return false;
+    const role = user.role?.toUpperCase() || '';
+    const normRole = normalizeRoleName(user.role);
+    const isThuKy = role === 'THƯ KÝ';
+    const isKeToanThue = role === 'KẾ TOÁN THUẾ';
+    const canManageUsers = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(role);
+    const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(role);
+    const canViewApprovals = canManageSystem || role === 'THƯ KÝ';
+    const canInputData = canManageSystem || role === 'THƯ KÝ';
+    const canViewDashboard = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG', 'THƯ KÝ'].includes(role);
+    const canViewReports = user.canViewFinance !== false;
+    const canCreateDNTT = true;
+
+    switch (tabId) {
+        case 'home':
+            return normRole === 'QS TRUONG' || normRole === 'ADMIN';
+        case 'dashboard':
+            return canViewDashboard && !isKeToanThue;
+        case 'expense-summary':
+            return canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(role);
+        case 'history':
+            return canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(role);
+        case 'input':
+            return canInputData && !isThuKy && !isKeToanThue;
+        case 'partner-debts':
+            return (canInputData || isThuKy) && !isKeToanThue;
+        case 'materials':
+            return !isThuKy && !isKeToanThue;
+        case 'dntt-approvals':
+            return (canCreateDNTT || canViewApprovals) && !isKeToanThue;
+        case 'expected-invoices':
+            return !['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(role);
+        case 'customer-debts':
+            return canInputData || isThuKy || isKeToanThue;
+        case 'delete-approvals':
+            return role === 'ADMIN';
+        case 'employee-salary':
+            return (role === 'ADMIN' || role.startsWith('KẾ TOÁN')) && !isKeToanThue;
+        default:
+            return true;
+    }
+};
+
 const mojibakePattern = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]|�)/;
 const mojibakeArtifacts = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]|�|[¤¥§©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿])/g;
 
@@ -249,6 +293,19 @@ export default function Home() {
     }, [currentUser]);
 
     const [activeTab, setActiveTab] = useState('home');
+
+    useEffect(() => {
+        if (!currentUser) return;
+        if (!isTabAllowed(activeTab, currentUser, systemConfig)) {
+            const defaultTabs = ['home', 'dashboard', 'customer-debts', 'materials', 'dntt-approvals'];
+            for (const fallback of defaultTabs) {
+                if (isTabAllowed(fallback, currentUser, systemConfig)) {
+                    setActiveTab(fallback);
+                    break;
+                }
+            }
+        }
+    }, [currentUser, activeTab, systemConfig]);
     const [projects, setProjects] = useState([]);
     const [projectDetails, setProjectDetails] = useState({});
     const [transactions, setTransactions] = useState([]);
@@ -506,7 +563,16 @@ export default function Home() {
             await handleSaveSystemConfig(newConfig);
         }
         setCurrentUser(user);
-        setActiveTab('home');
+        
+        const defaultTabs = ['home', 'dashboard', 'customer-debts', 'materials', 'dntt-approvals'];
+        let startingTab = 'materials';
+        for (const fallback of defaultTabs) {
+            if (isTabAllowed(fallback, user, newConfig)) {
+                startingTab = fallback;
+                break;
+            }
+        }
+        setActiveTab(startingTab);
     };
 
     const logActivity = async (actionType, module, description, projectName = null) => {
@@ -3059,7 +3125,7 @@ export default function Home() {
                     </div>
                 )}
 
-                {activeTab === 'home' && (
+                {activeTab === 'home' && isTabAllowed('home', currentUser, systemConfig) && (
                     <HomeDashboard
                         currentUser={currentUser}
                         projects={allowedProjects}
@@ -3140,11 +3206,11 @@ export default function Home() {
                             <button onClick={() => setMaterialSubTab('order')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
                             <button onClick={() => setMaterialSubTab('manage-ho')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage-ho' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Order Hộ</button>
-                            {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
+                            {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
                                 <button onClick={() => setMaterialSubTab('warehouse')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
                             )}
                         </div>
-                        {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
+                        {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
                             <MaterialWarehouse 
                                 currentUser={currentUser} 
                                 projects={allowedProjects} 
@@ -3857,7 +3923,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                         ) : (
                                                             <span className="flex items-center gap-1 text-slate-500 text-xs font-medium"><span className="w-2 h-2 rounded-full bg-slate-400"></span> Offline {u.last_online ? `(${new Date(u.last_online).toLocaleString('vi-VN')})` : ''}</span>
                                                         )}
-                                                        {u.role === 'CHT' && (
+                                                        {['CHT', 'CHỈ HUY TRƯỞNG', 'GS', 'GIÁM SÁT'].includes(u.role?.toUpperCase()) && (
                                                             <label className="flex items-center cursor-pointer group">
                                                                 <div className="relative">
                                                                     <input type="checkbox" className="sr-only" checked={u.canViewFinance !== false} onChange={async () => {

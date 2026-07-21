@@ -646,19 +646,13 @@ export default function ApprovalWorkflow({
                                         <th className="border border-black p-1 text-center w-32">Ghi chú</th>
                                     </tr>
                                 ) : (
-                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center w-32">Mã CK</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
+                                    <tr className="bg-slate-50"><th className="border border-black p-1 text-center w-12">STT</th><th className="border border-black p-1 text-center">Nội dung</th><th className="border border-black p-1 text-center w-32">Thành tiền</th><th className="border border-black p-1 text-center w-20">Ghi chú</th></tr>
                                 )}
                             </thead>
                             <tbody>
                                 {dnttData.items.map((item, index) => (
                                     <tr key={item.id} className="group/row">
                                         <td className="border border-black p-1 text-center">{index + 1}</td>
-
-                                        {(dnttData.docType !== 'TTL' && dnttData.docType !== 'DNTUCH') && (
-                                            <td className="border border-black p-1">
-                                                <MaChiSelect value={item.maChi} onChange={(val) => handleDnttItemChange(index, 'maChi', val)} />
-                                            </td>
-                                        )}
 
                                         <td className="border border-black p-1"><textarea value={item.content} onChange={(e) => handleDnttItemChange(index, 'content', e.target.value)} className="w-full outline-none bg-transparent resize-y min-h-[40px] p-1" placeholder={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? "Tên đối tượng..." : "Nhập chi tiết..."} /></td>
                                         <td className="border border-black p-1"><input type="text" value={item.amount ? formatCurrency(item.amount) : ''} onChange={(e) => handleDnttItemChange(index, 'amount', Math.max(0, parseVietnameseNumber(e.target.value) || 0))} className="w-full outline-none text-right bg-transparent font-medium" placeholder="0" /></td>
@@ -689,8 +683,8 @@ export default function ApprovalWorkflow({
                                         )}
                                     </tr>
                                 ))}
-                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 7 : 5} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'đối tượng' : 'dòng chi phí'}</td></tr>
-                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 2 : 3} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 4 : 1} className="border border-black p-1"></td></tr>
+                                <tr><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 7 : 4} className="border border-black p-1 text-center bg-gray-50 hover:bg-gray-100 cursor-pointer text-blue-600 transition font-sans" onClick={addDnttItem}>+ Thêm {(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 'đối tượng' : 'dòng chi phí'}</td></tr>
+                                <tr><td colSpan={2} className="border border-black p-1 font-bold text-center">Tổng cộng</td><td className="border border-black p-1 font-bold text-right text-base">{dnttTotalAmount > 0 ? formatCurrency(dnttTotalAmount) : '-'}</td><td colSpan={(dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH') ? 4 : 1} className="border border-black p-1"></td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -705,7 +699,7 @@ export default function ApprovalWorkflow({
                             <div className="overflow-x-auto">
                                 <table className={`w-full border-collapse border border-black mb-4 ${dnttData.paymentMethod === 'tien_mat' ? 'opacity-30' : ''} min-w-[650px]`}>
                                     <thead><tr className="bg-slate-50 text-center font-bold"><th className="border border-black p-1 w-1/4">Tên chủ tài khoản</th><th className="border border-black p-1 w-1/4">Số tài khoản</th><th className="border border-black p-1 w-1/4">Ngân hàng</th><th className="border border-black p-1 w-1/4">Chi nhánh</th></tr></thead>
-                                    <tbody><tr><td className="border border-black p-1"><input type="text" name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center uppercase" placeholder="NGUYEN VAN A" /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" placeholder="123456789" /></td><td className="border border-black p-1">
+                                    <tbody><tr><td className="border border-black p-1"><textarea name="bankAccountName" value={dnttData.bankAccountName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center uppercase resize-none text-sm font-medium py-1 break-all" placeholder="NGUYEN VAN A" rows={2} /></td><td className="border border-black p-1"><input type="text" name="bankAccountNumber" value={dnttData.bankAccountNumber} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center font-sans font-bold" placeholder="123456789" /></td><td className="border border-black p-1">
                                         <input type="text" list="bank-list-dntt" name="bankName" value={dnttData.bankName} onChange={handleDnttChange} className="w-full outline-none bg-transparent text-center text-[13px] text-slate-700" placeholder="-- Chọn / Nhập NH --" />
                                         <datalist id="bank-list-dntt">
                                             {BANK_OPTIONS.map(b => <option key={b.value} value={b.label} />)}
@@ -1469,7 +1463,7 @@ export default function ApprovalWorkflow({
                                                         <tr key={index}>
                                                             <td className="border border-black p-2 text-center">{index + 1}</td>
                                                             <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
-                                                            <td className="border border-black p-2 uppercase">{item.bankAccountName || ''}</td>
+                                                            <td className="border border-black p-2 uppercase break-all">{item.bankAccountName || ''}</td>
                                                             <td className="border border-black p-2 font-bold">{item.bankAccountNumber || ''}</td>
                                                             <td className="border border-black p-2">{getDisplayBankName(item.bankName)}</td>
                                                             <td className="border border-black p-2 text-right font-medium">
@@ -1564,7 +1558,7 @@ export default function ApprovalWorkflow({
                                                         </thead>
                                                         <tbody>
                                                             <tr className="text-center">
-                                                                <td className="border border-black p-2">{printItem.parsed.bankAccountName || '-'}</td>
+                                                                <td className="border border-black p-2 break-all uppercase">{printItem.parsed.bankAccountName || '-'}</td>
                                                                 <td className="border border-black p-2 font-bold">{printItem.parsed.bankAccountNumber || '-'}</td>
                                                                 <td className="border border-black p-2">{getDisplayBankName(printItem.parsed.bankName)}</td>
                                                                 <td className="border border-black p-2">{printItem.parsed.bankBranch || '-'}</td>

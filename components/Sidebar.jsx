@@ -128,15 +128,15 @@ export default function Sidebar({
     };
 
     const menuItems = [
-        { id: 'home', label: 'Trang Chủ', icon: Home, show: true },
+        { id: 'home', label: 'Trang Chủ', icon: Home, show: normalizeRoleName(currentUser?.role) === 'QS TRUONG' || normalizeRoleName(currentUser?.role) === 'ADMIN' },
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard && !isKeToanThue },
-        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isKeToanThue },
-        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports && !isKeToanThue },
+        { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(currentUser?.role?.toUpperCase()) },
+        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(currentUser?.role?.toUpperCase()) },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy && !isKeToanThue, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
         { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: (canInputData || isThuKy) && !isKeToanThue, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
         { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && !isKeToanThue, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isKeToanThue, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
-        { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: currentUser?.role?.toUpperCase() !== 'CHỈ HUY TRƯỞNG' && currentUser?.role?.toUpperCase() !== 'CHT' },
+        { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: !['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase()) },
         { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy || isKeToanThue },
         { id: 'delete-approvals', label: 'Duyệt Xóa', icon: Trash2, show: currentUser?.role?.toUpperCase() === 'ADMIN', badge: deleteRequests.length > 0 ? deleteRequests.length : null },
         { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: (currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN')) && !isKeToanThue },
@@ -146,6 +146,14 @@ export default function Sidebar({
         const item = menuItems.find(m => m.id === id);
         if (item && item.locked) {
             alert('Thử lại sau');
+            return;
+        }
+        if (id === 'home' && !menuItems.find(m => m.id === 'home')?.show) {
+            const firstVisibleItem = menuItems.find(m => m.show);
+            if (firstVisibleItem) {
+                setActiveTab(firstVisibleItem.id);
+            }
+            setIsMobileMenuOpen(false);
             return;
         }
         setActiveTab(id);
