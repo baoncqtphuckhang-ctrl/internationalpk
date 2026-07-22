@@ -69,13 +69,13 @@ const DEFAULT_FORMULAS = [
         id: 'uncollectedProfit',
         name: 'Lợi nhuận chưa thu',
         formula: 'TN đã thu trước VAT (có T.Ư) - Tổng chi phí',
-        description: 'Số tiền chênh lệch còn lại tính đến thời điểm hiện tại, sau khi lấy phần thực nhận đã thu (quy trước thuế) trừ đi toàn bộ tổng chi phí đầu tư.'
+        description: 'Lấy phần đã thu sau khi quy trước VAT trừ đi tổng chi phí.'
     },
     {
         id: 'profit',
         name: 'Lợi nhuận',
-        formula: 'TN trước VAT (có T.Ư) - Tổng chi phí',
-        description: 'Lợi nhuận dự kiến của công trình sau khi lấy tổng toàn bộ thực nhận (cả chưa thu và đã thu) quy trước thuế trừ đi tổng chi phí đầu tư.'
+        formula: 'TN đã thu trước VAT (có T.Ư) + TN chưa thu trước VAT - Tổng chi phí',
+        description: 'Lợi nhuận dự kiến của công trình, tính bằng tổng phần đã thu và chưa thu sau khi quy trước VAT, rồi trừ tổng chi phí.'
     },
     {
         id: 'totalActualIncome',

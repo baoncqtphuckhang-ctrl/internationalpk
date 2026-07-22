@@ -1,19 +1,28 @@
 'use client';
 
 import React, { useState, useMemo } from 'react';
-import { PieChart, Download, Copy, Search, Printer, EyeOff } from 'lucide-react';
+import { PieChart, Download, Copy, Search, Printer, EyeOff, Eye } from 'lucide-react';
 import { formatCurrency, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function ExpenseSummary({ projects, projectDetails = {}, transactions, dashboardData = [], handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
     const [filterText, setFilterText] = useState('');
     const [hiddenProjects, setHiddenProjects] = useState([]);
+    const [showHiddenList, setShowHiddenList] = useState(false);
 
     const toggleHideProject = (projectName) => {
-        setHiddenProjects(prev => 
-            prev.includes(projectName) 
-                ? prev.filter(p => p !== projectName)
-                : [...prev, projectName]
-        );
+        setHiddenProjects(prev => {
+            const isHidden = prev.includes(projectName);
+            if (!isHidden) {
+                setShowHiddenList(true);
+                return [...prev, projectName];
+            } else {
+                const next = prev.filter(p => p !== projectName);
+                if (next.length === 0) {
+                    setShowHiddenList(false);
+                }
+                return next;
+            }
+        });
     };
 
     const renderExpense = (val) => {
@@ -114,18 +123,30 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
 
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden" style={{ height: 'calc(100vh - 160px)', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
                 <div className="p-4 border-b bg-slate-50 flex flex-col gap-3 flex-shrink-0">
-                    <div className="flex items-center gap-3">
-                        <Search size={18} className="text-slate-400" />
-                        <input 
-                            type="text" 
-                            value={filterText}
-                            onChange={(e) => setFilterText(e.target.value)}
-                            placeholder="Tìm kiếm công trình..."
-                            className="bg-transparent outline-none font-bold text-slate-700 w-full"
-                        />
+                    <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 flex-1">
+                            <Search size={18} className="text-slate-400" />
+                            <input 
+                                type="text" 
+                                value={filterText}
+                                onChange={(e) => setFilterText(e.target.value)}
+                                placeholder="Tìm kiếm công trình..."
+                                className="bg-transparent outline-none font-bold text-slate-700 w-full"
+                            />
+                        </div>
+                        {hiddenProjects.length > 0 && (
+                            <button 
+                                onClick={() => setShowHiddenList(prev => !prev)}
+                                className="flex items-center gap-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 text-xs px-2.5 py-1.5 rounded-lg font-bold transition-all shadow-sm"
+                                title={showHiddenList ? "Ẩn danh sách đã ẩn" : "Hiện danh sách đã ẩn"}
+                            >
+                                {showHiddenList ? <Eye size={14} /> : <EyeOff size={14} />}
+                                <span>Đã ẩn ({hiddenProjects.length})</span>
+                            </button>
+                        )}
                     </div>
-                    {hiddenProjects.length > 0 && (
-                        <div className="flex items-center gap-2 flex-wrap mt-1">
+                    {hiddenProjects.length > 0 && showHiddenList && (
+                        <div className="flex items-center gap-2 flex-wrap mt-1 animate-in slide-in-from-top-1 duration-200">
                             <span className="text-xs text-slate-500 font-medium">Đã ẩn:</span>
                             {hiddenProjects.map(p => (
                                 <span key={p} onClick={() => toggleHideProject(p)} className="inline-flex items-center gap-1 bg-white border border-slate-200 shadow-sm text-slate-700 text-[10px] px-2 py-1 rounded-md font-bold cursor-pointer hover:bg-slate-100 transition-colors">

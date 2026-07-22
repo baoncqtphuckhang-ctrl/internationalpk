@@ -27,6 +27,14 @@ body {
   text-rendering: optimizeLegibility;
 }
 
+@media (max-width: 767px) {
+  .mobile-scale-shell {
+    width: 200%;
+    min-height: 200vh;
+    zoom: 0.5;
+  }
+}
+
 table th,
 table td {
   vertical-align: middle;

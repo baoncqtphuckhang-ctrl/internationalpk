@@ -805,16 +805,31 @@ export default function Home() {
     };
 
     const fetchTransactionsData = async () => {
-        const { data, error } = await supabase
-            .from('transactions')
-            .select('id, project_name, accounting_date, code, debit, credit');
-        
-        if (error) {
-            console.error('Fetch transactions error:', error);
-            throw error;
+        let allTrans = [];
+        let page = 0;
+        const pageSize = 1000;
+
+        while (true) {
+            const { data, error } = await supabase
+                .from('transactions')
+                .select('id, project_name, accounting_date, code, debit, credit')
+                .order('accounting_date', { ascending: false })
+                .order('id', { ascending: true })
+                .range(page * pageSize, (page + 1) * pageSize - 1);
+
+            if (error) {
+                console.error('Fetch transactions error:', error);
+                throw error;
+            }
+
+            if (!data || data.length === 0) break;
+
+            allTrans = [...allTrans, ...data];
+            if (data.length < pageSize) break;
+            page++;
         }
 
-        const normalizedTransData = (data || []).map(t => ({
+        const normalizedTransData = allTrans.map(t => ({
             ...t,
             code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
         }));
@@ -2818,8 +2833,9 @@ export default function Home() {
             const projIncomes = allowedIncomes.filter(i => i.project_name === name);
             const totalSanLuong = projIncomes.reduce((sum, i) => sum + (i.amount || 0), 0);
             const actInc = Math.round(totalSanLuong);
-            const remainingCostRow = expectedCosts.find(t => t.project_name === name);
-            const remainingCost = remainingCostRow ? remainingCostRow.debit : 0;
+            const remainingCost = expectedCosts
+                .filter(t => t.project_name === name)
+                .reduce((sum, t) => sum + Math.abs((t.debit || 0) - (t.credit || 0)), 0);
             const advanceValue = details.advanceValue || 0;
             
             let calculatedDebtToCollect = 0;
@@ -2909,11 +2925,11 @@ export default function Home() {
             const receivedPhaseBeforeVat = Math.round(totalPhaseReceived / 1.08);
             const unreceivedPhaseBeforeVat = Math.round(totalUnreceivedPhase / 1.08);
             
-            const totalAllBeforeVat = Math.round((totalReceivedAmount + totalUnreceivedPhase) / 1.08);
+            const totalAllBeforeVat = totalReceivedBeforeVat + unreceivedPhaseBeforeVat;
             
             const totalExp = exp + remainingCost;
-            const uncollectedProfit = totalReceivedBeforeVat - totalExp;
             const profit = totalAllBeforeVat - totalExp;
+            const uncollectedProfit = totalReceivedBeforeVat - totalExp;
 
             return {
                 project: name,
@@ -3077,7 +3093,7 @@ export default function Home() {
     if (!currentUser) return <LoginForm onLogin={handleLogin} usersList={usersList} systemConfig={systemConfig} />;
 
     return (
-        <div className="min-h-screen md:h-screen w-full overflow-y-auto md:overflow-hidden bg-slate-100 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
+        <div className="mobile-scale-shell min-h-screen md:h-screen w-full overflow-y-auto md:overflow-y-hidden md:overflow-x-auto bg-slate-100 flex flex-col md:flex-row font-sans text-slate-800 relative print:block print:h-auto print:overflow-visible">
             {toast.show && (
                 <div className={`fixed top-4 right-4 z-[9999] px-6 py-3 rounded-lg shadow-2xl flex items-center gap-3 animate-in slide-in-from-right font-bold text-white ${toast.type === 'error' ? 'bg-red-600' : 'bg-green-600'}`}>
                     {toast.type === 'error' ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
@@ -3118,7 +3134,7 @@ export default function Home() {
                 usersList={usersList}
             />
 
-            <main className="flex-1 min-w-0 p-4 md:p-8 md:overflow-y-auto md:overflow-x-hidden print:block print:p-0 print:m-0 print:overflow-visible">
+            <main className="flex-1 min-w-0 p-4 md:p-8 md:overflow-y-auto md:overflow-x-auto print:block print:p-0 print:m-0 print:overflow-visible">
                 {isLoading && (
                     <div className="fixed inset-0 bg-white/30 z-[200] flex items-center justify-center backdrop-blur-sm">
                         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
