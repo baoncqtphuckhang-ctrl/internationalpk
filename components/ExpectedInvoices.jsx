@@ -1898,11 +1898,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (activeSubTab !== 'team' && activeSubTab !== 'history_team') {
             return {
                 rowCount: 10,
-                fontSize: 8.2,
-                headerFontSize: 8.2,
-                summaryFontSize: 9.2,
-                cellPaddingY: 3,
-                cellPaddingX: 6,
+                fontSize: 10.5,
+                headerFontSize: 11.5,
+                summaryFontSize: 11.5,
+                cellPaddingY: 6,
+                cellPaddingX: 8,
             };
         }
 
@@ -1933,15 +1933,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }, 1); // Table header
 
         if (rowCount >= 58) {
-            return { rowCount, fontSize: 5.9, headerFontSize: 6.4, summaryFontSize: 7.2, cellPaddingY: 1, cellPaddingX: 4 };
+            return { rowCount, fontSize: 9.5, headerFontSize: 10.5, summaryFontSize: 10.5, cellPaddingY: 4, cellPaddingX: 6 };
         }
         if (rowCount >= 48) {
-            return { rowCount, fontSize: 6.4, headerFontSize: 6.8, summaryFontSize: 7.7, cellPaddingY: 1, cellPaddingX: 4 };
+            return { rowCount, fontSize: 10.0, headerFontSize: 11.0, summaryFontSize: 11.0, cellPaddingY: 5, cellPaddingX: 6 };
         }
         if (rowCount >= 40) {
-            return { rowCount, fontSize: 7.0, headerFontSize: 7.4, summaryFontSize: 8.3, cellPaddingY: 2, cellPaddingX: 5 };
+            return { rowCount, fontSize: 10.5, headerFontSize: 11.5, summaryFontSize: 11.5, cellPaddingY: 6, cellPaddingX: 8 };
         }
-        return { rowCount, fontSize: 8.2, headerFontSize: 8.2, summaryFontSize: 9.2, cellPaddingY: 3, cellPaddingX: 6 };
+        return { rowCount, fontSize: 11.0, headerFontSize: 12.0, summaryFontSize: 12.0, cellPaddingY: 7, cellPaddingX: 8 };
     }, [activeSubTab, filteredInvoices, collapsedPhases, getPrintableTeamRows]);
 
     const customerDebts = useMemo(() => {
@@ -2160,12 +2160,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const customerDebtLayout = useMemo(() => {
         const count = visibleCustomerDebtColumns.length || 1;
         if (count <= 6) {
-            return { minWidth: 980, fontSize: '14px', headerFontSize: '13px', cellPaddingX: '20px', cellPaddingY: '14px' };
+            return { minWidth: 980, fontSize: '13px', headerFontSize: '13px', cellPaddingX: '14px', cellPaddingY: '10px' };
         }
         if (count <= 8) {
-            return { minWidth: 1180, fontSize: '13px', headerFontSize: '12px', cellPaddingX: '16px', cellPaddingY: '13px' };
+            return { minWidth: 1180, fontSize: '12px', headerFontSize: '12.5px', cellPaddingX: '12px', cellPaddingY: '9px' };
         }
-        return { minWidth: 1450, fontSize: '12px', headerFontSize: '11px', cellPaddingX: '12px', cellPaddingY: '12px' };
+        return { minWidth: 1450, fontSize: '11px', headerFontSize: '12px', cellPaddingX: '10px', cellPaddingY: '8px' };
     }, [visibleCustomerDebtColumns.length]);
 
     const toggleCustomerDebtColumn = (key) => {
@@ -2314,7 +2314,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         <div className="w-full mx-auto animate-in fade-in duration-500 font-sans text-slate-800 print:w-full print:max-w-none print:bg-white print:text-black">
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
-                    @page { size: A3 landscape; margin: 15mm; }
+                    @page { margin: 8mm 6mm; }
                     body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: white !important; }
                     .print-table-container { overflow: visible !important; max-height: none !important; }
                 }
@@ -3102,10 +3102,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         key={col.key}
                                         style={{
                                             width: ({
-                                                stt: '4%', name: '20%', expected: '10%', actual: '10%', remaining: '10%',
-                                                dueDate: '9%', overdue: '8%', invoiceNumber: '9%', invoiceDate: '9%',
-                                                contractNumber: '14%', documentNumber: '8%'
-                                            })[col.key] || '9%'
+                                                stt: '4%', name: '18%', phase: '9%', expected: '10%', actual: '10%', remaining: '10%',
+                                                dueDate: '8%', status: '6%', invoiceNo: '8%', invoiceDate: '7%',
+                                                contractNo: '10%', voucherNo: '6%'
+                                            })[col.key] || '8%'
                                         }}
                                     />
                                 ))}

@@ -301,6 +301,49 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         return new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(val);
     };
 
+    const calculateMaterialSubtotal = (categories = []) => {
+        return (Array.isArray(categories) ? categories : []).reduce((total, cat) => {
+            const items = Array.isArray(cat?.items) ? cat.items : [];
+            return total + items.reduce((sum, item) => {
+                return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0));
+            }, 0);
+        }, 0);
+    };
+
+    const calculateMaterialDisplaySubtotal = (categories = [], request = null) => {
+        let globalItemsList = [];
+        if (request && (request.status === 'Accounted' || request.total_amount > 0)) {
+            try {
+                globalItemsList = JSON.parse(request.reason).items || [];
+            } catch (e) { }
+        }
+
+        return (Array.isArray(categories) ? categories : []).reduce((total, cat) => {
+            const items = Array.isArray(cat?.items) ? cat.items : [];
+            return total + items.reduce((sum, item) => {
+                const qty = parseFloat(item.quantity) || 0;
+                const matched = globalItemsList.length > 0
+                    ? globalItemsList.find(ai => ai?.content?.includes(item?.name || ''))
+                    : null;
+                if (matched) return sum + matched.amount;
+                return sum + ((parseFloat(item.price) || 0) * qty);
+            }, 0);
+        }, 0);
+    };
+
+    const calculateTaxTotals = (subtotal = 0) => {
+        const vat = Math.round((parseFloat(subtotal) || 0) * 0.08);
+        return {
+            subtotal: parseFloat(subtotal) || 0,
+            vat,
+            totalAfterTax: (parseFloat(subtotal) || 0) + vat
+        };
+    };
+
+    const calculateMaterialTotals = (categories = []) => {
+        return calculateTaxTotals(calculateMaterialSubtotal(categories));
+    };
+
     const handleSelectOrder = (order) => {
         const req = getMatchedRequest(order);
         setSelectedOrder(order);
@@ -1210,6 +1253,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
         // Create table HTML for Excel download
         let rowsHtml = '';
         const orderItems = Array.isArray(orderData.items) ? orderData.items : [];
+        const orderTotals = calculateMaterialTotals(orderItems);
 
         orderItems.forEach(cat => {
             const currentCatItems = Array.isArray(cat?.items) ? cat.items : [];
@@ -1335,9 +1379,21 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     ${rowsHtml}
                     
                     <tr style="height: 40px;">
-                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng trước thuế:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                            ${formatCurrency(orderTotals.subtotal)}
+                        </td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Thuế VAT (8%):</td>
                         <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
-                            ${formatCurrency(orderItems.reduce((total, cat) => total + (Array.isArray(cat?.items) ? cat.items : []).reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
+                            ${formatCurrency(orderTotals.vat)}
+                        </td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng sau thuế:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                            ${formatCurrency(orderTotals.totalAfterTax)}
                         </td>
                     </tr>
                     
@@ -2329,32 +2385,36 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                         });
                                     })()}
 
-                                    {/* Grand Total Row */}
-                                    <tr className={`font-bold border-t-2 border-black text-base ${hidePriceForPrint ? 'print:hidden' : ''}`}>
-                                        <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng cộng:</td>
-                                        <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-blue-800">
-                                            {formatCurrency(
-                                                (Array.isArray(selectedOrder?.items) ? selectedOrder.items : []).reduce((total, cat) => {
-                                                    let globalItemsList = [];
-                                                    if (matchedRequest && (matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0)) {
-                                                        try {
-                                                            globalItemsList = JSON.parse(matchedRequest.reason).items || [];
-                                                        } catch (e) { }
-                                                    }
-                                                    return total + (Array.isArray(cat?.items) ? cat.items : []).reduce((sum, item) => {
-                                                        const qty = parseFloat(item.quantity) || 0;
-                                                        let matched = null;
-                                                        if (globalItemsList.length > 0) {
-                                                            matched = globalItemsList.find(ai => ai?.content?.includes(item?.name || ''));
-                                                        }
-                                                        if (matched) return sum + matched.amount;
-                                                        return sum + (parseFloat(item.price) || 0) * qty;
-                                                    }, 0);
-                                                }, 0)
-                                            )}
-                                        </td>
-                                        <td className="px-4 py-3"></td>
-                                    </tr>
+                                    {/* Tax Total Rows */}
+                                    {(() => {
+                                        const subtotal = calculateMaterialDisplaySubtotal(Array.isArray(selectedOrder?.items) ? selectedOrder.items : [], matchedRequest);
+                                        const totals = calculateTaxTotals(subtotal);
+                                        return (
+                                            <>
+                                                <tr className={`font-bold border-t-2 border-black text-base ${hidePriceForPrint ? 'print:hidden' : ''}`}>
+                                                    <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng trước thuế:</td>
+                                                    <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-blue-800">
+                                                        {formatCurrency(totals.subtotal)}
+                                                    </td>
+                                                    <td className="px-4 py-3"></td>
+                                                </tr>
+                                                <tr className={`font-bold text-base ${hidePriceForPrint ? 'print:hidden' : ''}`}>
+                                                    <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Thuế VAT (8%):</td>
+                                                    <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-red-600">
+                                                        {formatCurrency(totals.vat)}
+                                                    </td>
+                                                    <td className="px-4 py-3"></td>
+                                                </tr>
+                                                <tr className={`font-bold text-base ${hidePriceForPrint ? 'print:hidden' : ''}`}>
+                                                    <td colSpan="6" className="px-4 py-3 border-r border-black text-right uppercase">Tổng sau thuế:</td>
+                                                    <td className="px-4 py-3 border-r border-black text-right font-bold text-lg text-red-600">
+                                                        {formatCurrency(totals.totalAfterTax)}
+                                                    </td>
+                                                    <td className="px-4 py-3"></td>
+                                                </tr>
+                                            </>
+                                        );
+                                    })()}
                                 </tbody>
                             </table>
                         </div>

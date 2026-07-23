@@ -681,9 +681,12 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             </div>
 
             {/* Bảng Dữ Liệu */}
-            <div className="bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden">
-                <div className="overflow-x-auto overflow-y-auto max-h-[calc(100vh-300px)]">
-                    <table id="customer-debts-table" className="w-full text-left border-collapse" style={{ minWidth: `${invoiceTableLayout.minWidth}px` }}>
+            <div className="expected-print-report bg-white rounded-3xl shadow-sm border border-slate-200 overflow-hidden print:rounded-none print:border-none print:shadow-none print:overflow-visible">
+                <div className="expected-print-scroll overflow-x-auto overflow-y-auto max-h-[calc(100vh-300px)] print:overflow-visible print:max-h-none">
+                    <div className="expected-print-title">
+                        BẢNG QUẢN LÝ HÓA ĐƠN VÀ THU CÔNG NỢ
+                    </div>
+                    <table id="customer-debts-table" className="w-full text-left border-collapse print:w-full print:min-w-0" style={{ minWidth: `${invoiceTableLayout.minWidth}px` }}>
                         <thead>
                             <tr className="bg-slate-900 text-white border-b border-slate-200 sticky top-0 z-10 text-xs font-semibold uppercase tracking-wider text-slate-500">
                                 {visibleInvoiceColumns.map(col => (
@@ -752,6 +755,20 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                             )}
                         </tbody>
                     </table>
+                    <div className="expected-print-signatures hidden">
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">NGƯỜI LẬP BIỂU</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">KẾ TOÁN TRƯỞNG</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                        <div className="expected-print-signature-box">
+                            <div className="expected-print-signature-title">GIÁM ĐỐC</div>
+                            <div className="expected-print-signature-space"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
             <ConfirmModal 

@@ -164,14 +164,14 @@ table td {
 @media print {
   @page {
     size: A3 landscape;
-    margin: 15mm;
+    margin: 10mm;
   }
 
   body {
     background: #ffffff !important;
     color: #000000 !important;
     font-family: 'Times New Roman', Times, serif !important;
-    font-size: 13pt !important;
+    font-size: 11pt !important;
     -webkit-print-color-adjust: exact;
     print-color-adjust: exact;
     display: block !important;
@@ -228,7 +228,7 @@ table td {
 
   .expected-print-title {
     display: block !important;
-    margin: 0 0 5mm 0 !important;
+    margin: 0 0 6mm 0 !important;
     text-align: center !important;
     font-family: 'Times New Roman', Times, serif !important;
     font-size: 18pt !important;
@@ -238,10 +238,14 @@ table td {
     color: #000000 !important;
   }
 
-  #expected-invoices-table {
+  #expected-invoices-table,
+  #customer-debts-table {
     width: 100% !important;
     min-width: 0 !important;
-    height: 220mm !important;
+    max-width: 100% !important;
+    height: auto !important;
+    max-height: none !important;
+    overflow: visible !important;
     border: 1px solid #9ca3af !important;
     outline: 1px solid #9ca3af !important;
     outline-offset: -1px !important;
@@ -251,51 +255,59 @@ table td {
     break-inside: auto !important;
   }
 
-  #expected-invoices-table thead {
+  #expected-invoices-table thead,
+  #customer-debts-table thead {
     display: table-header-group !important;
   }
 
-  #expected-invoices-table tbody {
+  #expected-invoices-table tbody,
+  #customer-debts-table tbody {
     display: table-row-group !important;
   }
 
-  #expected-invoices-table tr {
+  #expected-invoices-table tr,
+  #customer-debts-table tr {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     border-left: 0 !important;
     border-right: 0 !important;
+    height: auto !important;
   }
 
   #expected-invoices-table.expected-team-print-table tr {
-    height: calc(630mm / var(--row-count, 20)) !important;
+    height: auto !important;
   }
 
   #expected-invoices-table th,
-  #expected-invoices-table td {
-    padding: var(--print-cell-padding-y, 3px) var(--print-cell-padding-x, 6px) !important;
-    font-size: var(--print-font-size, 8.2pt) !important;
-    line-height: 1.12 !important;
+  #expected-invoices-table td,
+  #customer-debts-table th,
+  #customer-debts-table td {
+    padding: var(--print-cell-padding-y, 6px) var(--print-cell-padding-x, 8px) !important;
+    font-size: var(--print-font-size, 10pt) !important;
+    line-height: 1.2 !important;
     white-space: normal !important;
     vertical-align: middle !important;
+    word-break: break-word !important;
   }
 
-  #expected-invoices-table th {
+  #expected-invoices-table th,
+  #customer-debts-table th {
     height: auto !important;
     text-align: center !important;
     font-weight: 800 !important;
-    font-size: var(--print-header-font-size, 8.2pt) !important;
+    font-size: var(--print-header-font-size, 11pt) !important;
   }
 
   #expected-invoices-table.expected-team-print-table thead th {
-    padding-top: 5px !important;
-    padding-bottom: 5px !important;
-    line-height: 1.15 !important;
+    padding-top: 6px !important;
+    padding-bottom: 6px !important;
+    line-height: 1.2 !important;
     vertical-align: middle !important;
     text-align: center !important;
   }
 
   #expected-invoices-table.expected-team-print-table thead tr {
-    min-height: 9mm !important;
+    min-height: 10mm !important;
   }
 
   #expected-invoices-table.expected-team-print-table thead th span {
@@ -305,37 +317,44 @@ table td {
     margin: 0 auto !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table {
+  #expected-invoices-table.expected-customer-debt-print-table,
+  #customer-debts-table {
     height: auto !important;
     min-width: 100% !important;
     width: 100% !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table thead th {
-    padding-top: 14px !important;
-    padding-bottom: 14px !important;
-    font-size: 15pt !important;
-    line-height: 1.25 !important;
+  #expected-invoices-table.expected-customer-debt-print-table thead th,
+  #customer-debts-table thead th {
+    padding: 7px 6px !important;
+    font-size: 11pt !important;
+    line-height: 1.2 !important;
     text-align: center !important;
     vertical-align: middle !important;
+    word-break: break-word !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table thead tr {
-    min-height: 16mm !important;
+  #expected-invoices-table.expected-customer-debt-print-table thead tr,
+  #customer-debts-table thead tr {
+    min-height: 10mm !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table tbody td {
-    font-size: 13.5pt !important;
-    padding-top: 13px !important;
-    padding-bottom: 13px !important;
+  #expected-invoices-table.expected-customer-debt-print-table tbody td,
+  #customer-debts-table tbody td {
+    font-size: 10pt !important;
+    padding: 6px 6px !important;
+    line-height: 1.2 !important;
+    word-break: break-word !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures {
-    margin-top: 15mm !important;
+  #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures,
+  #customer-debts-table ~ .expected-print-signatures {
+    margin-top: 12mm !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures .expected-print-signature-title {
-    font-size: 14pt !important;
+  #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures .expected-print-signature-title,
+  #customer-debts-table ~ .expected-print-signatures .expected-print-signature-title {
+    font-size: 11.5pt !important;
   }
 
   #expected-invoices-table.expected-team-print-table colgroup col:nth-child(1) { width: 3% !important; }

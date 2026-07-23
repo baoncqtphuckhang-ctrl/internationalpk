@@ -1,4 +1,5 @@
 'use client';
+/* eslint-disable react/no-unescaped-entities */
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -6,6 +7,13 @@ import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
 export default function ProjectManager({ currentUser, projects, projectDetails, onUpsertProject, onDeleteProject, isLoading, usersList = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
+    const normalizedRole = (currentUser?.role || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase()
+        .trim();
+    const canCreateProject = normalizedRole === 'ADMIN' || normalizedRole === 'QS TRUONG' || (normalizedRole.startsWith('QS TR') && normalizedRole.endsWith('NG'));
     const [isAdding, setIsAdding] = useState(false);
     const [editingProject, setEditingProject] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -101,6 +109,10 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
 
     const handleSubmit = async (e) => {
         e.preventDefault();
+        if (!editingProject && !canCreateProject) {
+            alert('Chỉ Admin hoặc QS Trưởng mới có quyền thêm công trình mới!');
+            return;
+        }
         const saved = await onUpsertProject(formData, !!editingProject);
         if (!saved) return;
         setIsAdding(false);
@@ -165,7 +177,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                     </h2>
                     <p className="text-slate-500 text-sm mt-1">Quản lý danh sách dự án và thông tin hợp đồng cơ bản.</p>
                 </div>
-                <button 
+                {canCreateProject && <button 
                     onClick={() => {
                         setEditingProject(null);
                         setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
@@ -174,7 +186,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
                 >
                     <Plus size={18} /> Thêm công trình
-                </button>
+                </button>}
             </header>
 
             {isAdding && (

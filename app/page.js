@@ -1430,6 +1430,12 @@ export default function Home() {
     };
 
     const handleUpsertProject = async (data, isEdit) => {
+        const currentRoleName = normalizeRoleName(currentUser?.role);
+        const canCreateProject = currentRoleName === 'ADMIN' || currentRoleName === 'QS TRUONG' || (currentRoleName.startsWith('QS TR') && currentRoleName.endsWith('NG'));
+        if (!isEdit && !canCreateProject) {
+            showToast('Chỉ Admin hoặc QS Trưởng mới có quyền thêm công trình mới!', 'error');
+            return false;
+        }
         setIsLoading(true);
         try {
             const projectPayload = {

@@ -7,7 +7,7 @@ import {
     Download, Save, X, Search, MapPin, Briefcase, 
     User, Calendar, Info, Check, Copy, Eye, EyeOff
 } from 'lucide-react';
-import { formatCurrency, formatDateVN, parseVietnameseNumber } from '@/lib/utils';
+import { formatCurrency, formatDateVN } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
 import CurrencyInput from './CurrencyInput';
@@ -84,6 +84,25 @@ const getSignatureName = (commanderName) => {
     let lastWord = parts[parts.length - 1];
     lastWord = lastWord.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
+};
+
+const calculateMaterialSubtotal = (categories = []) => {
+    return (Array.isArray(categories) ? categories : []).reduce((total, cat) => {
+        const items = Array.isArray(cat?.items) ? cat.items : [];
+        return total + items.reduce((sum, item) => {
+            return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0));
+        }, 0);
+    }, 0);
+};
+
+const calculateMaterialTotals = (categories = []) => {
+    const subtotal = calculateMaterialSubtotal(categories);
+    const vat = Math.round(subtotal * 0.08);
+    return {
+        subtotal,
+        vat,
+        totalAfterTax: subtotal + vat
+    };
 };
 
 export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion }) {
@@ -489,7 +508,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 });
 
                 if (itemsList.length > 0) {
-                    const grandTotal = formData.categories.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0);
+                    const grandTotal = calculateMaterialSubtotal(formData.categories);
                     
                     const dnttPayload = {
                         doc_type: 'Đơn Vật Tư',
@@ -695,6 +714,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         // Create table HTML for Excel download
         let rowsHtml = '';
         const orderItems = Array.isArray(orderData.items) ? orderData.items : DEFAULT_CATEGORIES;
+        const orderTotals = calculateMaterialTotals(orderItems);
 
         orderItems.forEach(cat => {
             const catHasQuantity = cat.items.some(it => parseFloat(it.quantity) > 0);
@@ -829,10 +849,23 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     
                     ${rowsHtml}
                     
-                    ${showPriceCols ? `<tr style="height: 40px;">
-                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng cộng:</td>
+                    ${showPriceCols ? `
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng trước thuế:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #1e3a8a; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                            ${formatCurrency(orderTotals.subtotal)} VNĐ
+                        </td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Thuế VAT (8%):</td>
                         <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
-                            ${formatCurrency(orderItems.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
+                            ${formatCurrency(orderTotals.vat)} VNĐ
+                        </td>
+                    </tr>
+                    <tr style="height: 40px;">
+                        <td colspan="6" style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; font-family: 'Times New Roman'; font-size: 12pt; padding-right: 5px;">Tổng sau thuế:</td>
+                        <td style="border: 1px solid #000; text-align: right; vertical-align: middle; font-weight: bold; color: #ff0000; font-family: 'Times New Roman'; font-size: 13pt; padding-right: 5px;">
+                            ${formatCurrency(orderTotals.totalAfterTax)} VNĐ
                         </td>
                     </tr>` : ''}
                     
@@ -1551,15 +1584,40 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                 ))}
                                             </React.Fragment>
                                         ))}
-                                        <tr>
-                                            <td colSpan="6" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
-                                                Tổng cộng:
-                                            </td>
-                                            <td className="border border-black p-3 text-right font-black text-red-600 text-[17px] bg-slate-100">
-                                                {formatCurrency(formData.categories.reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
-                                            </td>
-                                            <td className="border-none"></td>
-                                        </tr>
+                                        {(() => {
+                                            const totals = calculateMaterialTotals(formData.categories);
+                                            return (
+                                                <>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
+                                                            Tổng trước thuế:
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-black text-blue-800 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.subtotal)} VNĐ
+                                                        </td>
+                                                        <td className="border-none"></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
+                                                            Thuế VAT (8%):
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-black text-red-600 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.vat)} VNĐ
+                                                        </td>
+                                                        <td className="border-none"></td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-extrabold uppercase text-slate-900 bg-slate-100">
+                                                            Tổng sau thuế:
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-black text-red-600 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.totalAfterTax)} VNĐ
+                                                        </td>
+                                                        <td className="border-none"></td>
+                                                    </tr>
+                                                </>
+                                            );
+                                        })()}
                                     </tbody>
                                 </table>
                             </div>
@@ -1785,14 +1843,38 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                 </React.Fragment>
                                             ));
                                         })()}
-                                        {showPriceCols && <tr>
-                                            <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
-                                                Tổng cộng:
-                                            </td>
-                                            <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
-                                                {formatCurrency((Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).reduce((total, cat) => total + cat.items.reduce((sum, item) => sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0)), 0), 0))} VNĐ
-                                            </td>
-                                        </tr>}
+                                        {showPriceCols && (() => {
+                                            const orderItems = Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES;
+                                            const totals = calculateMaterialTotals(orderItems);
+                                            return (
+                                                <>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
+                                                            Tổng trước thuế:
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-bold text-blue-800 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.subtotal)} VNĐ
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
+                                                            Thuế VAT (8%):
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.vat)} VNĐ
+                                                        </td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
+                                                            Tổng sau thuế:
+                                                        </td>
+                                                        <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
+                                                            {formatCurrency(totals.totalAfterTax)} VNĐ
+                                                        </td>
+                                                    </tr>
+                                                </>
+                                            );
+                                        })()}
                                     </tbody>
                                 </table>
                             </div>
