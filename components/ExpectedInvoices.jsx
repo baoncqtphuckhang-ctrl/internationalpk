@@ -50,6 +50,26 @@ const normalizeMonthValue = (value) => {
     return normalized;
 };
 
+const getMonthFromDateValue = (dateValue) => {
+    if (!dateValue) return '';
+    const value = String(dateValue).trim();
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}`;
+    const vnMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (vnMatch) return `${vnMatch[3]}-${String(vnMatch[2]).padStart(2, '0')}`;
+    return '';
+};
+
+const getComparableDateValue = (dateValue) => {
+    if (!dateValue) return '';
+    const value = String(dateValue).trim();
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+    const vnMatch = value.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (vnMatch) return `${vnMatch[3]}-${String(vnMatch[2]).padStart(2, '0')}-${String(vnMatch[1]).padStart(2, '0')}`;
+    return value;
+};
+
 const addBusinessDays = (dateValue, days) => {
     const startDate = new Date(dateValue);
     if (Number.isNaN(startDate.getTime())) return null;
@@ -70,7 +90,7 @@ const normalizeKeyPart = (value) => String(value || '').trim().toLowerCase();
 const getExpectedInvoiceKey = (inv = {}) => {
     const projectName = normalizeKeyPart(inv.projectName);
     const phase = normalizeKeyPart(inv.phase);
-    const invoiceMonth = normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '');
+    const invoiceMonth = getMonthFromDateValue(inv.invoice_date) || normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '');
     const teamName = normalizeKeyPart(inv.teamName);
     const paymentPeriod = normalizeKeyPart(inv.payment_period);
     if (teamName || paymentPeriod) {
@@ -244,9 +264,17 @@ const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') =
         return true;
     });
     
-    const invoiceRecords = projIncs.filter(i => (Number(i.post_tax_amount) > 0 || Number(i.amount) > 0));
-    const targetIncomes = invoiceRecords.length > 0 ? invoiceRecords : projIncs;
-    const sortedIncomes = [...targetIncomes].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    const invoiceRows = projIncs.filter(isIncomeInvoiceRow);
+    const explicitInvoiceRows = invoiceRows.filter(i => getIncomeInvoiceMeta(i).type_data === 'INCOME_INVOICE');
+    const targetIncomes = explicitInvoiceRows.length > 0 ? explicitInvoiceRows : (invoiceRows.length > 0 ? invoiceRows : projIncs);
+    const sortedIncomes = [...targetIncomes].sort((a, b) => {
+        const metaA = getIncomeInvoiceMeta(a);
+        const metaB = getIncomeInvoiceMeta(b);
+        const dateA = getComparableDateValue(metaA.invoice_date);
+        const dateB = getComparableDateValue(metaB.invoice_date);
+        if (dateA || dateB) return dateB.localeCompare(dateA);
+        return new Date(b.date || 0) - new Date(a.date || 0);
+    });
     
     let invoice_no = '';
     let invoice_date = '';
@@ -255,7 +283,6 @@ const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') =
     let postTaxValue = 0;
 
     if (sortedIncomes.length > 0) {
-        invoice_date = sortedIncomes[0].date || '';
         preTaxValue = Number(sortedIncomes[0].amount) || 0;
         vatAmount = Number(sortedIncomes[0].vat_amount) || 0;
         postTaxValue = Number(sortedIncomes[0].post_tax_amount) || 0;
@@ -277,6 +304,111 @@ const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') =
         }
     }
     return { invoice_no, invoice_date, preTaxValue, vatAmount, postTaxValue };
+};
+
+const getIncomeInvoiceMeta = (income = {}) => {
+    let invoice_no = income.invoice_no || '';
+    let invoice_date = income.invoice_date || '';
+    let type_data = income.type_data || '';
+
+    if (income.note) {
+        try {
+            const parsed = JSON.parse(income.note);
+            if (parsed && typeof parsed === 'object') {
+                invoice_no = parsed.invoice_no || invoice_no;
+                invoice_date = parsed.invoice_date || invoice_date;
+                type_data = parsed.type_data || type_data;
+            }
+        } catch (e) {}
+    }
+
+    return {
+        invoice_no,
+        invoice_date,
+        type_data
+    };
+};
+
+const isIncomeInvoiceRow = (income = {}) => {
+    const meta = getIncomeInvoiceMeta(income);
+    return meta.type_data === 'INCOME_INVOICE' || (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0;
+};
+
+const formatInvoiceDateForDisplay = (dateValue) => {
+    if (!dateValue) return '-';
+    const value = String(dateValue).trim();
+    const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (isoMatch) return `${isoMatch[3]}/${isoMatch[2]}/${isoMatch[1]}`;
+    return value;
+};
+
+const formatInvoiceDateForInput = (dateValue) => {
+    const displayValue = formatInvoiceDateForDisplay(dateValue);
+    return displayValue === '-' ? '' : displayValue;
+};
+
+const normalizeDateTextInput = (value = '') => {
+    const digits = String(value).replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const parseDateDisplayToIso = (value = '') => {
+    const match = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return '';
+    const [, day, month, year] = match;
+    return `${year}-${month}-${day}`;
+};
+
+const getInvoiceScheduleMonth = (inv = {}) => {
+    const invoiceDateMonth = getMonthFromDateValue(inv.invoice_date);
+    if (invoiceDateMonth) return invoiceDateMonth;
+    return normalizeMonthValue(inv.invoice_month || '');
+};
+
+const getIncomeScanMonth = (income = {}) => {
+    const meta = getIncomeInvoiceMeta(income);
+    return getMonthFromDateValue(meta.invoice_date) || getMonthFromDateValue(income.date);
+};
+
+const hasExpectedInvoiceNo = (inv = {}) => Boolean(String(inv.invoice_no || '').trim());
+
+const getInvoiceNoSortValue = (invoiceNo = '') => {
+    const value = String(invoiceNo || '').trim();
+    const numeric = value.match(/\d+/g)?.join('');
+    if (numeric) return Number(numeric);
+    return Number.POSITIVE_INFINITY;
+};
+
+const formatInvoiceFormNumber = (value) => {
+    const numberValue = Number(value) || 0;
+    return numberValue ? numberValue.toLocaleString('en-US') : '';
+};
+
+const getProjectInvoicePhases = (incomes = [], projectName = '') => {
+    const normProjectName = String(projectName || '').trim().toLowerCase();
+    if (!normProjectName) return [];
+    return [...new Set(incomes
+        .filter(i => String(i.project_name || '').trim().toLowerCase() === normProjectName && i.phase && isIncomeInvoiceRow(i))
+        .map(i => i.phase))]
+        .sort();
+};
+
+const buildInvoiceFormPatch = (incomes = [], projectName = '', phase = '') => {
+    if (!projectName || !phase) {
+        return { preTaxValue: '', vatAmount: '', postTaxValue: '', invoice_no: '', invoice_date: '', display_invoice_date: '' };
+    }
+
+    const info = getInvoiceInfoFromIncomes(incomes, projectName, phase);
+    return {
+        preTaxValue: formatInvoiceFormNumber(info.preTaxValue),
+        vatAmount: formatInvoiceFormNumber(info.vatAmount),
+        postTaxValue: formatInvoiceFormNumber(info.postTaxValue),
+        invoice_no: info.invoice_no || '',
+        invoice_date: info.invoice_date || '',
+        display_invoice_date: formatInvoiceDateForInput(info.invoice_date)
+    };
 };
 
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [], refreshData }) {
@@ -330,7 +462,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         deductionAmount: '',
         invoice_month: getCurrentMonthValue(),
         invoice_no: '',
-        invoice_date: ''
+        invoice_date: '',
+        display_invoice_date: ''
     });
     const [confirmPeriodAction, setConfirmPeriodAction] = useState(null);
     const [editingPeriodName, setEditingPeriodName] = useState(null);
@@ -768,20 +901,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const availableFormPhases = useMemo(() => {
         if (!formData.projectName || !incomes || incomes.length === 0) return [];
-        const phases = incomes
-            .filter(i => i.project_name === formData.projectName && i.phase)
-            .map(i => i.phase);
-        return [...new Set(phases)].sort();
+        return getProjectInvoicePhases(incomes, formData.projectName);
     }, [formData.projectName, incomes]);
 
     const availableInvoiceMonths = useMemo(() => {
         const months = new Set();
         invoices.forEach(inv => {
-            const monthValue = normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '');
+            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+            const monthValue = getInvoiceScheduleMonth(inv, info);
             if (monthValue) months.add(monthValue);
         });
-        return Array.from(months).sort().reverse();
-    }, [invoices]);
+        incomes.forEach(inc => {
+            if (!isIncomeInvoiceRow(inc)) return;
+            const monthValue = getIncomeScanMonth(inc);
+            if (monthValue) months.add(monthValue);
+        });
+        return Array.from(months).sort();
+    }, [invoices, incomes]);
 
     const allPeriods = useMemo(() => {
         const periodMap = new Map();
@@ -908,6 +1044,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const handleFormChange = (e) => {
         const { name, value } = e.target;
+        if (activeSubTab === 'invoice' && name === 'projectName') {
+            const phases = getProjectInvoicePhases(incomes, value);
+            const nextPhase = phases.includes(formData.phase) ? formData.phase : (phases[0] || '');
+            setIsCustomPhase(false);
+            setFormData(prev => ({
+                ...prev,
+                projectName: value,
+                phase: nextPhase,
+                ...buildInvoiceFormPatch(incomes, value, nextPhase)
+            }));
+            return;
+        }
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -942,7 +1090,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             account_number: formData.account_number,
             bank_name: formData.bank_name,
             deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
-            invoice_month: formData.invoice_date ? formData.invoice_date.slice(0, 7) : normalizedInvoiceMonth,
+            invoice_month: getMonthFromDateValue(formData.invoice_date) || normalizedInvoiceMonth,
             invoice_no: formData.invoice_no || '',
             invoice_date: formData.invoice_date || null
         });
@@ -1027,7 +1175,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsCustomPhase(false);
         setIsCustomTeamName(false);
         setIsCustomPeriod(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue(), invoice_no: '', invoice_date: '' });
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue(), invoice_no: '', invoice_date: '', display_invoice_date: '' });
     };
 
     const handleEdit = (inv) => {
@@ -1052,7 +1200,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             deductionAmount: inv.deductionAmount ? inv.deductionAmount.toLocaleString('en-US') : '',
             invoice_month: normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || ''),
             invoice_no: inv.invoice_no || '',
-            invoice_date: inv.invoice_date || ''
+            invoice_date: inv.invoice_date || '',
+            display_invoice_date: formatInvoiceDateForInput(inv.invoice_date)
         });
         setEditingId(inv.id);
         setIsFormOpen(true);
@@ -1260,13 +1409,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
     };
 
-    const handleBulkAddByMonth = async () => {
+    const handleBulkAddByMonthV2 = async () => {
         if (!bulkAddMonth) return;
-        
+
         try {
             const matchedIncomes = incomes.filter(inc => {
-                if (!inc.date) return false;
-                return inc.date.startsWith(bulkAddMonth);
+                if (!isIncomeInvoiceRow(inc)) return false;
+                return getIncomeScanMonth(inc) === bulkAddMonth;
             });
 
             if (matchedIncomes.length === 0) {
@@ -1274,110 +1423,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 return;
             }
 
-            const newRecords = [];
-            for (const inc of matchedIncomes) {
-                const exists = invoices.some(inv => 
-                    inv.projectName === inc.project_name && 
-                    inv.phase === inc.phase
-                );
-                if (!exists) {
-                    newRecords.push({
-                        projectName: inc.project_name,
-                        preTaxValue: inc.amount || 0,
-                        vatAmount: inc.vat_amount || 0,
-                        postTaxValue: inc.post_tax_amount || 0,
-                        teamValue: 0,
-                        accumulatedAdvance: 0,
-                        teamName: '',
-                        phase: inc.phase,
-                        note: '',
-                        payment_period: '',
-                        account_name: '',
-                        account_number: '',
-                        bank_name: '',
-                        deductionAmount: 0,
-                        qs_approved: false,
-                        accountant_approved: false,
-                        is_completed: false
-                    });
-                }
-            }
-
-            if (newRecords.length === 0) {
-                if (showToast) showToast('Tất cả hóa đơn trong tháng này đã tồn tại trong danh sách!', 'error');
-                return;
-            }
-
-            const { data, error } = await supabase
-                .from('expected_invoices')
-                .insert(newRecords)
-                .select();
-            
-            if (error) {
-                console.error('Error bulk inserting:', error);
-                if (showToast) showToast('Có lỗi xảy ra khi thêm hàng loạt!', 'error');
-            } else if (data) {
-                const formattedNew = data.map(d => ({
-                    id: d.id,
-                    projectName: d.projectName,
-                    phase: d.phase,
-                    teamName: d.teamName,
-                    preTaxValue: d.preTaxValue,
-                    vatAmount: d.vatAmount,
-                    postTaxValue: d.postTaxValue,
-                    deductionAmount: d.deductionAmount,
-                    accumulatedAdvance: d.accumulatedAdvance,
-                    teamValue: d.teamValue,
-                    account_name: d.account_name,
-                    account_number: d.account_number,
-                    bank_name: d.bank_name,
-                    note: d.note,
-                    created_at: d.created_at,
-                    payment_period: d.payment_period,
-                    qs_approved: d.qs_approved,
-                    accountant_approved: d.accountant_approved,
-                    is_completed: d.is_completed
-                }));
-                setInvoices(prev => [...prev, ...formattedNew]);
-                if (showToast) showToast(`Đã thêm thành công ${newRecords.length} hóa đơn!`, 'success');
-                setIsBulkAddModalOpen(false);
-                setBulkAddMonth('');
-            }
-        } catch (err) {
-            console.error('Error in bulk add:', err);
-        }
-    };
-
-    const handleBulkAddByMonthV2 = async () => {
-        if (!bulkAddMonth) return;
-
-        try {
-            const matchedIncomes = incomes.filter(inc => inc.date && inc.date.startsWith(bulkAddMonth));
-
-            if (matchedIncomes.length === 0) {
-                if (showToast) showToast(`Không tìm thấy đợt thanh toán nào trong tháng ${bulkAddMonth}!`, 'error');
-                return;
-            }
-
             const payloads = matchedIncomes.map(inc => {
-                let invoice_no = '';
-                let invoice_date = '';
-                if (inc.note) {
-                    try {
-                        const parsed = JSON.parse(inc.note);
-                        if (parsed && typeof parsed === 'object') {
-                            if (parsed.invoice_no) {
-                                invoice_no = parsed.invoice_no;
-                            }
-                            if (parsed.invoice_date) {
-                                invoice_date = parsed.invoice_date;
-                            }
-                        }
-                    } catch (e) {}
-                }
-                if (!invoice_date && inc.date) {
-                    invoice_date = inc.date;
-                }
+                const meta = getIncomeInvoiceMeta(inc);
+                const invoice_date = meta.invoice_date;
+                const invoiceMonth = getIncomeScanMonth(inc);
                 const candidate = {
                     projectName: inc.project_name,
                     preTaxValue: inc.amount || 0,
@@ -1387,7 +1436,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     accumulatedAdvance: 0,
                     teamName: '',
                     phase: inc.phase,
-                    invoice_month: bulkAddMonth,
+                    invoice_month: invoiceMonth,
                     note: '',
                     payment_period: '',
                     account_name: '',
@@ -1397,7 +1446,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     qs_approved: false,
                     accountant_approved: false,
                     is_completed: false,
-                    invoice_no: invoice_no,
+                    invoice_no: meta.invoice_no,
                     invoice_date: invoice_date || null
                 };
                 const duplicate = invoices.find(inv => getExpectedInvoiceKey(inv) === getExpectedInvoiceKey(candidate));
@@ -1406,11 +1455,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             const inserts = payloads.filter(item => !item._duplicateId);
             const duplicates = payloads.filter(item => item._duplicateId);
-
-            if (inserts.length === 0) {
-                if (showToast) showToast(`Các đợt trong tháng ${formatMonthLabel(bulkAddMonth)} đã tồn tại!`, 'error');
-                return;
-            }
 
             if (inserts.length > 0) {
                 const { data, error } = await supabase
@@ -1429,9 +1473,44 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 }
             }
 
+            const updates = [];
+            for (const duplicate of duplicates) {
+                const { _duplicateId, ...record } = duplicate;
+                if (!_duplicateId) continue;
+
+                if (isSupabaseUuid(_duplicateId)) {
+                    const { data, error } = await supabase
+                        .from('expected_invoices')
+                        .update(record)
+                        .eq('id', _duplicateId)
+                        .select()
+                        .single();
+
+                    if (error) {
+                        console.error('Error updating duplicate expected invoice:', error);
+                        continue;
+                    }
+                    updates.push(data || { id: _duplicateId, ...record });
+                } else {
+                    updates.push({ id: _duplicateId, ...record });
+                }
+            }
+
+            if (updates.length > 0) {
+                setInvoices(prev => dedupeExpectedInvoices(prev.map(inv => {
+                    const updated = updates.find(row => row.id === inv.id);
+                    return updated ? { ...inv, ...updated } : inv;
+                })));
+            }
+
+            if (inserts.length === 0 && updates.length === 0) {
+                if (showToast) showToast(`Các đợt trong tháng ${formatMonthLabel(bulkAddMonth)} đã tồn tại!`, 'error');
+                return;
+            }
+
             if (showToast) {
-                const duplicateText = duplicates.length > 0 ? ` Bỏ qua ${duplicates.length} đợt đã tồn tại.` : '';
-                showToast(`Đã thêm ${inserts.length} hóa đơn tháng ${formatMonthLabel(bulkAddMonth)}.${duplicateText}`, 'success');
+                const updateText = updates.length > 0 ? ` Cập nhật ${updates.length} đợt đã có.` : '';
+                showToast(`Đã thêm ${inserts.length} hóa đơn tháng ${formatMonthLabel(bulkAddMonth)}.${updateText}`, 'success');
             }
             setIsBulkAddModalOpen(false);
             setBulkAddMonth('');
@@ -1753,7 +1832,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         if (filterPhase && inv.phase !== filterPhase) return false;
         if (activeSubTab === 'invoice' && filterInvoiceMonth) {
             const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
-            const m = normalizeMonthValue(inv.invoice_month || inv.invoice_date || info.invoice_date || inv.created_at?.slice(0, 7) || '');
+            const m = getInvoiceScheduleMonth(inv, info);
             if (m !== filterInvoiceMonth) return false;
         }
         return true;
@@ -1787,18 +1866,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         filteredInvoices.sort((a, b) => {
             const infoA = getInvoiceInfoFromIncomes(incomes, a.projectName, a.phase);
             const infoB = getInvoiceInfoFromIncomes(incomes, b.projectName, b.phase);
-            const noA = a.invoice_no || infoA.invoice_no;
-            const noB = b.invoice_no || infoB.invoice_no;
-            const hasA = Boolean(String(noA || '').trim());
-            const hasB = Boolean(String(noB || '').trim());
+            const hasA = hasExpectedInvoiceNo(a);
+            const hasB = hasExpectedInvoiceNo(b);
 
             if (hasA && !hasB) return -1;
             if (!hasA && hasB) return 1;
 
-            const dateA = a.invoice_date || infoA.invoice_date || '';
-            const dateB = b.invoice_date || infoB.invoice_date || '';
+            const invoiceNoA = getInvoiceNoSortValue(a.invoice_no);
+            const invoiceNoB = getInvoiceNoSortValue(b.invoice_no);
+            if (invoiceNoA !== invoiceNoB) return invoiceNoA - invoiceNoB;
+
+            const dateA = getComparableDateValue(a.invoice_date || infoA.invoice_date || '');
+            const dateB = getComparableDateValue(b.invoice_date || infoB.invoice_date || '');
             if (dateA && dateB && dateA !== dateB) {
-                return dateB.localeCompare(dateA);
+                return dateA.localeCompare(dateB);
             }
             return (a.projectName || '').localeCompare(b.projectName || '');
         });
@@ -2291,7 +2372,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             className="bg-indigo-50 hover:bg-indigo-100 text-indigo-600 px-4 py-2 rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-indigo-600/10"
                         >
                             <Plus size={20} />
-                            <span className="hidden sm:inline">Thêm theo tháng</span>
+                            <span className="hidden sm:inline">Thêm theo ngày HĐ</span>
                         </button>
                     )}
                     {activeSubTab !== 'customer_debt' && activeSubTab !== 'team_info' && (
@@ -2556,35 +2637,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 setFormData(prev => ({ ...prev, phase: '' }));
                                             } else {
                                                 setIsCustomPhase(false);
-                                                const matchedIncome = incomes?.find(i => i.project_name === formData.projectName && i.phase === val);
-                                                let matchedInvoiceNo = '';
-                                                let matchedInvoiceDate = '';
-                                                if (matchedIncome?.note) {
-                                                    try {
-                                                        const parsed = JSON.parse(matchedIncome.note);
-                                                        if (parsed && typeof parsed === 'object') {
-                                                            if (parsed.invoice_no) {
-                                                                matchedInvoiceNo = parsed.invoice_no;
-                                                            }
-                                                            if (parsed.invoice_date) {
-                                                                matchedInvoiceDate = parsed.invoice_date;
-                                                            }
-                                                        }
-                                                    } catch (e) {}
-                                                }
-                                                if (!matchedInvoiceDate && matchedIncome?.date) {
-                                                    matchedInvoiceDate = matchedIncome.date;
-                                                }
                                                 setFormData(prev => ({ 
                                                     ...prev, 
                                                     phase: val,
-                                                    ...(matchedIncome ? {
-                                                        preTaxValue: matchedIncome.amount ? matchedIncome.amount.toLocaleString('en-US') : '',
-                                                        vatAmount: matchedIncome.vat_amount ? matchedIncome.vat_amount.toLocaleString('en-US') : '',
-                                                        postTaxValue: matchedIncome.post_tax_amount ? matchedIncome.post_tax_amount.toLocaleString('en-US') : '',
-                                                        invoice_no: matchedInvoiceNo,
-                                                        invoice_date: matchedInvoiceDate
-                                                    } : {})
+                                                    ...buildInvoiceFormPatch(incomes, formData.projectName, val)
                                                 }));
                                             }
                                         }}
@@ -2609,13 +2665,42 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 </div>
                                 <div>
                                     <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ngày hóa đơn</label>
-                                    <input
-                                        type="date"
-                                        name="invoice_date"
-                                        value={formData.invoice_date || ''}
-                                        onChange={handleFormChange}
-                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    />
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="text"
+                                            name="display_invoice_date"
+                                            value={formData.display_invoice_date || formatInvoiceDateForInput(formData.invoice_date)}
+                                            onChange={(e) => {
+                                                const val = normalizeDateTextInput(e.target.value);
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    display_invoice_date: val,
+                                                    invoice_date: val.length === 10 ? parseDateDisplayToIso(val) : ''
+                                                }));
+                                            }}
+                                            placeholder="dd/mm/yyyy"
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                        />
+                                        <input
+                                            type="date"
+                                            value={formData.invoice_date || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                setFormData(prev => ({
+                                                    ...prev,
+                                                    invoice_date: val,
+                                                    display_invoice_date: formatInvoiceDateForInput(val)
+                                                }));
+                                            }}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
+                                        />
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                    </div>
                                 </div>
                                 </>
                             ) : (
@@ -3028,16 +3113,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         )}
                         {activeSubTab === 'invoice' && (
                             <colgroup>
+                                <col style={{ width: '4.5%' }} />
+                                <col style={{ width: '17.5%' }} />
+                                <col style={{ width: '12.5%' }} />
+                                <col style={{ width: '12.5%' }} />
+                                <col style={{ width: '10.5%' }} />
+                                <col style={{ width: '12.5%' }} />
+                                <col style={{ width: '7.5%' }} />
+                                <col style={{ width: '8.5%' }} />
+                                <col style={{ width: '10.5%' }} />
                                 <col style={{ width: '4%' }} />
-                                <col style={{ width: '18%' }} />
-                                <col style={{ width: '9%' }} />
-                                <col style={{ width: '11%' }} />
-                                <col style={{ width: '9%' }} />
-                                <col style={{ width: '11%' }} />
-                                <col style={{ width: '8%' }} />
-                                <col style={{ width: '11%' }} />
-                                <col style={{ width: '13%' }} />
-                                <col style={{ width: '6%' }} />
                             </colgroup>
                         )}
                         {(activeSubTab === 'team' || activeSubTab === 'history_team') && (
@@ -3094,14 +3179,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 )}
                                 {activeSubTab === 'invoice' ? (
                                     <>
-                                        <th className="p-4 font-black uppercase text-sm">Ngày hóa đơn</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuế VAT</th>
-                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Giá trị sau thuế</th>
-                                        <th className="p-4 font-black uppercase text-sm">Đợt</th>
-                                        <th className="p-4 font-black uppercase text-sm">Số HĐ</th>
-                                        <th className="p-4 font-black uppercase text-sm">Ghi chú</th>
-                                        <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">Thao tác</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">Ngày hóa đơn</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-center">Giá trị trước thuế</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-center">Thuế VAT</th>
+                                        <th className="p-4 font-black text-slate-100 uppercase text-sm text-center">Giá trị sau thuế</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">Đợt</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">Số HĐ</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center">Ghi chú</th>
+                                        <th className="p-4 font-black uppercase text-sm text-center print:hidden">Thao tác</th>
                                     </>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
@@ -3607,14 +3692,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 ) : (
                                     (() => {
                                         const issuedInvoices = filteredInvoices.filter(inv => {
-                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
-                                            const no = inv.invoice_no || info.invoice_no;
-                                            return Boolean(String(no || '').trim());
+                                            return hasExpectedInvoiceNo(inv);
                                         });
                                         const unissuedInvoices = filteredInvoices.filter(inv => {
-                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
-                                            const no = inv.invoice_no || info.invoice_no;
-                                            return !Boolean(String(no || '').trim());
+                                            return !hasExpectedInvoiceNo(inv);
                                         });
 
                                         const sumPreIssued = issuedInvoices.reduce((sum, inv) => {
@@ -3658,8 +3739,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
                                         const renderRow = (inv, idx) => {
                                             const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
-                                            const displayInvoiceNo = inv.invoice_no || info.invoice_no;
-                                            const displayInvoiceDate = inv.invoice_date || info.invoice_date;
+                                            const displayInvoiceNo = inv.invoice_no || '';
+                                            const displayInvoiceDate = inv.invoice_date || (hasExpectedInvoiceNo(inv) ? info.invoice_date : '');
                                             const preTax = (parseFloat(inv.preTaxValue) || 0) || info.preTaxValue;
                                             const vat = (parseFloat(inv.vatAmount) || 0) || info.vatAmount;
                                             const postTax = (parseFloat(inv.postTaxValue) || 0) || info.postTaxValue;
@@ -3675,11 +3756,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     >
                                                         {inv.projectName}
                                                     </td>
-                                                    <td className="p-4 text-sm text-slate-600 font-bold text-center">{displayInvoiceDate ? displayInvoiceDate.split('-').reverse().join('/') : '-'}</td>
-                                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(preTax)}</td>
-                                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(vat)}</td>
-                                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(postTax)} VNĐ</td>
-                                                    <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
+                                                    <td className="p-4 text-sm text-slate-600 font-bold text-center">{formatInvoiceDateForDisplay(displayInvoiceDate)}</td>
+                                                    <td className="p-4 text-sm font-black text-slate-700 text-center tabular-nums">{formatCurrency(preTax)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-500 text-center tabular-nums">{formatCurrency(vat)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-600 text-center tabular-nums">{formatCurrency(postTax)} VNĐ</td>
+                                                    <td className="p-4 text-sm text-slate-600 font-medium text-center">{inv.phase}</td>
                                                     <td className="p-4 text-sm text-center">
                                                         {displayInvoiceNo ? (
                                                             <span className="font-bold text-slate-700">{displayInvoiceNo}</span>
@@ -3687,7 +3768,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>
                                                         )}
                                                     </td>
-                                                    <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
+                                                    <td className="p-4 text-sm text-slate-500 text-center truncate" title={inv.note}>{inv.note}</td>
                                                     <td className="p-4 text-center print:hidden">
                                                         <div className="flex items-center justify-center gap-2">
                                                             {(() => {
@@ -3729,9 +3810,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <td colSpan="3" className="p-4 text-sm font-black text-emerald-950 text-right uppercase">
                                                             TỔNG CỘNG ĐÃ XUẤT HĐ ({issuedInvoices.length}):
                                                         </td>
-                                                        <td className="p-4 text-sm font-black text-slate-800 text-right">{formatCurrency(sumPreIssued)}</td>
-                                                        <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(sumVatIssued)}</td>
-                                                        <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(sumPostIssued)} VNĐ</td>
+                                                        <td className="p-4 text-sm font-black text-slate-800 text-center tabular-nums">{formatCurrency(sumPreIssued)}</td>
+                                                        <td className="p-4 text-sm font-black text-red-500 text-center tabular-nums">{formatCurrency(sumVatIssued)}</td>
+                                                        <td className="p-4 text-sm font-black text-emerald-600 text-center tabular-nums">{formatCurrency(sumPostIssued)} VNĐ</td>
                                                         <td colSpan="4"></td>
                                                     </tr>
                                                 )}
@@ -3743,9 +3824,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         <td colSpan="3" className="p-4 text-sm font-black text-amber-950 text-right uppercase">
                                                             TỔNG CỘNG CHƯA XUẤT HĐ ({unissuedInvoices.length}):
                                                         </td>
-                                                        <td className="p-4 text-sm font-black text-slate-800 text-right">{formatCurrency(sumPreUnissued)}</td>
-                                                        <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(sumVatUnissued)}</td>
-                                                        <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(sumPostUnissued)} VNĐ</td>
+                                                        <td className="p-4 text-sm font-black text-slate-800 text-center tabular-nums">{formatCurrency(sumPreUnissued)}</td>
+                                                        <td className="p-4 text-sm font-black text-red-500 text-center tabular-nums">{formatCurrency(sumVatUnissued)}</td>
+                                                        <td className="p-4 text-sm font-black text-emerald-600 text-center tabular-nums">{formatCurrency(sumPostUnissued)} VNĐ</td>
                                                         <td colSpan="4"></td>
                                                     </tr>
                                                 )}
@@ -3755,9 +3836,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     <td colSpan="3" className="p-4 text-sm font-black text-slate-900 text-right uppercase">
                                                         TỔNG CỘNG TẤT CẢ ({filteredInvoices.length}):
                                                     </td>
-                                                    <td className="p-4 text-sm font-black text-slate-950 text-right">{formatCurrency(sumPreTotal)}</td>
-                                                    <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(sumVatTotal)}</td>
-                                                    <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(sumPostTotal)} VNĐ</td>
+                                                    <td className="p-4 text-sm font-black text-slate-950 text-center tabular-nums">{formatCurrency(sumPreTotal)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-600 text-center tabular-nums">{formatCurrency(sumVatTotal)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-700 text-center tabular-nums">{formatCurrency(sumPostTotal)} VNĐ</td>
                                                     <td colSpan="4"></td>
                                                 </tr>
                                             </>
@@ -4041,13 +4122,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95 duration-200">
                         <div className="bg-indigo-600 px-6 py-4 flex justify-between items-center">
-                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Plus size={20} /> Thêm HĐ Dự kiến theo tháng</h3>
+                            <h3 className="text-white font-bold text-lg flex items-center gap-2"><Plus size={20} /> Thêm HĐ Dự kiến theo ngày HĐ</h3>
                             <button onClick={() => { setIsBulkAddModalOpen(false); setBulkAddMonth(''); }} className="text-indigo-200 hover:text-white transition"><X /></button>
                         </div>
                         <div className="p-6 space-y-4">
-                            <p className="text-slate-600">Hệ thống sẽ tự động quét các đợt thanh toán (Thu thực tế) trong tháng bạn chọn và thêm vào danh sách HĐ Dự kiến.</p>
+                            <p className="text-slate-600">Hệ thống quét theo ngày HĐ. Ngày TT/ngày hạch toán chỉ dùng để xem, không dùng để lọc HĐ dự kiến.</p>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn tháng *</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Chọn tháng theo ngày HĐ *</label>
                                 <input 
                                     type="month" 
                                     value={bulkAddMonth}

@@ -51,6 +51,27 @@ const getCommonNotes = (type, phase, code) => {
 
 const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
 
+const formatDateInputDisplay = (isoDate = '') => {
+    if (!isoDate) return '';
+    const [year, month, day] = String(isoDate).split('-');
+    if (!year || !month || !day) return '';
+    return `${day}/${month}/${year}`;
+};
+
+const normalizeDateTextInput = (value = '') => {
+    const digits = String(value).replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const parseDateDisplayToIso = (value = '') => {
+    const match = String(value).match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (!match) return '';
+    const [, day, month, year] = match;
+    return `${year}-${month}-${day}`;
+};
+
 export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome, deleteRequests = [] }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
@@ -60,6 +81,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         accounting_date: new Date().toISOString().split('T')[0],
         invoice_no: '',
         invoice_date: '',
+        display_invoice_date: '',
         corresponding_account: '',
         code: '',
         debit: 0,
@@ -315,24 +337,16 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
     }, [formData.project_name, projects]);
 
     const getNextIncomeInvoicePhase = (projectName) => {
-        const projectInvoiceIncomes = incomes.filter(i => {
-            let isInvoiceRow = (Number(i.post_tax_amount) || 0) > 0 || (Number(i.amount) || 0) > 0;
-            if (i.note) {
-                try {
-                    const parsed = JSON.parse(i.note);
-                    if (parsed?.type_data === 'INCOME_INVOICE') isInvoiceRow = true;
-                } catch(e) {}
-            }
-            return i.project_name === projectName && isInvoiceRow;
-        });
         let maxPhase = 0;
-        projectInvoiceIncomes.forEach(inc => {
-            const match = String(inc.phase || '').match(/\d+/);
-            if (match) {
-                const num = parseInt(match[0], 10);
-                if (num > maxPhase) maxPhase = num;
-            }
-        });
+        incomes
+            .filter(i => i.project_name === projectName && i.phase)
+            .forEach(inc => {
+                const match = String(inc.phase || '').match(/\d+/);
+                if (match) {
+                    const num = parseInt(match[0], 10);
+                    if (num > maxPhase) maxPhase = num;
+                }
+            });
         return `Đợt ${maxPhase + 1}`;
     };
 
@@ -355,19 +369,28 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const nextAutoPhase = getNextIncomeInvoicePhase(value);
             lastAutoProjectRef.current = value;
             lastAutoPhaseRef.current = nextAutoPhase;
-            setFormData(prev => ({ ...prev, project_name: value, phase: nextAutoPhase }));
-            if (errors.project_name || errors.phase) {
+            setFormData(prev => ({
+                ...prev,
+                project_name: value,
+                phase: nextAutoPhase,
+                invoice_no: '',
+                invoice_date: '',
+                display_invoice_date: ''
+            }));
+            if (errors.project_name || errors.phase || errors.invoice_no || errors.invoice_date) {
                 setErrors(prev => {
                     const e = { ...prev };
                     delete e.project_name;
                     delete e.phase;
+                    delete e.invoice_no;
+                    delete e.invoice_date;
                     return e;
                 });
             }
             return;
         }
         if (field === 'invoice_no' && !value?.trim()) {
-            setFormData(prev => ({ ...prev, invoice_no: value, invoice_date: '' }));
+            setFormData(prev => ({ ...prev, invoice_no: value, invoice_date: '', display_invoice_date: '' }));
             if (errors.invoice_no || errors.invoice_date) {
                 setErrors(prev => {
                     const e = { ...prev };
@@ -576,6 +599,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         setFormData(prev => ({
             ...prev,
             invoice_no: '',
+            invoice_date: '',
+            display_invoice_date: '',
             debit: 0,
             credit: 0,
             note: '',
@@ -646,7 +671,20 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     </button>
                     <button
                         type="button"
-                        onClick={() => { setType('INCOME_INVOICE'); setErrors({}); }}
+                        onClick={() => {
+                            const nextAutoPhase = getNextIncomeInvoicePhase(formData.project_name);
+                            lastAutoProjectRef.current = formData.project_name;
+                            lastAutoPhaseRef.current = nextAutoPhase;
+                            setFormData(prev => ({
+                                ...prev,
+                                phase: nextAutoPhase,
+                                invoice_no: '',
+                                invoice_date: '',
+                                display_invoice_date: ''
+                            }));
+                            setType('INCOME_INVOICE');
+                            setErrors({});
+                        }}
                         className={`flex-1 py-3 text-[10px] sm:text-xs md:text-sm font-bold text-center transition ${type === 'INCOME_INVOICE' ? 'bg-green-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         DOANH THU (HÓA ĐƠN)
@@ -707,15 +745,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 <input
                                     type="text"
                                     placeholder="dd/mm/yyyy"
-                                    value={formData.display_accounting_date || (formData.accounting_date ? formData.accounting_date.split('-').reverse().join('/') : '')}
+                                    value={formData.display_accounting_date || formatDateInputDisplay(formData.accounting_date)}
                                     onChange={(e) => {
-                                        let val = e.target.value.replace(/[^0-9/]/g, '');
-                                        if (val.length === 2 && !val.includes('/')) val += '/';
-                                        if (val.length === 5 && val.split('/').length === 2) val += '/';
+                                        const val = normalizeDateTextInput(e.target.value);
                                         handleChange('display_accounting_date', val);
                                         if (val.length === 10) {
-                                            const [d, m, y] = val.split('/');
-                                            if (d && m && y && y.length === 4) handleChange('accounting_date', `${y}-${m}-${d}`);
+                                            handleChange('accounting_date', parseDateDisplayToIso(val));
                                         } else {
                                             handleChange('accounting_date', '');
                                         }
@@ -729,8 +764,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         const val = e.target.value;
                                         handleChange('accounting_date', val);
                                         if (val) {
-                                            const [y, m, d] = val.split('-');
-                                            handleChange('display_accounting_date', `${d}/${m}/${y}`);
+                                            handleChange('display_accounting_date', formatDateInputDisplay(val));
                                         }
                                     }}
                                     className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
@@ -840,12 +874,35 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     <label className={labelCls}>
                                         Ngày hóa đơn
                                     </label>
-                                    <input
-                                        type="date"
-                                        value={formData.invoice_date || ''}
-                                        onChange={(e) => handleChange('invoice_date', e.target.value)}
-                                        className={inputCls('invoice_date')}
-                                    />
+                                    <div className="relative flex items-center">
+                                        <input
+                                            type="text"
+                                            placeholder="dd/mm/yyyy"
+                                            value={formData.display_invoice_date || formatDateInputDisplay(formData.invoice_date)}
+                                            onChange={(e) => {
+                                                const val = normalizeDateTextInput(e.target.value);
+                                                handleChange('display_invoice_date', val);
+                                                handleChange('invoice_date', val.length === 10 ? parseDateDisplayToIso(val) : '');
+                                            }}
+                                            className={inputCls('invoice_date')}
+                                        />
+                                        <input
+                                            type="date"
+                                            value={formData.invoice_date || ''}
+                                            onChange={(e) => {
+                                                const val = e.target.value;
+                                                handleChange('invoice_date', val);
+                                                handleChange('display_invoice_date', formatDateInputDisplay(val));
+                                            }}
+                                            className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
+                                        />
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                            <line x1="16" y1="2" x2="16" y2="6"></line>
+                                            <line x1="8" y1="2" x2="8" y2="6"></line>
+                                            <line x1="3" y1="10" x2="21" y2="10"></line>
+                                        </svg>
+                                    </div>
                                 </div>
                                 {/* Tài khoản đối ứng */}
                                 <div>
@@ -1014,12 +1071,35 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                 {formData.invoice_no?.trim() && (
                                     <div>
                                         <label className={labelCls}>Ngày hóa đơn</label>
-                                        <input
-                                            type="date"
-                                            value={formData.invoice_date || ''}
-                                            onChange={(e) => handleChange('invoice_date', e.target.value)}
-                                            className={inputCls('invoice_date')}
-                                        />
+                                        <div className="relative flex items-center">
+                                            <input
+                                                type="text"
+                                                placeholder="dd/mm/yyyy"
+                                                value={formData.display_invoice_date || formatDateInputDisplay(formData.invoice_date)}
+                                                onChange={(e) => {
+                                                    const val = normalizeDateTextInput(e.target.value);
+                                                    handleChange('display_invoice_date', val);
+                                                    handleChange('invoice_date', val.length === 10 ? parseDateDisplayToIso(val) : '');
+                                                }}
+                                                className={inputCls('invoice_date')}
+                                            />
+                                            <input
+                                                type="date"
+                                                value={formData.invoice_date || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    handleChange('invoice_date', val);
+                                                    handleChange('display_invoice_date', formatDateInputDisplay(val));
+                                                }}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
+                                            />
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                                            </svg>
+                                        </div>
                                     </div>
                                 )}
                                 {/* Giá trị thực nhận kỳ này */}
@@ -1188,7 +1268,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                     <td className="p-3 text-slate-600">
                                                                         <div className="line-clamp-2 break-all" title={text}>{text}</div>
                                                                     </td>
-                                                                         <div className="flex items-center justify-center gap-2">
+                                                                    <td className="p-3 text-center">
+                                                                        <div className="flex items-center justify-center gap-2">
                                                                             {(() => {
                                                                                 const isPendingDelete = deleteRequests.some(r => r.original_table === 'incomes' && r.record_id === inc.id);
                                                                                 if (isPendingDelete) {
@@ -1224,6 +1305,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                                                 );
                                                                             })()}
                                                                         </div>
+                                                                    </td>
                                                                 </tr>
                                                             );
                                                         });
@@ -1443,6 +1525,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         accounting_date: new Date().toISOString().split('T')[0],
                         invoice_no: '',
                         invoice_date: '',
+                        display_invoice_date: '',
                         corresponding_account: '',
                         code: '',
                         debit: 0,
