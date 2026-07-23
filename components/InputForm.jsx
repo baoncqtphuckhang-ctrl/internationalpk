@@ -366,6 +366,18 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
             return;
         }
+        if (field === 'invoice_no' && !value?.trim()) {
+            setFormData(prev => ({ ...prev, invoice_no: value, invoice_date: '' }));
+            if (errors.invoice_no || errors.invoice_date) {
+                setErrors(prev => {
+                    const e = { ...prev };
+                    delete e.invoice_no;
+                    delete e.invoice_date;
+                    return e;
+                });
+            }
+            return;
+        }
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors(prev => { const e = { ...prev }; delete e[field]; return e; });
@@ -999,15 +1011,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     />
                                 </div>
                                 {/* Ngày hóa đơn */}
-                                <div>
-                                    <label className={labelCls}>Ngày hóa đơn</label>
-                                    <input
-                                        type="date"
-                                        value={formData.invoice_date || ''}
-                                        onChange={(e) => handleChange('invoice_date', e.target.value)}
-                                        className={inputCls('invoice_date')}
-                                    />
-                                </div>
+                                {formData.invoice_no?.trim() && (
+                                    <div>
+                                        <label className={labelCls}>Ngày hóa đơn</label>
+                                        <input
+                                            type="date"
+                                            value={formData.invoice_date || ''}
+                                            onChange={(e) => handleChange('invoice_date', e.target.value)}
+                                            className={inputCls('invoice_date')}
+                                        />
+                                    </div>
+                                )}
                                 {/* Giá trị thực nhận kỳ này */}
                                 <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
                                     <div>

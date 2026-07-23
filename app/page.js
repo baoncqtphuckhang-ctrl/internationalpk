@@ -44,6 +44,18 @@ const getIncomeType = (i) => {
     return (i.post_tax_amount > 0 || i.amount > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';
 };
 
+const getIncomeInvoiceDate = (i) => {
+    if (i?.note) {
+        try {
+            const parsed = JSON.parse(i.note);
+            if (parsed && typeof parsed === 'object' && parsed.invoice_date) {
+                return parsed.invoice_date;
+            }
+        } catch(e) {}
+    }
+    return i?.invoice_date || '';
+};
+
 const ROLES = {
     ADMIN: 'ADMIN', GIAMDOC: 'GIÁM ĐỐC', THUKY: 'THƯ KÝ',
     QS: 'QS', QSTRUONG: 'QS TRƯỞNG', GS: 'GS', KETOAN: 'KẾ TOÁN'
@@ -3599,7 +3611,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                         <>
                                                             {phaseRows.map(i => (
                                                                 <tr key={i.id} className={`border-b hover:bg-slate-50 ${i._isRealOnly ? 'bg-amber-50/50' : ''}`}>
-                                                                    {incomeTableCols.ngayHd && <td className="p-3 text-center">{i._isRealOnly ? '-' : formatDateVN(i.date)}</td>}
+                                                                    {incomeTableCols.ngayHd && <td className="p-3 text-center">{i._isRealOnly ? '-' : (formatDateVN(getIncomeInvoiceDate(i)) || '-')}</td>}
                                                                     {incomeTableCols.ngayTt && <td className="p-3 text-center">
                                                                         <div className="flex flex-col items-center gap-1 font-bold">
                                                                             {i._phaseReals && i._phaseReals.length > 0 

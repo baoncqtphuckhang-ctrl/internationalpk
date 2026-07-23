@@ -229,7 +229,9 @@ const quarantineExpectedInvoices = (previousRows = [], nextRows = [], reason = '
 };
 
 const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') => {
-    if (!projectName || !incomes || incomes.length === 0) return { invoice_no: '', invoice_date: '' };
+    if (!projectName || !incomes || incomes.length === 0) {
+        return { invoice_no: '', invoice_date: '', preTaxValue: 0, vatAmount: 0, postTaxValue: 0 };
+    }
     
     const normProj = String(projectName || '').trim().toLowerCase();
     const normPhase = String(phase || '').trim().toLowerCase();
@@ -248,8 +250,15 @@ const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') =
     
     let invoice_no = '';
     let invoice_date = '';
+    let preTaxValue = 0;
+    let vatAmount = 0;
+    let postTaxValue = 0;
+
     if (sortedIncomes.length > 0) {
         invoice_date = sortedIncomes[0].date || '';
+        preTaxValue = Number(sortedIncomes[0].amount) || 0;
+        vatAmount = Number(sortedIncomes[0].vat_amount) || 0;
+        postTaxValue = Number(sortedIncomes[0].post_tax_amount) || 0;
     }
     
     for (const inv of sortedIncomes) {
@@ -267,7 +276,7 @@ const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') =
             } catch (e) {}
         }
     }
-    return { invoice_no, invoice_date };
+    return { invoice_no, invoice_date, preTaxValue, vatAmount, postTaxValue };
 };
 
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [], refreshData }) {
@@ -1742,7 +1751,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
         if (filterProject && inv.projectName !== filterProject) return false;
         if (filterPhase && inv.phase !== filterPhase) return false;
-        if (activeSubTab === 'invoice' && filterInvoiceMonth && normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '') !== filterInvoiceMonth) return false;
+        if (activeSubTab === 'invoice' && filterInvoiceMonth) {
+            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+            const m = normalizeMonthValue(inv.invoice_month || inv.invoice_date || info.invoice_date || inv.created_at?.slice(0, 7) || '');
+            if (m !== filterInvoiceMonth) return false;
+        }
         return true;
     };
 
@@ -3604,22 +3617,52 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             return !Boolean(String(no || '').trim());
                                         });
 
-                                        const sumPreIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
-                                        const sumVatIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
-                                        const sumPostIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+                                        const sumPreIssued = issuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.preTaxValue) || 0) || info.preTaxValue);
+                                        }, 0);
+                                        const sumVatIssued = issuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.vatAmount) || 0) || info.vatAmount);
+                                        }, 0);
+                                        const sumPostIssued = issuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.postTaxValue) || 0) || info.postTaxValue);
+                                        }, 0);
 
-                                        const sumPreUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
-                                        const sumVatUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
-                                        const sumPostUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+                                        const sumPreUnissued = unissuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.preTaxValue) || 0) || info.preTaxValue);
+                                        }, 0);
+                                        const sumVatUnissued = unissuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.vatAmount) || 0) || info.vatAmount);
+                                        }, 0);
+                                        const sumPostUnissued = unissuedInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.postTaxValue) || 0) || info.postTaxValue);
+                                        }, 0);
 
-                                        const sumPreTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
-                                        const sumVatTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
-                                        const sumPostTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+                                        const sumPreTotal = filteredInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.preTaxValue) || 0) || info.preTaxValue);
+                                        }, 0);
+                                        const sumVatTotal = filteredInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.vatAmount) || 0) || info.vatAmount);
+                                        }, 0);
+                                        const sumPostTotal = filteredInvoices.reduce((sum, inv) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            return sum + ((parseFloat(inv.postTaxValue) || 0) || info.postTaxValue);
+                                        }, 0);
 
                                         const renderRow = (inv, idx) => {
                                             const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
                                             const displayInvoiceNo = inv.invoice_no || info.invoice_no;
                                             const displayInvoiceDate = inv.invoice_date || info.invoice_date;
+                                            const preTax = (parseFloat(inv.preTaxValue) || 0) || info.preTaxValue;
+                                            const vat = (parseFloat(inv.vatAmount) || 0) || info.vatAmount;
+                                            const postTax = (parseFloat(inv.postTaxValue) || 0) || info.postTaxValue;
                                             const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
 
                                             return (
@@ -3633,9 +3676,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         {inv.projectName}
                                                     </td>
                                                     <td className="p-4 text-sm text-slate-600 font-bold text-center">{displayInvoiceDate ? displayInvoiceDate.split('-').reverse().join('/') : '-'}</td>
-                                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
-                                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
-                                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
+                                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(preTax)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(vat)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(postTax)} VNĐ</td>
                                                     <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
                                                     <td className="p-4 text-sm text-center">
                                                         {displayInvoiceNo ? (
