@@ -228,6 +228,48 @@ const quarantineExpectedInvoices = (previousRows = [], nextRows = [], reason = '
     }
 };
 
+const getInvoiceInfoFromIncomes = (incomes = [], projectName = '', phase = '') => {
+    if (!projectName || !incomes || incomes.length === 0) return { invoice_no: '', invoice_date: '' };
+    
+    const normProj = String(projectName || '').trim().toLowerCase();
+    const normPhase = String(phase || '').trim().toLowerCase();
+    
+    const projIncs = incomes.filter(i => {
+        const pName = String(i.project_name || '').trim().toLowerCase();
+        const pPhase = String(i.phase || '').trim().toLowerCase();
+        if (pName !== normProj) return false;
+        if (normPhase && pPhase && pPhase !== normPhase) return false;
+        return true;
+    });
+    
+    const invoiceRecords = projIncs.filter(i => (Number(i.post_tax_amount) > 0 || Number(i.amount) > 0));
+    const targetIncomes = invoiceRecords.length > 0 ? invoiceRecords : projIncs;
+    const sortedIncomes = [...targetIncomes].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+    
+    let invoice_no = '';
+    let invoice_date = '';
+    if (sortedIncomes.length > 0) {
+        invoice_date = sortedIncomes[0].date || '';
+    }
+    
+    for (const inv of sortedIncomes) {
+        if (inv.note) {
+            try {
+                const parsed = JSON.parse(inv.note);
+                if (parsed && typeof parsed === 'object') {
+                    if (!invoice_no && parsed.invoice_no) {
+                        invoice_no = parsed.invoice_no;
+                    }
+                    if (parsed.invoice_date) {
+                        invoice_date = parsed.invoice_date;
+                    }
+                }
+            } catch (e) {}
+        }
+    }
+    return { invoice_no, invoice_date };
+};
+
 export default function ExpectedInvoices({ projects, projectDetails, currentUser, incomes = [], transactions = [], handleCopyTable, exportTableToExcel, onAddTransaction, showToast, onNavigateToProject, usersList = [], deleteRequests = [], refreshData }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [invoices, setInvoices] = useState([]);
@@ -277,7 +319,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         account_number: '',
         bank_name: '',
         deductionAmount: '',
-        invoice_month: getCurrentMonthValue()
+        invoice_month: getCurrentMonthValue(),
+        invoice_no: '',
+        invoice_date: ''
     });
     const [confirmPeriodAction, setConfirmPeriodAction] = useState(null);
     const [editingPeriodName, setEditingPeriodName] = useState(null);
@@ -758,7 +802,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         }
 
         return activePeriods.sort();
-    }, [invoices, formData?.payment_period]);
+    }, [invoices, formData.payment_period]);
 
     useEffect(() => {
         try {
@@ -889,7 +933,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             account_number: formData.account_number,
             bank_name: formData.bank_name,
             deductionAmount: formData.deductionAmount ? parseInt(formData.deductionAmount.toString().replace(/\D/g, '')) : 0,
-            invoice_month: normalizedInvoiceMonth
+            invoice_month: formData.invoice_date ? formData.invoice_date.slice(0, 7) : normalizedInvoiceMonth,
+            invoice_no: formData.invoice_no || '',
+            invoice_date: formData.invoice_date || null
         });
 
         if (activeSubTab === 'team') {
@@ -972,7 +1018,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsCustomPhase(false);
         setIsCustomTeamName(false);
         setIsCustomPeriod(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue() });
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue(), invoice_no: '', invoice_date: '' });
     };
 
     const handleEdit = (inv) => {
@@ -995,7 +1041,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             account_number: inv.account_number || '',
             bank_name: inv.bank_name || '',
             deductionAmount: inv.deductionAmount ? inv.deductionAmount.toLocaleString('en-US') : '',
-            invoice_month: normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || '')
+            invoice_month: normalizeMonthValue(inv.invoice_month || inv.created_at?.slice(0, 7) || ''),
+            invoice_no: inv.invoice_no || '',
+            invoice_date: inv.invoice_date || ''
         });
         setEditingId(inv.id);
         setIsFormOpen(true);
@@ -1303,6 +1351,24 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             }
 
             const payloads = matchedIncomes.map(inc => {
+                let invoice_no = '';
+                let invoice_date = '';
+                if (inc.note) {
+                    try {
+                        const parsed = JSON.parse(inc.note);
+                        if (parsed && typeof parsed === 'object') {
+                            if (parsed.invoice_no) {
+                                invoice_no = parsed.invoice_no;
+                            }
+                            if (parsed.invoice_date) {
+                                invoice_date = parsed.invoice_date;
+                            }
+                        }
+                    } catch (e) {}
+                }
+                if (!invoice_date && inc.date) {
+                    invoice_date = inc.date;
+                }
                 const candidate = {
                     projectName: inc.project_name,
                     preTaxValue: inc.amount || 0,
@@ -1321,7 +1387,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     deductionAmount: 0,
                     qs_approved: false,
                     accountant_approved: false,
-                    is_completed: false
+                    is_completed: false,
+                    invoice_no: invoice_no,
+                    invoice_date: invoice_date || null
                 };
                 const duplicate = invoices.find(inv => getExpectedInvoiceKey(inv) === getExpectedInvoiceKey(candidate));
                 return { ...candidate, _duplicateId: duplicate?.id || null };
@@ -1702,6 +1770,25 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     if (activeSubTab === 'history_team') {
         filteredInvoices.sort((a, b) => (a.projectName || '').localeCompare(b.projectName || ''));
+    } else if (activeSubTab === 'invoice') {
+        filteredInvoices.sort((a, b) => {
+            const infoA = getInvoiceInfoFromIncomes(incomes, a.projectName, a.phase);
+            const infoB = getInvoiceInfoFromIncomes(incomes, b.projectName, b.phase);
+            const noA = a.invoice_no || infoA.invoice_no;
+            const noB = b.invoice_no || infoB.invoice_no;
+            const hasA = Boolean(String(noA || '').trim());
+            const hasB = Boolean(String(noB || '').trim());
+
+            if (hasA && !hasB) return -1;
+            if (!hasA && hasB) return 1;
+
+            const dateA = a.invoice_date || infoA.invoice_date || '';
+            const dateB = b.invoice_date || infoB.invoice_date || '';
+            if (dateA && dateB && dateA !== dateB) {
+                return dateB.localeCompare(dateA);
+            }
+            return (a.projectName || '').localeCompare(b.projectName || '');
+        });
     }
 
     const isPrintableTeamRow = useCallback((inv) => {
@@ -2457,13 +2544,33 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             } else {
                                                 setIsCustomPhase(false);
                                                 const matchedIncome = incomes?.find(i => i.project_name === formData.projectName && i.phase === val);
+                                                let matchedInvoiceNo = '';
+                                                let matchedInvoiceDate = '';
+                                                if (matchedIncome?.note) {
+                                                    try {
+                                                        const parsed = JSON.parse(matchedIncome.note);
+                                                        if (parsed && typeof parsed === 'object') {
+                                                            if (parsed.invoice_no) {
+                                                                matchedInvoiceNo = parsed.invoice_no;
+                                                            }
+                                                            if (parsed.invoice_date) {
+                                                                matchedInvoiceDate = parsed.invoice_date;
+                                                            }
+                                                        }
+                                                    } catch (e) {}
+                                                }
+                                                if (!matchedInvoiceDate && matchedIncome?.date) {
+                                                    matchedInvoiceDate = matchedIncome.date;
+                                                }
                                                 setFormData(prev => ({ 
                                                     ...prev, 
                                                     phase: val,
                                                     ...(matchedIncome ? {
                                                         preTaxValue: matchedIncome.amount ? matchedIncome.amount.toLocaleString('en-US') : '',
                                                         vatAmount: matchedIncome.vat_amount ? matchedIncome.vat_amount.toLocaleString('en-US') : '',
-                                                        postTaxValue: matchedIncome.post_tax_amount ? matchedIncome.post_tax_amount.toLocaleString('en-US') : ''
+                                                        postTaxValue: matchedIncome.post_tax_amount ? matchedIncome.post_tax_amount.toLocaleString('en-US') : '',
+                                                        invoice_no: matchedInvoiceNo,
+                                                        invoice_date: matchedInvoiceDate
                                                     } : {})
                                                 }));
                                             }
@@ -2488,11 +2595,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     )}
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tháng hóa đơn</label>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ngày hóa đơn</label>
                                     <input
-                                        type="month"
-                                        name="invoice_month"
-                                        value={formData.invoice_month || ''}
+                                        type="date"
+                                        name="invoice_date"
+                                        value={formData.invoice_date || ''}
                                         onChange={handleFormChange}
                                         className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
                                     />
@@ -2757,16 +2864,29 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         )}
                         
 {activeSubTab === 'invoice' && (
-                            <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
-                                <input 
-                                    type="text" 
-                                    name="note" 
-                                    value={formData.note || ''}
-                                    onChange={handleFormChange}
-                                    className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
-                                    placeholder="Nhập ghi chú..."
-                                />
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                                <div>
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Số HĐ</label>
+                                    <input 
+                                        type="text" 
+                                        name="invoice_no" 
+                                        value={formData.invoice_no || ''}
+                                        onChange={handleFormChange}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                        placeholder="Ví dụ: HD00123"
+                                    />
+                                </div>
+                                <div className="md:col-span-2">
+                                    <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Ghi chú</label>
+                                    <input 
+                                        type="text" 
+                                        name="note" 
+                                        value={formData.note || ''}
+                                        onChange={handleFormChange}
+                                        className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-emerald-500 focus:bg-white transition"
+                                        placeholder="Nhập ghi chú..."
+                                    />
+                                </div>
                             </div>
                         )}
                         <div className="mt-2 flex justify-end gap-3 border-t border-slate-100 pt-6">
@@ -2898,11 +3018,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 <col style={{ width: '4%' }} />
                                 <col style={{ width: '18%' }} />
                                 <col style={{ width: '9%' }} />
-                                <col style={{ width: '12%' }} />
-                                <col style={{ width: '10%' }} />
-                                <col style={{ width: '12%' }} />
-                                <col style={{ width: '10%' }} />
-                                <col style={{ width: '19%' }} />
+                                <col style={{ width: '11%' }} />
+                                <col style={{ width: '9%' }} />
+                                <col style={{ width: '11%' }} />
+                                <col style={{ width: '8%' }} />
+                                <col style={{ width: '11%' }} />
+                                <col style={{ width: '13%' }} />
                                 <col style={{ width: '6%' }} />
                             </colgroup>
                         )}
@@ -2960,11 +3081,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 )}
                                 {activeSubTab === 'invoice' ? (
                                     <>
-                                        <th className="p-4 font-black uppercase text-sm">Tháng HĐ</th>
+                                        <th className="p-4 font-black uppercase text-sm">Ngày hóa đơn</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-36">Giá trị trước thuế</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-32">Thuế VAT</th>
                                         <th className="p-4 font-black text-slate-100 uppercase text-sm text-right w-40">Giá trị sau thuế</th>
                                         <th className="p-4 font-black uppercase text-sm">Đợt</th>
+                                        <th className="p-4 font-black uppercase text-sm">Số HĐ</th>
                                         <th className="p-4 font-black uppercase text-sm">Ghi chú</th>
                                         <th className="p-4 font-black uppercase text-sm w-24 text-center print:hidden">Thao tác</th>
                                     </>
@@ -3470,53 +3592,134 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         );
                                     })
                                 ) : (
-                                    filteredInvoices.map((inv, idx) => (
-                                        <tr key={inv.id} className="hover:bg-slate-50 transition group">
-                                            <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
-                                            <td 
-                                                className="p-4 text-sm font-bold text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline"
-                                                onDoubleClick={() => onNavigateToProject && onNavigateToProject(inv.projectName)}
-                                                title="Click đúp để xem chi tiết công trình"
-                                            >
-                                                {inv.projectName}
-                                            </td>
-                                            <td className="p-4 text-sm text-slate-600 font-bold">{formatMonthLabel(inv.invoice_month || inv.created_at?.slice(0, 7) || '') || '-'}</td>
-                                            <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
-                                            <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
-                                            <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
-                                            <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
-                                            <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
-                                            <td className="p-4 text-center print:hidden">
-                                                <div className="flex items-center justify-center gap-2">
-                                                    {(() => {
-                                                        const isPendingDelete = deleteRequests.some(r => r.original_table === 'expected_invoices' && r.record_id === inv.id);
-                                                        if (isPendingDelete) {
-                                                            return (
-                                                                <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
-                                                                    Chờ xóa
-                                                                </span>
-                                                            );
-                                                        }
-                                                        const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
-                                                        return (
-                                                            <>
-                                                                <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
-                                                                {(isAuthorizer || true) && (
-                                                                    <button 
-                                                                        onClick={() => handleDeleteClick(inv)} 
-                                                                        className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
-                                                                        title={isAuthorizer ? "Xóa" : "Đề nghị Xóa"}
-                                                                    >
-                                                                        <Trash2 size={16} />
-                                                                    </button>
-                                                                )}
-                                                            </>
-                                                        );
-                                                    })()}
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    (() => {
+                                        const issuedInvoices = filteredInvoices.filter(inv => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            const no = inv.invoice_no || info.invoice_no;
+                                            return Boolean(String(no || '').trim());
+                                        });
+                                        const unissuedInvoices = filteredInvoices.filter(inv => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            const no = inv.invoice_no || info.invoice_no;
+                                            return !Boolean(String(no || '').trim());
+                                        });
+
+                                        const sumPreIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
+                                        const sumVatIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
+                                        const sumPostIssued = issuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+
+                                        const sumPreUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
+                                        const sumVatUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
+                                        const sumPostUnissued = unissuedInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+
+                                        const sumPreTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0);
+                                        const sumVatTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0);
+                                        const sumPostTotal = filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0);
+
+                                        const renderRow = (inv, idx) => {
+                                            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                                            const displayInvoiceNo = inv.invoice_no || info.invoice_no;
+                                            const displayInvoiceDate = inv.invoice_date || info.invoice_date;
+                                            const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
+
+                                            return (
+                                                <tr key={inv.id} className="hover:bg-slate-50 transition group">
+                                                    <td className="p-4 text-sm text-center text-slate-500 font-medium">{idx + 1}</td>
+                                                    <td 
+                                                        className="p-4 text-sm font-bold text-slate-800 cursor-pointer hover:text-indigo-600 hover:underline"
+                                                        onDoubleClick={() => onNavigateToProject && onNavigateToProject(inv.projectName)}
+                                                        title="Click đúp để xem chi tiết công trình"
+                                                    >
+                                                        {inv.projectName}
+                                                    </td>
+                                                    <td className="p-4 text-sm text-slate-600 font-bold text-center">{displayInvoiceDate ? displayInvoiceDate.split('-').reverse().join('/') : '-'}</td>
+                                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(parseFloat(inv.vatAmount) || 0)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(parseFloat(inv.postTaxValue) || 0)} VNĐ</td>
+                                                    <td className="p-4 text-sm text-slate-600 font-medium">{inv.phase}</td>
+                                                    <td className="p-4 text-sm text-center">
+                                                        {displayInvoiceNo ? (
+                                                            <span className="font-bold text-slate-700">{displayInvoiceNo}</span>
+                                                        ) : (
+                                                            <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>
+                                                        )}
+                                                    </td>
+                                                    <td className="p-4 text-sm text-slate-500 max-w-xs truncate" title={inv.note}>{inv.note}</td>
+                                                    <td className="p-4 text-center print:hidden">
+                                                        <div className="flex items-center justify-center gap-2">
+                                                            {(() => {
+                                                                const isPendingDelete = deleteRequests.some(r => r.original_table === 'expected_invoices' && r.record_id === inv.id);
+                                                                if (isPendingDelete) {
+                                                                    return (
+                                                                        <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200 rounded whitespace-nowrap">
+                                                                            Chờ xóa
+                                                                        </span>
+                                                                    );
+                                                                }
+                                                                return (
+                                                                    <>
+                                                                        <button onClick={() => handleEdit(inv)} className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition border border-blue-200 bg-blue-50" title="Sửa"><Edit2 size={16} /></button>
+                                                                        {(isAuthorizer || true) && (
+                                                                            <button 
+                                                                                onClick={() => handleDeleteClick(inv)} 
+                                                                                className="p-1.5 text-red-500 hover:bg-red-50 rounded-lg transition border border-red-200 bg-red-50" 
+                                                                                title={isAuthorizer ? "Xóa" : "Đề nghị Xóa"}
+                                                                            >
+                                                                                <Trash2 size={16} />
+                                                                            </button>
+                                                                        )}
+                                                                    </>
+                                                                );
+                                                            })()}
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            );
+                                        };
+
+                                        return (
+                                            <>
+                                                {/* HAS ISSUED INVOICES */}
+                                                {issuedInvoices.map((inv, idx) => renderRow(inv, idx))}
+                                                {issuedInvoices.length > 0 && (
+                                                    <tr className="bg-emerald-50/90 border-y-2 border-emerald-300 shadow-sm">
+                                                        <td colSpan="3" className="p-4 text-sm font-black text-emerald-950 text-right uppercase">
+                                                            TỔNG CỘNG ĐÃ XUẤT HĐ ({issuedInvoices.length}):
+                                                        </td>
+                                                        <td className="p-4 text-sm font-black text-slate-800 text-right">{formatCurrency(sumPreIssued)}</td>
+                                                        <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(sumVatIssued)}</td>
+                                                        <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(sumPostIssued)} VNĐ</td>
+                                                        <td colSpan="4"></td>
+                                                    </tr>
+                                                )}
+
+                                                {/* UNISSUED INVOICES */}
+                                                {unissuedInvoices.map((inv, idx) => renderRow(inv, issuedInvoices.length + idx))}
+                                                {unissuedInvoices.length > 0 && (
+                                                    <tr className="bg-amber-50/90 border-y-2 border-amber-300 shadow-sm">
+                                                        <td colSpan="3" className="p-4 text-sm font-black text-amber-950 text-right uppercase">
+                                                            TỔNG CỘNG CHƯA XUẤT HĐ ({unissuedInvoices.length}):
+                                                        </td>
+                                                        <td className="p-4 text-sm font-black text-slate-800 text-right">{formatCurrency(sumPreUnissued)}</td>
+                                                        <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(sumVatUnissued)}</td>
+                                                        <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(sumPostUnissued)} VNĐ</td>
+                                                        <td colSpan="4"></td>
+                                                    </tr>
+                                                )}
+
+                                                {/* GRAND TOTAL */}
+                                                <tr className="bg-slate-200/90 border-t-2 border-slate-400 font-black shadow-inner">
+                                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-900 text-right uppercase">
+                                                        TỔNG CỘNG TẤT CẢ ({filteredInvoices.length}):
+                                                    </td>
+                                                    <td className="p-4 text-sm font-black text-slate-950 text-right">{formatCurrency(sumPreTotal)}</td>
+                                                    <td className="p-4 text-sm font-black text-red-600 text-right">{formatCurrency(sumVatTotal)}</td>
+                                                    <td className="p-4 text-sm font-black text-emerald-700 text-right">{formatCurrency(sumPostTotal)} VNĐ</td>
+                                                    <td colSpan="4"></td>
+                                                </tr>
+                                            </>
+                                        );
+                                    })()
                                 )
                             )}
                             {activeSubTab === 'customer_debt' && filteredCustomerDebts.length > 0 && (
@@ -3537,15 +3740,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         }
                                         return <td key={col.key} className="p-4"></td>;
                                     })}
-                                </tr>
-                            )}
-                            {activeSubTab === 'invoice' && filteredInvoices.length > 0 && (
-                                <tr className="bg-slate-100 border-t-2 border-slate-300">
-                                    <td colSpan="3" className="p-4 text-sm font-black text-slate-800 text-right uppercase">Tổng cộng:</td>
-                                    <td className="p-4 text-sm font-black text-slate-700 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-red-500 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.vatAmount) || 0), 0))}</td>
-                                    <td className="p-4 text-sm font-black text-emerald-600 text-right">{formatCurrency(filteredInvoices.reduce((sum, inv) => sum + (parseFloat(inv.postTaxValue) || 0), 0))} VNĐ</td>
-                                    <td colSpan="3"></td>
                                 </tr>
                             )}
                         </tbody>
