@@ -77,6 +77,21 @@ const normalizeRoleName = (value) => {
         .trim();
 };
 
+const DATA_FETCH_TIMEOUT_MS = 18000;
+
+const withTimeout = (promise, label, timeoutMs = DATA_FETCH_TIMEOUT_MS) => {
+    let timeoutId;
+    const timeoutPromise = new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+            reject(new Error(`Timeout khi tải ${label}`));
+        }, timeoutMs);
+    });
+
+    return Promise.race([promise, timeoutPromise]).finally(() => {
+        clearTimeout(timeoutId);
+    });
+};
+
 const isTabAllowed = (tabId, user, systemConfig) => {
     if (!user) return false;
     const role = user.role?.toUpperCase() || '';
@@ -1036,17 +1051,30 @@ export default function Home() {
         console.log("fetchData called, showLoading:", showLoading);
         if (showLoading) setIsLoading(true);
         try {
-            await Promise.all([
-                fetchProjectsData(),
-                fetchTransactionsData(),
-                fetchIncomesData(),
-                fetchApprovalRequestsData(),
-                fetchPartnerDebtsData(),
-                fetchExpectedInvoicesData(),
-                fetchNotificationsData(),
-                fetchDeleteRequestsData(),
-                fetchActivityLogsData()
-            ]);
+            const tasks = [
+                ['công trình', fetchProjectsData],
+                ['giao dịch', fetchTransactionsData],
+                ['doanh thu', fetchIncomesData],
+                ['đề nghị thanh toán', fetchApprovalRequestsData],
+                ['công nợ đối tác', fetchPartnerDebtsData],
+                ['hóa đơn dự kiến', fetchExpectedInvoicesData],
+                ['thông báo', fetchNotificationsData],
+                ['đề nghị xóa', fetchDeleteRequestsData],
+                ['nhật ký hoạt động', fetchActivityLogsData]
+            ];
+
+            const results = await Promise.allSettled(
+                tasks.map(([label, task]) => withTimeout(task(), label))
+            );
+
+            const failedLabels = results
+                .map((result, index) => result.status === 'rejected' ? tasks[index][0] : null)
+                .filter(Boolean);
+
+            if (failedLabels.length > 0) {
+                console.warn('Some data sources failed or timed out:', failedLabels, results);
+                showToast(`Một số dữ liệu tải chậm/lỗi: ${failedLabels.join(', ')}`, 'error');
+            }
         } catch (error) {
             console.error(error);
             showToast('Lỗi kết nối Database!', 'error');
