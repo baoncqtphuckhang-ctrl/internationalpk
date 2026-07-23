@@ -684,6 +684,55 @@ export default function Home() {
         }
     };
 
+    const cleanupStaleDeleteRequestNotifications = async (deleteRequestRows = []) => {
+        try {
+            const pendingRequests = (deleteRequestRows || []).filter(req => req?.status === 'pending');
+            const pendingRequestIds = new Set(pendingRequests.map(req => String(req.id)).filter(Boolean));
+            const pendingRecordKeys = new Set(
+                pendingRequests
+                    .map(req => `${req.original_table || ''}|${req.record_id || ''}`)
+                    .filter(key => key !== '|')
+            );
+
+            const { data: deleteNotifications, error } = await supabase
+                .from('notifications')
+                .select('id, source_table, source_id, type')
+                .eq('type', 'delete_request');
+
+            if (error) {
+                console.warn('Could not load delete request notifications for cleanup:', error);
+                return;
+            }
+
+            const staleIds = (deleteNotifications || [])
+                .filter(notification => {
+                    if (notification.source_table === 'delete_requests') {
+                        return !pendingRequestIds.has(String(notification.source_id || ''));
+                    }
+                    const recordKey = `${notification.source_table || ''}|${notification.source_id || ''}`;
+                    return !pendingRecordKeys.has(recordKey);
+                })
+                .map(notification => notification.id)
+                .filter(Boolean);
+
+            if (staleIds.length === 0) return;
+
+            const { error: cleanupError } = await supabase
+                .from('notifications')
+                .update({ is_read: true, recipient_deleted: true })
+                .in('id', staleIds);
+
+            if (cleanupError) {
+                console.warn('Could not cleanup stale delete request notifications:', cleanupError);
+                return;
+            }
+
+            setNotifications(prev => prev.filter(notification => !staleIds.includes(notification.id)));
+        } catch (error) {
+            console.warn('Failed to cleanup stale delete request notifications:', error);
+        }
+    };
+
     const notifyDeleteRequestRequester = async (request, status, originalLabel) => {
         const requester = getDeleteRequestRequester(request);
         if (!requester?.username) return false;
@@ -1024,6 +1073,7 @@ export default function Home() {
             if (!delError) {
                 setDeleteRequests(delData || []);
                 await syncDeleteRequestNotifications(delData || []);
+                await cleanupStaleDeleteRequestNotifications(delData || []);
             }
         } catch (e) {
             console.warn('delete_requests table might not exist yet', e);
@@ -1058,17 +1108,24 @@ export default function Home() {
                 ['đề nghị thanh toán', fetchApprovalRequestsData],
                 ['công nợ đối tác', fetchPartnerDebtsData],
                 ['hóa đơn dự kiến', fetchExpectedInvoicesData],
-                ['thông báo', fetchNotificationsData],
                 ['đề nghị xóa', fetchDeleteRequestsData],
                 ['nhật ký hoạt động', fetchActivityLogsData]
             ];
 
-            const results = await Promise.allSettled(
+            const dataResults = await Promise.allSettled(
                 tasks.map(([label, task]) => withTimeout(task(), label))
             );
+            const notificationResult = await withTimeout(fetchNotificationsData(), 'thông báo')
+                .then(() => ({ status: 'fulfilled' }))
+                .catch(reason => ({ status: 'rejected', reason }));
+            const results = [
+                ...dataResults,
+                notificationResult
+            ];
+            const labels = [...tasks.map(([label]) => label), 'thông báo'];
 
             const failedLabels = results
-                .map((result, index) => result.status === 'rejected' ? tasks[index][0] : null)
+                .map((result, index) => result.status === 'rejected' ? labels[index] : null)
                 .filter(Boolean);
 
             if (failedLabels.length > 0) {
@@ -2666,7 +2723,9 @@ export default function Home() {
                     .update({ 
                         title: 'Đề nghị xóa dữ liệu (Đã duyệt)', 
                         message: resolvedMessage, 
-                        type: 'delete_request_approved'
+                        type: 'delete_request_approved',
+                        is_read: true,
+                        recipient_deleted: true
                     })
                     .eq('source_table', 'delete_requests')
                     .eq('source_id', request.id);
@@ -2676,7 +2735,9 @@ export default function Home() {
                     .update({ 
                         title: 'Đề nghị xóa dữ liệu (Đã duyệt)', 
                         message: resolvedMessage, 
-                        type: 'delete_request_approved'
+                        type: 'delete_request_approved',
+                        is_read: true,
+                        recipient_deleted: true
                     })
                     .eq('source_table', request.original_table)
                     .eq('source_id', request.record_id);
@@ -2716,7 +2777,9 @@ export default function Home() {
                     .update({ 
                         title: 'Đề nghị xóa dữ liệu (Từ chối)', 
                         message: resolvedMessage, 
-                        type: 'delete_request_rejected'
+                        type: 'delete_request_rejected',
+                        is_read: true,
+                        recipient_deleted: true
                     })
                     .eq('source_table', 'delete_requests')
                     .eq('source_id', request.id);
@@ -2726,7 +2789,9 @@ export default function Home() {
                     .update({ 
                         title: 'Đề nghị xóa dữ liệu (Từ chối)', 
                         message: resolvedMessage, 
-                        type: 'delete_request_rejected'
+                        type: 'delete_request_rejected',
+                        is_read: true,
+                        recipient_deleted: true
                     })
                     .eq('source_table', request.original_table)
                     .eq('source_id', request.record_id);
