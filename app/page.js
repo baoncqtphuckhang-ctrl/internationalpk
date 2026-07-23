@@ -888,7 +888,7 @@ export default function Home() {
         while (true) {
             const { data, error } = await supabase
                 .from('transactions')
-                .select('id, project_name, accounting_date, code, debit, credit')
+                .select('id, project_name, accounting_date, code, debit, credit, invoice_no, invoice_date, note')
                 .order('accounting_date', { ascending: false })
                 .order('id', { ascending: true })
                 .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -1409,6 +1409,55 @@ export default function Home() {
                     const { data: updatedRow, error } = await supabase.from('transactions').update(payload).eq('id', editId).select().single();
                     if (error) throw error;
                     if (updatedRow) setTransactions(prev => prev.map(t => t.id === editId ? { ...updatedRow, code: updatedRow.code ? updatedRow.code.toString().trim().replace(',', '.') : updatedRow.code } : t));
+
+                    // Auto sync invoice_no & invoice_date to material_orders if linked
+                    if ((payload.invoice_no || payload.invoice_date) && payload.project_name && payload.note) {
+                        try {
+                            const parsePhase = (text = '') => {
+                                const match = text.match(/(?:ĐỢT|Đợt|đợt)\s*(\d+|MUA HỘ|ORDER HỘ)/i);
+                                if (match) {
+                                    const p = match[1].trim();
+                                    return /^\d+$/.test(p) ? 'ĐỢT ' + p : p.toUpperCase();
+                                }
+                                return '';
+                            };
+                            const norm = (s = '') => (s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                            const targetPhase = parsePhase(payload.note);
+                            const targetProj = norm(payload.project_name);
+
+                            if (targetPhase && targetProj) {
+                                const { data: mOrders } = await supabase.from('material_orders').select('*');
+                                if (mOrders) {
+                                    const matchedOrd = mOrders.find(o => {
+                                        const oProj = norm(o.project_name);
+                                        if (!oProj || !targetProj || (!oProj.includes(targetProj) && !targetProj.includes(oProj))) return false;
+                                        const oPhase = parsePhase(o.order_phase) || o.order_phase;
+                                        return oPhase && oPhase.toUpperCase() === targetPhase.toUpperCase();
+                                    });
+
+                                    if (matchedOrd) {
+                                        let invs = Array.isArray(matchedOrd.invoices) ? [...matchedOrd.invoices] : [];
+                                        if (invs.length === 0) {
+                                            invs = [{ number: payload.invoice_no || '', date: payload.invoice_date || '', pdf_url: '' }];
+                                        } else {
+                                            invs[0] = {
+                                                ...invs[0],
+                                                number: payload.invoice_no || invs[0].number || '',
+                                                date: payload.invoice_date || invs[0].date || ''
+                                            };
+                                        }
+                                        await supabase.from('material_orders').update({
+                                            invoice_number: payload.invoice_no || matchedOrd.invoice_number,
+                                            invoice_date: payload.invoice_date || matchedOrd.invoice_date,
+                                            invoices: invs
+                                        }).eq('id', matchedOrd.id);
+                                    }
+                                }
+                            }
+                        } catch (errSync) {
+                            console.error('Error syncing transaction invoice to material order:', errSync);
+                        }
+                    }
                 } else {
                     const rowsToInsert = recoveryPayload ? [payload, recoveryPayload] : [payload];
                     const { data: newRows, error } = await supabase.from('transactions').insert(rowsToInsert).select();
@@ -3271,11 +3320,11 @@ export default function Home() {
 
                 {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} systemConfig={systemConfig} onSaveConfig={handleSaveSystemConfig} currentUser={currentUser} />}
                 
-                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={allowedDetailedTransactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
+                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={allowedDetailedTransactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
+                {activeTab === 'history' && <HistoryTable transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
                 
-                {activeTab === 'input' && <InputForm transactions={allowedDetailedTransactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
+                {activeTab === 'input' && <InputForm transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} deleteRequests={deleteRequests} />}
                 
@@ -3292,7 +3341,7 @@ export default function Home() {
                         usersList={usersList}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
-                        transactions={allowedDetailedTransactions}
+                        transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions}
                         onAddDNTT={handleAddDNTT}
                         onUpdateDNTT={handleUpdateDNTT}
                         onUpdateStatus={handleUpdateApprovalStatus}
@@ -3368,6 +3417,7 @@ export default function Home() {
                                 projects={allowedProjects.filter(p => p.project_type === 'TỔNG THẦU MUA HỘ')}
                                 dnttList={allowedDnttList}
                                 isMuaHoManager={true}
+                                transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions}
                                 showToast={showToast}
                                 onNavigateToHistory={(searchTerm) => {
                                     setHistorySearchTerm(searchTerm);
@@ -3951,7 +4001,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={allowedDetailedTransactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
+                                <HistoryTable transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (

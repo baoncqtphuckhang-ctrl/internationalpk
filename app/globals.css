@@ -358,10 +358,24 @@ table td {
     width: 100% !important;
   }
 
+  table[id^="salary-table-"] tr {
+    min-height: 10mm !important;
+  }
+
+  table[id^="salary-table-"] th,
+  table[id^="salary-table-"] td {
+    padding: 6px 5px !important;
+    white-space: nowrap !important;
+  }
+
+  table[id^="salary-table-"] input {
+    white-space: nowrap !important;
+  }
+
   #expected-invoices-table.expected-customer-debt-print-table thead tr,
   #customer-debts-table thead tr,
   table[id^="salary-table-"] thead tr {
-    min-height: 8mm !important;
+    min-height: 10mm !important;
   }
 
   #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures,

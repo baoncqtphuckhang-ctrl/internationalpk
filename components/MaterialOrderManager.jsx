@@ -39,7 +39,59 @@ const getSignatureName = (commanderName) => {
     return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
 };
 
-export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false, realtimeVersion, deleteRequests = [] }) {
+
+const parseOrderPhase = (text = '') => {
+    if (!text) return '';
+    const cleanText = text.replace(/\[ID:[^\]]+\]/gi, '');
+    const match = cleanText.match(/(?:ĐỢT|Đợt|đợt)\s*(\d+|MUA HỘ|ORDER HỘ|0\s*\[ĐỢT MUA HỘ\])/i);
+    if (match) {
+        const p = match[1].trim();
+        if (/^\d+$/.test(p)) return 'ĐỢT ' + p;
+        return p.toUpperCase();
+    }
+    return '';
+};
+
+const normalizeProjectName = (str = '') => {
+    if (!str) return '';
+    return str.normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '');
+};
+
+const findMatchingTxForOrder = (order, txList = []) => {
+    if (!txList || txList.length === 0 || !order) return null;
+    const orderProj = normalizeProjectName(order.project_name);
+    const orderPhase = (order.order_phase || '').toUpperCase().trim();
+    const oParsedPhase = parseOrderPhase(orderPhase) || orderPhase;
+
+    return txList.find(t => {
+        if (!t.invoice_no && !t.invoice_date) return false;
+
+        const tProj = normalizeProjectName(t.project_name);
+        if (!tProj || !orderProj) return false;
+        if (!tProj.includes(orderProj) && !orderProj.includes(tProj)) return false;
+
+        const tNote = t.note || '';
+        if (order.id && tNote.includes(order.id)) return true;
+
+        const tParsedPhase = parseOrderPhase(tNote);
+        if (tParsedPhase && oParsedPhase && tParsedPhase.toUpperCase() === oParsedPhase.toUpperCase()) {
+            return true;
+        }
+
+        if (orderPhase && tNote.toUpperCase().includes(orderPhase)) {
+            return true;
+        }
+
+        return false;
+    }) || null;
+};
+
+export default function MaterialOrderManager({ currentUser, usersList, projects, dnttList, showToast, onNavigateToHistory, onNavigateToHistoryWithId, onNavigateToProject, refreshData, isMuaHoManager = false, realtimeVersion, deleteRequests = [], transactions = [] }) {
     const adminPassword = usersList?.find(u => u.role?.toUpperCase() === 'ADMIN' || u.username?.toLowerCase() === 'admin')?.password || '123456';
     const [orders, setOrders] = useState([]);
 
@@ -83,6 +135,61 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
     const [uploadingId, setUploadingId] = useState(null);
     const [invoiceModal, setInvoiceModal] = useState({ isOpen: false, order: null, number: '', date: '' });
     const [editReceiveModal, setEditReceiveModal] = useState({ isOpen: false, data: null, order: null, catIdx: null, itemIdx: null, historyIdx: null });
+
+    const [txList, setTxList] = useState([]);
+
+    const fetchTxForOrders = async () => {
+        try {
+            const { data } = await supabase
+                .from('transactions')
+                .select('id, project_name, invoice_no, invoice_date, note, created_at')
+                .order('created_at', { ascending: false })
+                .limit(3000);
+            if (data) setTxList(data);
+        } catch (e) {
+            console.error('Error fetching tx for material orders:', e);
+        }
+    };
+
+    const allTransactionsList = useMemo(() => {
+        const list = [...txList];
+        if (Array.isArray(transactions) && transactions.length > 0) {
+            transactions.forEach(t => {
+                if (!list.some(existing => existing.id === t.id)) {
+                    list.push(t);
+                } else {
+                    const idx = list.findIndex(existing => existing.id === t.id);
+                    if (idx !== -1) {
+                        list[idx] = { ...list[idx], ...t };
+                    }
+                }
+            });
+        }
+        return list;
+    }, [transactions, txList]);
+
+    const getEffectiveInvoiceInfo = (order) => {
+        let invList = Array.isArray(order.invoices) ? [...order.invoices] : [];
+        if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
+            invList = [{ number: order.invoice_number || '', date: order.invoice_date || '', pdf_url: order.invoice_pdf_url || '' }];
+        }
+        
+        const hasCustomInvoice = invList.some(inv => inv.number?.trim() || inv.date || inv.pdf_url);
+        
+        if (!hasCustomInvoice) {
+            const matchedTx = findMatchingTxForOrder(order, allTransactionsList);
+            if (matchedTx && (matchedTx.invoice_no || matchedTx.invoice_date)) {
+                return {
+                    invList: [{ number: matchedTx.invoice_no || '', date: matchedTx.invoice_date || '', pdf_url: '' }],
+                    isFromTx: true,
+                    txId: matchedTx.id
+                };
+            }
+        }
+        
+        return { invList, isFromTx: false, txId: null };
+    };
+
 
     const toggleItemExpansion = (key) => {
         setExpandedItems(prev => ({...prev, [key]: !prev[key]}));
@@ -1754,14 +1861,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 openInvoiceModal(order);
                                                             }}>
                                                                 {(() => {
-                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
-                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
-                                                                        invList = [{ number: order.invoice_number || '' }];
-                                                                    }
+                                                                    const { invList, isFromTx } = getEffectiveInvoiceInfo(order);
                                                                     const numbers = invList.map(inv => inv.number).filter(Boolean).join(', ');
                                                                     return numbers ? (
-                                                                        <span className="font-bold text-slate-700 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border border-slate-200/40 transition cursor-pointer inline-block max-w-[120px] truncate" title={numbers}>
-                                                                            {numbers}
+                                                                        <span className={`font-bold hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border transition cursor-pointer inline-flex items-center gap-1 max-w-[140px] truncate ${isFromTx ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-sm' : 'text-slate-700 bg-slate-100 border-slate-200/40'}`} title={numbers + (isFromTx ? ' (Được link từ Lịch sử chi tiền)' : '')}>
+                                                                            {isFromTx && <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded">chi</span>}
+                                                                            <span className="truncate">{numbers}</span>
                                                                         </span>
                                                                     ) : (
                                                                         <span className="text-xs text-indigo-500 hover:text-indigo-600 hover:underline cursor-pointer font-bold flex items-center gap-1">
@@ -1775,14 +1880,12 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 openInvoiceModal(order);
                                                             }}>
                                                                 {(() => {
-                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
-                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
-                                                                        invList = [{ date: order.invoice_date || '' }];
-                                                                    }
+                                                                    const { invList, isFromTx } = getEffectiveInvoiceInfo(order);
                                                                     const dates = invList.map(inv => inv.date ? formatDateVN(inv.date) : '').filter(Boolean).join(', ');
                                                                     return dates ? (
-                                                                        <span className="font-mono text-xs font-bold text-slate-600 bg-slate-100 hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border border-slate-200/40 transition cursor-pointer inline-block max-w-[150px] truncate" title={dates}>
-                                                                            {dates}
+                                                                        <span className={`font-mono text-xs font-bold hover:bg-indigo-50 hover:text-indigo-600 px-2.5 py-1 rounded-lg border transition cursor-pointer inline-flex items-center gap-1 max-w-[150px] truncate ${isFromTx ? 'bg-amber-50 text-amber-800 border-amber-300 shadow-sm' : 'text-slate-600 bg-slate-100 border-slate-200/40'}`} title={dates + (isFromTx ? ' (Được link từ Lịch sử chi tiền)' : '')}>
+                                                                            {isFromTx && <span className="text-[10px] bg-amber-200 text-amber-900 font-extrabold px-1 rounded">chi</span>}
+                                                                            <span className="truncate">{dates}</span>
                                                                         </span>
                                                                     ) : (
                                                                         <span className="text-xs text-indigo-500 hover:text-indigo-600 hover:underline cursor-pointer font-bold flex items-center gap-1">
@@ -1796,10 +1899,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                                 openInvoiceModal(order);
                                                             }}>
                                                                 {(() => {
-                                                                    let invList = Array.isArray(order.invoices) ? order.invoices : [];
-                                                                    if (invList.length === 0 && (order.invoice_number || order.invoice_date || order.invoice_pdf_url)) {
-                                                                        invList = [{ number: order.invoice_number || '', pdf_url: order.invoice_pdf_url || '' }];
-                                                                    }
+                                                                    const { invList } = getEffectiveInvoiceInfo(order);
                                                                     const pdfs = invList.filter(inv => inv.pdf_url);
                                                                     if (pdfs.length === 0) {
                                                                         return (

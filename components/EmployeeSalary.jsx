@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X, ChevronDown, ChevronRight, Settings, Banknote, RotateCcw } from 'lucide-react';
+import { Download, Printer, Plus, Trash2, Calendar, CheckSquare, List, Save, Archive, X, ChevronDown, ChevronRight, Settings, Banknote, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { formatCurrency, getVietnameseHolidays } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 
@@ -108,6 +108,41 @@ export const INITIAL_DATA = [
     { id: '29', name: 'Nguyễn Khắc Huỳnh', basic_salary: 14333333, phone_allowance: 0, parking_allowance: 0, makeup_allowance: 0, insurance_salary: 5000000, advance: 4000000, other_deductions: 0, other_additions: 4400000, cash: 0, notes: '', bank_account: '105869389545', bank_account_name: 'NGUYỄN KHÁC HUỲNH', bank_name: 'VIETINBANK' },
 ];
 
+
+const SALARY_COLUMNS = [
+    { key: 'basic_salary', label: 'Lương chính (1)' },
+    { key: 'phone_allowance', label: 'Điện thoại (2)' },
+    { key: 'parking_allowance', label: 'Giữ xe (3)' },
+    { key: 'makeup_allowance', label: 'Son phấn (4)' },
+    { key: 'gondola_allowance', label: 'Gondola' },
+    { key: 'laptop_allowance', label: 'Laptop' },
+    { key: 'total_income_5', label: 'Tổng thu nhập (5)' },
+    { key: 'actual_days', label: 'NC thực tế (6)' },
+    { key: 'period_std_days', label: 'Công chuẩn (7)' },
+    { key: 'total_actual_salary_8', label: 'Tổng lương thực tế (8)' },
+    { key: 'insurance_salary', label: 'Lương đóng BHXH' },
+    { key: 'dn_bhxh', label: 'DN BHXH (17%)' },
+    { key: 'dn_bhyt', label: 'DN BHYT (3%)' },
+    { key: 'dn_tnld', label: 'DN TNLĐ (0.5%)' },
+    { key: 'dn_bhtn', label: 'DN BHTN (1%)' },
+    { key: 'dn_total', label: 'DN Tổng trích' },
+    { key: 'nld_bhxh', label: 'NLĐ BHXH (8%)' },
+    { key: 'nld_bhyt', label: 'NLĐ BHYT (1.5%)' },
+    { key: 'nld_bhtn', label: 'NLĐ BHTN (1%)' },
+    { key: 'nld_total_9', label: 'NLĐ Trích trừ lương (9)' },
+    { key: 'advance', label: 'Tạm ứng (10)' },
+    { key: 'other_deductions', label: 'Trừ khác (11)' },
+    { key: 'other_additions', label: 'Cộng khác (12)' },
+    { key: 'overtime_pay', label: 'Tăng ca (13)' },
+    { key: 'actual_receive', label: 'Thực lãnh' },
+    { key: 'cash', label: 'Chi tiền mặt' },
+    { key: 'remaining', label: 'Còn lại' },
+    { key: 'notes', label: 'Ghi chú' },
+    { key: 'bank_account', label: 'STK' },
+    { key: 'bank_account_name', label: 'Tên chủ TK' },
+    { key: 'bank_name', label: 'Ngân hàng' }
+];
+
 export default function EmployeeSalary({ currentUser, usersList = [], projects = [], refreshData }) {
     const [expandedPeriods, setExpandedPeriods] = useState([]);
     const [accountedTxs, setAccountedTxs] = useState([]);
@@ -127,6 +162,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     const [historySubTab, setHistorySubTab] = useState('salary'); // 'salary' | 'attendance'
     const [holidays, setHolidays] = useState({});
     const [systemModal, setSystemModal] = useState({ isOpen: false, type: 'info', title: '', message: '', onConfirm: null, onCancel: null, password: '', error: '' });
+    
+    const [hiddenCols, setHiddenCols] = useState([]);
+    const [showColumnToggle, setShowColumnToggle] = useState(false);
+
+    const toggleColVisibility = (colKey) => {
+        setHiddenCols(prev => prev.includes(colKey) ? prev.filter(c => c !== colKey) : [...prev, colKey]);
+    };
+    const isColVisible = (colKey) => !hiddenCols.includes(colKey);
+
     const [allocationModal, setAllocationModal] = useState({ isOpen: false, empId: null, name: '', month: '', allocations: [] });
     const [paymentModal, setPaymentModal] = useState({ isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6421', corresponding_account: '1111', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: '', ratio: 0}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, remaining: 0 });
     const [leaveModal, setLeaveModal] = useState({ isOpen: false, empId: null, name: '', currentBalance: 0 });
@@ -2000,7 +2044,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     </select>
                                 )}
                             </td>
-                            <td colSpan={26} className="border border-slate-300"></td>
+                            <td colSpan={SALARY_COLUMNS.filter(c => isColVisible(c.key)).length} className="border border-slate-300"></td>
                             <td className="border border-slate-300 p-1 text-center print:hidden pointer-events-auto">
                                 {isActive && !viewingHistoryId && (
                                     <div className="flex items-center justify-center gap-1">
@@ -2278,7 +2322,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     <td key={day} className={`border border-slate-300 p-0 text-center ${isHoliday ? 'bg-blue-200/80 shadow-inner' : (isSunday && attValue === 1 ? 'bg-red-50/30' : '')}`}>
                                         <button 
                                             onClick={() => handleToggleAttendance(emp.id, day)}
-                                            className={`w-full h-full min-h-[36px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 1.5 ? 'bg-purple-500 text-white' : attValue === 2 ? 'bg-indigo-600 text-white' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : attValue === 'P/2' ? 'bg-sky-400 text-white' : 'bg-red-500 text-white'}`}
+                                            className={`w-full h-full min-h-[54px] font-bold transition hover:opacity-80 ${attValue === 1 ? 'text-emerald-600 hover:bg-slate-200' : attValue === 1.5 ? 'bg-purple-500 text-white' : attValue === 2 ? 'bg-indigo-600 text-white' : attValue === 0.5 ? 'bg-orange-500 text-white' : attValue === 'P' ? 'bg-blue-500 text-white' : attValue === 'P/2' ? 'bg-sky-400 text-white' : 'bg-red-500 text-white'}`}
                                         >
                                             {attValue === 1 ? 'X' : attValue === 1.5 ? '1.5' : attValue === 2 ? '2' : attValue === 0.5 ? '/' : attValue === 'P' ? 'P' : attValue === 'P/2' ? 'P/2' : ''}
                                         </button>
@@ -2643,16 +2687,16 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                     <div className="space-y-4">
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-slate-600">HỌ VÀ TÊN <span className="text-red-500">*</span></label>
-                                            <input type="text" value={newEmpData.name} onChange={e => setNewEmpData({...newEmpData, name: e.target.value})} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition" placeholder="VD: Nguyễn Văn A" autoFocus/>
+                                            <input type="text" value={newEmpData.name} onChange={e => setNewEmpData({...newEmpData, name: e.target.value})} className="w-full px-4 py-4 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition" placeholder="VD: Nguyễn Văn A" autoFocus/>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-slate-600">PHÒNG BAN <span className="text-red-500">*</span></label>
-                                            <select value={newEmpData.department} onChange={e => setNewEmpData({...newEmpData, department: e.target.value})} className="w-full px-4 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition uppercase">
+                                            <select value={newEmpData.department} onChange={e => setNewEmpData({...newEmpData, department: e.target.value})} className="w-full px-4 py-4 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition uppercase">
                                                 {[...new Set([...DEPARTMENTS, ...employees.filter(e => e.isDepartment).map(e => e.department)])].map(d => <option key={d} value={d}>{d}</option>)}
                                                 <option value="Khác...">Khác (Tự nhập mới)...</option>
                                             </select>
                                             {newEmpData.department === 'Khác...' && (
-                                                <input type="text" value={newEmpData.customDepartment} onChange={e => setNewEmpData({...newEmpData, customDepartment: e.target.value})} className="w-full px-4 py-2.5 mt-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition uppercase animate-in slide-in-from-top-2" placeholder="Nhập tên phòng ban mới..." />
+                                                <input type="text" value={newEmpData.customDepartment} onChange={e => setNewEmpData({...newEmpData, customDepartment: e.target.value})} className="w-full px-4 py-4 mt-2 border border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 font-medium text-slate-800 transition uppercase animate-in slide-in-from-top-2" placeholder="Nhập tên phòng ban mới..." />
                                             )}
                                         </div>
                                     </div>
@@ -2667,14 +2711,14 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-slate-600">LƯƠNG CƠ BẢN</label>
                                             <div className="relative">
-                                                <NumberInput value={newEmpData.basic_salary} onChange={val => setNewEmpData({...newEmpData, basic_salary: val})} className="w-full pl-4 pr-8 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-bold text-slate-800 transition text-left" />
+                                                <NumberInput value={newEmpData.basic_salary} onChange={val => setNewEmpData({...newEmpData, basic_salary: val})} className="w-full pl-4 pr-8 py-4 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-bold text-slate-800 transition text-left" />
                                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">₫</span>
                                             </div>
                                         </div>
                                         <div className="space-y-1.5">
                                             <label className="text-xs font-bold text-slate-600">LƯƠNG ĐÓNG BHXH</label>
                                             <div className="relative">
-                                                <NumberInput value={newEmpData.insurance_salary} onChange={val => setNewEmpData({...newEmpData, insurance_salary: val})} className="w-full pl-4 pr-8 py-2.5 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-bold text-blue-700 transition text-left" />
+                                                <NumberInput value={newEmpData.insurance_salary} onChange={val => setNewEmpData({...newEmpData, insurance_salary: val})} className="w-full pl-4 pr-8 py-4 border border-slate-200 rounded-xl outline-none focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 font-bold text-blue-700 transition text-left" />
                                                 <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 font-medium text-sm">₫</span>
                                             </div>
                                         </div>
@@ -2714,7 +2758,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                     </div>
                     
                     <div className="p-4 px-6 bg-white flex justify-end gap-3 border-t border-slate-100 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.02)]">
-                        <button onClick={handleAddEmployeeSubmit} className="px-6 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 rounded-xl transition flex items-center gap-2">
+                        <button onClick={handleAddEmployeeSubmit} className="px-6 py-4 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-200 rounded-xl transition flex items-center gap-2">
                             <Plus size={18}/> Lưu Nhân Viên
                         </button>
                     </div>
@@ -3057,7 +3101,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </div>
                     </div>
                     <div className="p-4 bg-slate-50 flex justify-end gap-3 border-t border-slate-100">
-                        <button onClick={() => setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] })} className="px-5 py-2.5 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
+                        <button onClick={() => setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] })} className="px-5 py-4 text-sm font-bold text-slate-600 hover:bg-slate-200 rounded-xl transition">
                             Hủy bỏ
                         </button>
                         <button 
@@ -3094,7 +3138,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                 }));
                                 setAllocationModal({ isOpen: false, empId: null, name: '', month: '', allocations: [] });
                             }} 
-                            className="px-5 py-2.5 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition"
+                            className="px-5 py-4 text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 shadow-md shadow-blue-200 rounded-xl transition"
                         >
                             Lưu Phân Bổ
                         </button>
@@ -3319,13 +3363,13 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         </div>
                         
                         <div className="p-4 bg-white border-t border-slate-100 flex justify-end gap-3 shrink-0 rounded-b-2xl">
-                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', otherAdditionsCode: '811', otherAdditionsAccount: '3341', overtimeCode: '6427', overtimeAccount: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, overtimePay: 0, remaining: 0})} className="px-6 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
+                            <button onClick={() => setPaymentModal({isOpen: false, empId: null, empName: '', department: '', amount: 0, code: '6427', bhxhCode: '6427', corresponding_account: '3341', otherAdditionsCode: '811', otherAdditionsAccount: '3341', overtimeCode: '6427', overtimeAccount: '3341', recipient: '', note: '', allocations: [{id: Date.now(), project_name: '', from_date: '', to_date: ''}], monthId: null, globalStandardDays: 26, actualSalary: 0, companyBhxh: 0, otherAdditions: 0, overtimePay: 0, remaining: 0})} className="px-6 py-4 font-bold text-slate-600 hover:bg-slate-100 rounded-xl transition">
                                 Hủy bỏ
                             </button>
                             <button 
                                 disabled={!hasProjects}
                                 onClick={handleCreatePaymentTransaction} 
-                                className={`px-8 py-2.5 font-black text-white rounded-xl shadow-lg transition ${hasProjects ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-200' : 'bg-slate-300 cursor-not-allowed shadow-none'}`}
+                                className={`px-8 py-4 font-black text-white rounded-xl shadow-lg transition ${hasProjects ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 shadow-blue-200' : 'bg-slate-300 cursor-not-allowed shadow-none'}`}
                             >
                                 TẠO PHIẾU HẠCH TOÁN
                             </button>
