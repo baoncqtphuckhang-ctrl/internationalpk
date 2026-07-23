@@ -287,20 +287,40 @@ table td {
     height: auto !important;
   }
 
+  /* Base padding (150% height for HĐ dự kiến which uses default #expected-invoices-table) */
   #expected-invoices-table th,
   #expected-invoices-table td,
-  #customer-debts-table th,
-  #customer-debts-table td,
-  table[id^="salary-table-"] th,
-  table[id^="salary-table-"] td,
   table th,
   table td {
-    padding: var(--print-cell-padding-y, 4px) var(--print-cell-padding-x, 4px) !important;
+    padding: 10px 4px !important; /* ~150% row height */
     font-size: 10pt !important;
     line-height: 1.2 !important;
     white-space: normal !important;
     vertical-align: middle !important;
     word-break: break-word !important;
+  }
+
+  /* Specific padding for Giá trị tổ đội (150% height) */
+  #expected-invoices-table.expected-team-print-table th,
+  #expected-invoices-table.expected-team-print-table td {
+    padding: 10px 4px !important; /* ~150% row height */
+    line-height: 1.2 !important;
+  }
+
+  /* Specific padding for Công nợ thu (150% height) */
+  #expected-invoices-table.expected-customer-debt-print-table th,
+  #expected-invoices-table.expected-customer-debt-print-table td,
+  #customer-debts-table th,
+  #customer-debts-table td {
+    padding: 10px 4px !important; /* ~150% row height */
+    line-height: 1.2 !important;
+  }
+
+  /* Specific padding for Lương nhân viên (default comfortable height) */
+  table[id^="salary-table-"] th,
+  table[id^="salary-table-"] td {
+    padding: 6px 4px !important;
+    line-height: 1.2 !important;
   }
 
   #expected-invoices-table th,
@@ -314,8 +334,6 @@ table td {
   }
 
   #expected-invoices-table.expected-team-print-table thead th {
-    padding-top: 4px !important;
-    padding-bottom: 4px !important;
     line-height: 1.2 !important;
     vertical-align: middle !important;
     text-align: center !important;
@@ -340,30 +358,10 @@ table td {
     width: 100% !important;
   }
 
-  #expected-invoices-table.expected-customer-debt-print-table thead th,
-  #customer-debts-table thead th,
-  table[id^="salary-table-"] thead th {
-    padding: 4px 4px !important;
-    font-size: 10pt !important;
-    line-height: 1.2 !important;
-    text-align: center !important;
-    vertical-align: middle !important;
-    word-break: break-word !important;
-  }
-
   #expected-invoices-table.expected-customer-debt-print-table thead tr,
   #customer-debts-table thead tr,
   table[id^="salary-table-"] thead tr {
     min-height: 8mm !important;
-  }
-
-  #expected-invoices-table.expected-customer-debt-print-table tbody td,
-  #customer-debts-table tbody td,
-  table[id^="salary-table-"] tbody td {
-    font-size: 10pt !important;
-    padding: 4px 4px !important;
-    line-height: 1.2 !important;
-    word-break: break-word !important;
   }
 
   #expected-invoices-table.expected-customer-debt-print-table ~ .expected-print-signatures,

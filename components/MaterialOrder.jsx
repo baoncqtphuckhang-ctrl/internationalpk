@@ -27,9 +27,36 @@ export const DEFAULT_CATEGORIES = [
     }
 ];
 
-const getNextOrderPhaseForProject = (projectName, ordersList) => {
+const normalizeText = (value) => String(value || '').trim().toLowerCase();
+
+const getMaterialOrderPhaseSources = (projectName, ordersList = [], dnttList = []) => {
+    if (!projectName) return [];
+    const normalizedProjectName = normalizeText(projectName);
+    const projectOrders = (ordersList || []).filter(o =>
+        normalizeText(o.project_name) === normalizedProjectName && !o.is_deleted
+    );
+
+    const dnttOrders = (dnttList || []).reduce((acc, d) => {
+        if (d.doc_type !== 'Đơn Vật Tư' || normalizeText(d.project_name) !== normalizedProjectName) return acc;
+        try {
+            const parsed = JSON.parse(d.reason || '{}');
+            if (parsed.orderPhase) {
+                acc.push({
+                    project_name: d.project_name,
+                    order_phase: parsed.orderPhase,
+                    is_deleted: d.status === 'Deleted' || d.status === 'Đã xóa'
+                });
+            }
+        } catch (e) {}
+        return acc;
+    }, []);
+
+    return [...projectOrders, ...dnttOrders].filter(o => !o.is_deleted);
+};
+
+const getNextOrderPhaseForProject = (projectName, ordersList = [], dnttList = []) => {
     if (!projectName) return 'ĐỢT 1';
-    const projectOrders = ordersList.filter(o => o.project_name === projectName && !o.is_deleted);
+    const projectOrders = getMaterialOrderPhaseSources(projectName, ordersList, dnttList);
     if (projectOrders.length === 0) return 'ĐỢT 1';
     
     let maxPhase = 0;
@@ -108,12 +135,6 @@ const calculateMaterialTotals = (categories = []) => {
 export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion }) {
     const [view, setView] = useState('list'); // 'list', 'create', 'detail'
     const [orders, setOrders] = useState([]);
-
-    useEffect(() => {
-        if (realtimeVersion > 0) {
-            fetchOrders();
-        }
-    }, [realtimeVersion]);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [showSqlModal, setShowSqlModal] = useState(false);
@@ -187,12 +208,12 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
             return { name, phone };
         });
-    }, [formData?.project_name, projects, usersList]);
+    }, [formData.project_name, projects, usersList]);
 
     const updateFormDataForProject = (projectName, templatesMap = allTemplates) => {
         const proj = projects.find(p => p.name === projectName);
         if (!proj) return;
-        const nextPhase = getNextOrderPhaseForProject(proj.name, orders);
+        const nextPhase = getNextOrderPhaseForProject(proj.name, orders, dnttList);
         const templateData = getProjectMaterialTemplateData(proj.name, templatesMap);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
         const template = getProjectMaterialTemplate(proj.name, templatesMap, activeVerId);
@@ -293,7 +314,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 const firstProj = projects[0];
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
-                        const nextPhase = getNextOrderPhaseForProject(firstProj.name, data);
+                        const nextPhase = getNextOrderPhaseForProject(firstProj.name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
                         const template = getProjectMaterialTemplate(firstProj.name, templatesMap, activeVerId);
@@ -310,7 +331,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         };
                     } else if (!prev.id) {
                         // Project name already set by state default, let's update phase and template
-                        const nextPhase = getNextOrderPhaseForProject(prev.project_name, data);
+                        const nextPhase = getNextOrderPhaseForProject(prev.project_name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
                         const template = getProjectMaterialTemplate(prev.project_name, templatesMap, activeVerId);
@@ -341,7 +362,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                 const firstProj = projects[0];
                 setFormData(prev => {
                     if (!prev.id && !prev.project_name) {
-                        const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders);
+                        const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
                         const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
@@ -357,7 +378,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 : ''
                         };
                     } else if (!prev.id) {
-                        const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders);
+                        const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
                         const template = getProjectMaterialTemplate(prev.project_name, allTemplates, activeVerId);
@@ -379,6 +400,12 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     useEffect(() => {
         fetchOrders();
     }, []);
+
+    useEffect(() => {
+        if (realtimeVersion > 0) {
+            fetchOrders();
+        }
+    }, [realtimeVersion]);
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -406,9 +433,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
         }
 
-        const existingPhaseOrder = orders.find(o => 
-            o.project_name === formData.project_name && 
-            o.order_phase.trim().toLowerCase() === formData.order_phase.trim().toLowerCase() && 
+        const existingPhaseOrder = getMaterialOrderPhaseSources(formData.project_name, orders, dnttList).find(o => 
+            normalizeText(o.project_name) === normalizeText(formData.project_name) && 
+            normalizeText(o.order_phase) === normalizeText(formData.order_phase) && 
             o.id !== formData.id
         );
 
@@ -622,7 +649,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const openCreate = () => {
         const firstProj = projects[0];
         const projName = firstProj?.name || '';
-        const nextPhase = getNextOrderPhaseForProject(projName, orders);
+        const nextPhase = getNextOrderPhaseForProject(projName, orders, dnttList);
         const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
         const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
@@ -1166,7 +1193,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                         const proj = projects.find(p => p.name === selectedName);
                                         const address = proj?.address || '';
                                         const recipient = proj?.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '';
-                                        const nextPhase = getNextOrderPhaseForProject(selectedName, orders);
+                                        const nextPhase = getNextOrderPhaseForProject(selectedName, orders, dnttList);
                                         const templateData = getProjectMaterialTemplateData(selectedName, allTemplates);
                                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
                                         const template = getProjectMaterialTemplate(selectedName, allTemplates, activeVerId);
