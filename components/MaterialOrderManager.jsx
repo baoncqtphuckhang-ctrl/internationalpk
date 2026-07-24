@@ -1555,17 +1555,125 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             {/* PRINT VIEW STYLE BLOCK */}
             <style dangerouslySetInnerHTML={{__html: `
                 @media print {
+                    @page {
+                        size: A4 portrait;
+                        margin: 8mm;
+                    }
+                    html, body {
+                        width: 210mm !important;
+                        min-height: 297mm !important;
+                        margin: 0 !important;
+                        padding: 0 !important;
+                        background: #ffffff !important;
+                        overflow: visible !important;
+                    }
                     body * {
                         visibility: hidden;
                     }
-                    .print-area, .print-area * {
+                    .material-order-print-area,
+                    .material-order-print-area * {
                         visibility: visible !important;
                     }
-                    .print-area {
-                        position: absolute;
-                        left: 0;
-                        top: 0;
-                        width: 100%;
+                    .material-order-print-area {
+                        position: absolute !important;
+                        left: 50% !important;
+                        top: 0 !important;
+                        width: 190mm !important;
+                        max-width: 190mm !important;
+                        min-width: 0 !important;
+                        min-height: auto !important;
+                        height: auto !important;
+                        margin: 0 auto !important;
+                        padding: 0 !important;
+                        border: 0 !important;
+                        box-shadow: none !important;
+                        border-radius: 0 !important;
+                        overflow: visible !important;
+                        transform: translateX(-50%) !important;
+                        zoom: 1 !important;
+                        background: #ffffff !important;
+                        color: #000000 !important;
+                        font-family: 'Times New Roman', Times, serif !important;
+                    }
+                    .material-order-print-area * {
+                        font-family: 'Times New Roman', Times, serif !important;
+                        letter-spacing: 0 !important;
+                    }
+                    .material-order-meta {
+                        display: grid !important;
+                        grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+                        column-gap: 14mm !important;
+                        row-gap: 2.4mm !important;
+                    }
+                    .material-order-meta > div {
+                        display: flex !important;
+                        flex-direction: row !important;
+                        align-items: baseline !important;
+                        gap: 2mm !important;
+                        min-width: 0 !important;
+                    }
+                    .material-order-meta > div:last-child {
+                        grid-column: 1 / -1 !important;
+                    }
+                    .material-order-meta span {
+                        white-space: nowrap !important;
+                    }
+                    .material-order-meta > div:nth-child(3) span:last-child {
+                        white-space: normal !important;
+                    }
+                    .material-order-print-area table {
+                        width: 100% !important;
+                        min-width: 0 !important;
+                        max-width: 100% !important;
+                        table-layout: fixed !important;
+                        border-collapse: collapse !important;
+                    }
+                    .material-order-print-area th:nth-child(1),
+                    .material-order-print-area td:nth-child(1) { width: 8mm !important; }
+                    .material-order-print-area th:nth-child(2),
+                    .material-order-print-area td:nth-child(2) { width: 58mm !important; }
+                    .material-order-print-area th:nth-child(3),
+                    .material-order-print-area td:nth-child(3) { width: 18mm !important; }
+                    .material-order-print-area th:nth-child(4),
+                    .material-order-print-area td:nth-child(4) { width: 15mm !important; }
+                    .material-order-print-area th:nth-child(5),
+                    .material-order-print-area td:nth-child(5) { width: 14mm !important; }
+                    .material-order-print-area th:nth-child(6),
+                    .material-order-print-area td:nth-child(6) { width: 22mm !important; }
+                    .material-order-print-area th:nth-child(7),
+                    .material-order-print-area td:nth-child(7) { width: 26mm !important; }
+                    .material-order-print-area th:nth-child(8),
+                    .material-order-print-area td:nth-child(8) { width: 29mm !important; }
+                    .material-order-print-area th,
+                    .material-order-print-area td {
+                        padding: 2.4mm 1.6mm !important;
+                        font-size: 10pt !important;
+                        line-height: 1.2 !important;
+                        color: #000000 !important;
+                    }
+                    .material-order-print-area th:nth-child(1),
+                    .material-order-print-area td:nth-child(1),
+                    .material-order-print-area th:nth-child(3),
+                    .material-order-print-area td:nth-child(3),
+                    .material-order-print-area th:nth-child(4),
+                    .material-order-print-area td:nth-child(4),
+                    .material-order-print-area th:nth-child(5),
+                    .material-order-print-area td:nth-child(5),
+                    .material-order-print-area th:nth-child(6),
+                    .material-order-print-area td:nth-child(6),
+                    .material-order-print-area th:nth-child(7),
+                    .material-order-print-area td:nth-child(7) {
+                        white-space: nowrap !important;
+                    }
+                    .material-order-print-area h1 {
+                        font-size: 15pt !important;
+                        line-height: 1.2 !important;
+                    }
+                    .material-order-print-area p,
+                    .material-order-print-area span,
+                    .material-order-print-area div {
+                        font-size: 10.5pt !important;
+                        line-height: 1.25 !important;
                     }
                     .no-print {
                         display: none !important;
@@ -2355,7 +2463,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                     )}
 
                     {/* A4 PRINT LAYOUT CONTAINER */}
-                    <div className="print-area bg-white p-4 sm:p-8 lg:p-12 rounded-3xl border border-slate-200 shadow-sm space-y-8 max-w-4xl mx-auto overflow-x-auto custom-scrollbar">
+                    <div className="material-order-print-area bg-white p-4 sm:p-8 lg:p-12 rounded-3xl border border-slate-200 shadow-sm space-y-8 max-w-4xl mx-auto overflow-x-auto custom-scrollbar">
                         
                         {/* Company & Document Header */}
                         <div className="flex flex-col items-center text-center space-y-2 border-b-2 border-double border-slate-900 pb-4">
@@ -2365,7 +2473,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         </div>
 
                         {/* General Info Sheet */}
-                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-3 text-sm text-slate-700">
+                        <div className="material-order-meta grid grid-cols-1 lg:grid-cols-2 gap-x-8 gap-y-3 text-sm text-slate-700">
                             <div className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2">
                                 <div className="flex items-center gap-2 shrink-0">
                                     <Briefcase size={16} className="text-slate-400 no-print" />

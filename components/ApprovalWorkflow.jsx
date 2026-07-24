@@ -67,6 +67,25 @@ const getDisplayBankName = (savedBankName) => {
     return opt ? opt.label : savedBankName;
 };
 
+const getInvoiceFileKey = (file) => {
+    if (!file) return '';
+    return [file.name || '', file.size || 0, file.lastModified || 0].join('|');
+};
+
+const readInvoiceFile = (file) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (event) => resolve({
+        key: getInvoiceFileKey(file),
+        name: file.name,
+        url: event.target.result,
+        type: file.type,
+        size: file.size,
+        lastModified: file.lastModified
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+});
+
 const MaChiSelect = ({ value, onChange }) => {
     return (
         <select 
@@ -453,7 +472,7 @@ export default function ApprovalWorkflow({
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate || null,
             invoice_no: d.invoiceNumber,
-            invoice_files: d.invoiceFiles || []
+            material_invoice_files: d.invoiceFiles || []
         }));
 
         onAccountDNTT(distributeItem.id, payload);
@@ -1296,29 +1315,31 @@ export default function ApprovalWorkflow({
                                                         multiple 
                                                         accept="application/pdf,image/*" 
                                                         className="hidden" 
-                                                        onChange={(e) => {
+                                                        onChange={async (e) => {
                                                             const files = Array.from(e.target.files || []);
+                                                            e.target.value = '';
                                                             if (files.length === 0) return;
-                                                            
-                                                            files.forEach(file => {
-                                                                const reader = new FileReader();
-                                                                reader.onload = (event) => {
-                                                                    const newFileObj = {
-                                                                        name: file.name,
-                                                                        url: event.target.result,
-                                                                        type: file.type
-                                                                    };
-                                                                    setDistributionData(prev => {
-                                                                        const newData = [...prev];
-                                                                        if (!Array.isArray(newData[idx].invoiceFiles)) {
-                                                                            newData[idx].invoiceFiles = [];
-                                                                        }
-                                                                        newData[idx].invoiceFiles.push(newFileObj);
-                                                                        return newData;
+
+                                                            try {
+                                                                const newFiles = await Promise.all(files.map(readInvoiceFile));
+                                                                setDistributionData(prev => prev.map((item, itemIdx) => {
+                                                                    if (itemIdx !== idx) return item;
+                                                                    const existingFiles = Array.isArray(item.invoiceFiles) ? item.invoiceFiles : [];
+                                                                    const existingKeys = new Set(existingFiles.map(file => file.key || getInvoiceFileKey(file)));
+                                                                    const uniqueFiles = newFiles.filter(file => {
+                                                                        if (existingKeys.has(file.key)) return false;
+                                                                        existingKeys.add(file.key);
+                                                                        return true;
                                                                     });
-                                                                };
-                                                                reader.readAsDataURL(file);
-                                                            });
+
+                                                                    return {
+                                                                        ...item,
+                                                                        invoiceFiles: [...existingFiles, ...uniqueFiles]
+                                                                    };
+                                                                }));
+                                                            } catch (error) {
+                                                                console.error('Read invoice files error:', error);
+                                                            }
                                                         }}
                                                     />
                                                 </label>

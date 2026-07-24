@@ -27,11 +27,20 @@ body {
   text-rendering: optimizeLegibility;
 }
 
-@media (max-width: 767px) {
+@media screen and (max-width: 767px) {
   .mobile-scale-shell {
     width: 200%;
     min-height: 200vh;
     zoom: 0.5;
+  }
+}
+
+@media print {
+  .mobile-scale-shell {
+    width: auto !important;
+    min-height: 0 !important;
+    zoom: 1 !important;
+    transform: none !important;
   }
 }
 

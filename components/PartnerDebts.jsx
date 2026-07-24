@@ -38,6 +38,16 @@ export default function PartnerDebts({
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [viewDnttModal, setViewDnttModal] = useState(null);
 
+    const formatRecordedDateTime = (dateString) => {
+        if (!dateString) return { date: '', time: '' };
+        const date = new Date(dateString);
+        if (isNaN(date.getTime())) return { date: dateString, time: '' };
+        return {
+            date: date.toLocaleDateString('vi-VN'),
+            time: date.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })
+        };
+    };
+
     const getDebtDntt = (note) => {
         if (!note || !dnttList || dnttList.length === 0) return null;
         const noteStr = note.split('[PAYLOAD]')[0];
@@ -134,6 +144,7 @@ export default function PartnerDebts({
             if (pretaxVal > 0 && Math.abs(pretaxVal - rawAmount) < 1) {
                 return Math.round(rawAmount * 1.08);
             }
+            return rawAmount;
         }
         const isVatTuOrDonVatTu = note.includes('[VẬT TƯ]') || note.includes('[Đơn Vật Tư]');
         if (isVatTuOrDonVatTu && rawAmount > 0) {
@@ -155,10 +166,14 @@ export default function PartnerDebts({
         const preTaxMatch = cleanNote.match(/\[PRE_TAX:([0-9.]+)\]/);
         const vatAmountMatch = cleanNote.match(/\[VAT_AMOUNT:([0-9.]+)\]/);
         const vatRateMatch = cleanNote.match(/\[VAT_RATE:([0-9.]+)\]/);
+        const pretaxTagMatch = cleanNote.match(/\[PRETAX:([0-9.]+)\]/);
         
         if (preTaxMatch) {
             preTax = preTaxMatch[1];
             cleanNote = cleanNote.replace(preTaxMatch[0], '');
+        } else if (pretaxTagMatch) {
+            preTax = pretaxTagMatch[1];
+            cleanNote = cleanNote.replace(pretaxTagMatch[0], '');
         }
         if (vatAmountMatch) {
             vatAmount = vatAmountMatch[1];
@@ -174,6 +189,9 @@ export default function PartnerDebts({
         }
 
         const postTaxVal = getDebtPostTaxAmount(debt);
+        if (!vatAmount && preTax) {
+            vatAmount = Math.max(0, postTaxVal - (parseFloat(preTax) || 0));
+        }
         
         setFormData({
             project_name: debt.project_name,
@@ -319,7 +337,8 @@ export default function PartnerDebts({
             </div>
 
             {showAddForm && (
-                <div className="bg-white p-6 rounded-2xl shadow-lg border border-slate-200 mb-8 animate-in slide-in-from-top-4">
+                <div className="fixed inset-0 z-[120] bg-slate-900/55 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+                <div className="bg-white w-full max-w-6xl max-h-[90vh] overflow-y-auto p-6 rounded-2xl shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-200">
                     <div className="flex justify-between items-center mb-4">
                         <h3 className="font-black text-lg">Ghi Nhận Công Nợ Mới</h3>
                         <button onClick={() => setShowAddForm(false)} className="text-slate-400 hover:text-slate-600 p-1"><X size={20}/></button>
@@ -434,6 +453,7 @@ export default function PartnerDebts({
                         </div>
                     </form>
                 </div>
+                </div>
             )}
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
@@ -503,9 +523,14 @@ export default function PartnerDebts({
                                     <td colSpan="8" className="p-8 text-center text-slate-400 font-bold">Chưa có dữ liệu công nợ nào.</td>
                                 </tr>
                             ) : (
-                                filteredDebts.map(debt => (
+                                filteredDebts.map(debt => {
+                                    const recordedAt = formatRecordedDateTime(debt.created_at);
+                                    return (
                                     <tr id={"row-" + debt.id} key={debt.id} className="hover:bg-slate-50/80 transition group">
-                                        <td className="p-4 text-sm text-slate-500">{formatDateVN(debt.created_at)}</td>
+                                        <td className="p-4 text-sm text-slate-500 whitespace-nowrap">
+                                            <div className="font-semibold text-slate-600">{recordedAt.date}</div>
+                                            {recordedAt.time && <div className="mt-0.5 text-[11px] font-mono text-slate-400">{recordedAt.time}</div>}
+                                        </td>
                                         <td className="p-4">
                                             <span className={`text-xs font-black px-2 py-1 rounded-md border ${debt.debt_type === 'CẦN THU' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
                                                 {debt.debt_type}
@@ -599,7 +624,8 @@ export default function PartnerDebts({
                                             </div>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>

@@ -92,6 +92,152 @@ const withTimeout = (promise, label, timeoutMs = DATA_FETCH_TIMEOUT_MS) => {
     });
 };
 
+const normalizeMaterialSyncText = (value = '') => (value || '')
+    .toString()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, '');
+
+const parseMaterialOrderPhase = (value = '') => {
+    const normalized = (value || '')
+        .toString()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/đ/g, 'd')
+        .replace(/Đ/g, 'D')
+        .toLowerCase();
+    const match = normalized.match(/dot\s*(\d+|mua\s*ho|order\s*ho)/i);
+    if (!match) return '';
+    const phase = match[1].replace(/\s+/g, ' ').trim();
+    return /^\d+$/.test(phase) ? `dot ${phase}` : phase;
+};
+
+const uploadMaterialInvoiceFile = async (file, projectName) => {
+    if (!file?.url) return '';
+    if (/^https?:\/\//i.test(file.url)) return file.url;
+
+    const response = await fetch(file.url);
+    const blob = await response.blob();
+    const originalName = file.name || 'invoice';
+    const dotIndex = originalName.lastIndexOf('.');
+    const fileExt = dotIndex !== -1 ? originalName.slice(dotIndex + 1) : 'pdf';
+    const baseName = dotIndex !== -1 ? originalName.slice(0, dotIndex) : originalName;
+    const sanitizedName = baseName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const sanitizedProject = (projectName || 'material_order').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+    const fileName = `dntt_invoice_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${sanitizedName}.${fileExt}`;
+    const filePath = `${sanitizedProject}/invoices/${fileName}`;
+
+    const { error: uploadError } = await supabase.storage
+        .from('invoices')
+        .upload(filePath, blob, {
+            upsert: false,
+            contentType: file.type || blob.type || 'application/octet-stream'
+        });
+    if (uploadError) throw uploadError;
+
+    const { data } = supabase.storage.from('invoices').getPublicUrl(filePath);
+    return data?.publicUrl || '';
+};
+
+const syncMaterialOrderInvoicesFromDntt = async (requestId, distribution = []) => {
+    const invoiceRows = (distribution || []).filter(row => {
+        const files = row.material_invoice_files || row.invoiceFiles || [];
+        return row.invoice_no || row.invoice_date || files.length > 0;
+    });
+    if (!requestId || invoiceRows.length === 0) return;
+
+    const { data: request, error: requestError } = await supabase
+        .from('approval_requests')
+        .select('id, doc_type, project_name, recipient, reason')
+        .eq('id', requestId)
+        .single();
+    if (requestError || !request) throw requestError || new Error('Không tìm thấy phiếu DNTT để đồng bộ hóa đơn vật tư.');
+
+    let parsedReason = {};
+    try {
+        parsedReason = JSON.parse(request.reason || '{}');
+    } catch(e) {
+        parsedReason = {};
+    }
+
+    const targetProject = parsedReason.project || request.project_name || invoiceRows[0]?.project_name || '';
+    const targetPhase = parseMaterialOrderPhase(parsedReason.orderPhase || invoiceRows.map(row => row.note).find(Boolean) || '');
+    const materialOrderId = parsedReason.material_order_id || parsedReason.materialOrderId || '';
+
+    let materialOrders = [];
+    if (materialOrderId) {
+        const { data, error } = await supabase
+            .from('material_orders')
+            .select('*')
+            .eq('id', materialOrderId);
+        if (error) throw error;
+        materialOrders = data || [];
+    } else {
+        const { data, error } = await supabase
+            .from('material_orders')
+            .select('*');
+        if (error) throw error;
+        const targetProjectKey = normalizeMaterialSyncText(targetProject);
+        materialOrders = (data || []).filter(order => {
+            const orderProjectKey = normalizeMaterialSyncText(order.project_name);
+            if (!orderProjectKey || !targetProjectKey) return false;
+            if (!orderProjectKey.includes(targetProjectKey) && !targetProjectKey.includes(orderProjectKey)) return false;
+            if (!targetPhase) return true;
+            return parseMaterialOrderPhase(order.order_phase || '') === targetPhase;
+        });
+    }
+
+    const matchedOrder = materialOrders[0];
+    if (!matchedOrder) return;
+
+    const generatedInvoices = [];
+    for (const row of invoiceRows) {
+        const files = row.material_invoice_files || row.invoiceFiles || [];
+        if (files.length === 0) {
+            generatedInvoices.push({
+                number: row.invoice_no || '',
+                date: row.invoice_date || '',
+                pdf_url: ''
+            });
+            continue;
+        }
+
+        for (const file of files) {
+            const publicUrl = await uploadMaterialInvoiceFile(file, matchedOrder.project_name || targetProject);
+            generatedInvoices.push({
+                number: row.invoice_no || '',
+                date: row.invoice_date || '',
+                pdf_url: publicUrl,
+                file_name: file.name || ''
+            });
+        }
+    }
+
+    const existingInvoices = Array.isArray(matchedOrder.invoices) ? matchedOrder.invoices : [];
+    const seenKeys = new Set();
+    const mergedInvoices = [...generatedInvoices, ...existingInvoices].filter(inv => {
+        const key = [inv.number || '', inv.date || '', inv.pdf_url || '', inv.file_name || ''].join('|');
+        if (seenKeys.has(key)) return false;
+        seenKeys.add(key);
+        return inv.number?.trim() || inv.date || inv.pdf_url;
+    });
+    const firstInvoice = mergedInvoices[0] || { number: '', date: '', pdf_url: '' };
+
+    const { error: updateError } = await supabase
+        .from('material_orders')
+        .update({
+            invoices: mergedInvoices,
+            invoice_number: firstInvoice.number || null,
+            invoice_date: firstInvoice.date || null,
+            invoice_pdf_url: firstInvoice.pdf_url || null
+        })
+        .eq('id', matchedOrder.id);
+    if (updateError) throw updateError;
+};
+
 const isTabAllowed = (tabId, user, systemConfig) => {
     if (!user) return false;
     const role = user.role?.toUpperCase() || '';
@@ -2419,17 +2565,20 @@ export default function Home() {
         try {
             if (distribution && distribution.length > 0) {
                 // 1. Chèn các dòng giao dịch vào transactions, đính kèm ID phiếu vào note để liên kết
-                const { error: transError } = await supabase.from('transactions').insert(distribution.map(d => ({
+                const transactionRows = distribution.map(({ material_invoice_files, invoiceFiles, ...d }) => ({
                     ...d,
                     note: `[ID:${id}] ${d.note}`,
                     accounting_date: new Date().toISOString().split('T')[0],
                     created_by: currentUser.username
-                })));
+                }));
+                const { error: transError } = await supabase.from('transactions').insert(transactionRows);
                 if (transError) throw transError;
+
+                await syncMaterialOrderInvoicesFromDntt(id, distribution);
             }
 
             // 2. Cập nhật trạng thái DNTT sang ACCOUNTED (và cập nhật tổng tiền hạch toán thực tế)
-            const totalSum = distribution.reduce((sum, d) => sum + (d.debit || 0), 0);
+            const totalSum = (distribution || []).reduce((sum, d) => sum + (d.debit || 0), 0);
             const { error: statusError } = await supabase.from('approval_requests').update({ 
                 status: STATUSES.ACCOUNTED
             }).eq('id', id);
