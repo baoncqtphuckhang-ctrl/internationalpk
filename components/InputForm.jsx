@@ -401,6 +401,50 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
             return;
         }
+        if (type === 'EXPENSE') {
+            if (field === 'debit') {
+                const debitNum = parseFloat(value) || 0;
+                const vatNum = parseFloat(formData.vat_amount) || 0;
+                const postTaxNum = debitNum + vatNum;
+                setFormData(prev => ({
+                    ...prev,
+                    debit: value,
+                    post_tax_amount: postTaxNum > 0 ? postTaxNum : value
+                }));
+                if (errors.debit || errors.post_tax_amount) {
+                    setErrors(prev => { const e = { ...prev }; delete e.debit; delete e.post_tax_amount; return e; });
+                }
+                return;
+            }
+            if (field === 'vat_amount') {
+                const vatNum = parseFloat(value) || 0;
+                const debitNum = parseFloat(formData.debit) || 0;
+                const postTaxNum = debitNum + vatNum;
+                setFormData(prev => ({
+                    ...prev,
+                    vat_amount: value,
+                    post_tax_amount: postTaxNum > 0 ? postTaxNum : (prev.post_tax_amount || 0)
+                }));
+                if (errors.vat_amount || errors.post_tax_amount) {
+                    setErrors(prev => { const e = { ...prev }; delete e.vat_amount; delete e.post_tax_amount; return e; });
+                }
+                return;
+            }
+            if (field === 'post_tax_amount') {
+                const postTaxNum = parseFloat(value) || 0;
+                const debitNum = parseFloat(formData.debit) || 0;
+                const vatNum = Math.max(0, postTaxNum - debitNum);
+                setFormData(prev => ({
+                    ...prev,
+                    post_tax_amount: value,
+                    vat_amount: vatNum > 0 ? vatNum : (prev.vat_amount || 0)
+                }));
+                if (errors.post_tax_amount) {
+                    setErrors(prev => { const e = { ...prev }; delete e.post_tax_amount; return e; });
+                }
+                return;
+            }
+        }
         setFormData(prev => ({ ...prev, [field]: value }));
         if (errors[field]) {
             setErrors(prev => { const e = { ...prev }; delete e[field]; return e; });
@@ -502,7 +546,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             
             const isPayOnly = isMaterialOrEquipment || (isPayable && !isBothCodeWithDebtAccount);
             const isReceiveOnly = isRecoveryViaReceivable && !isBothCodeWithDebtAccount;
-            const isBoth = !isPayOnly && !isReceiveOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable);
+            const isBoth = !isPayOnly && !isReceiveOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable || formData.code === '131');
 
             if ((isBoth || isPayOnly || isReceiveOnly) && parseFloat(formData.debit) > 0 && !editData) {
                 setDebtConfirmModal({
@@ -539,9 +583,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const isSpecialReceivableRecovery = ['6413', '6418'].includes(data.code) && data.corresponding_account?.startsWith('131');
             const isHoSoRecovery = data.code === '6413' && !isSpecialReceivableRecovery && !data.corresponding_account?.startsWith('331');
             const isManualTaxExpense = ['6413', '621', '6418'].includes(data.code);
-            const debtAmount = isManualTaxExpense
-                ? (parseFloat(data.post_tax_amount) || parseFloat(data.debit) || 0)
-                : (parseFloat(data.debit) || parseFloat(data.amount) || 0);
+            const debtAmount = parseFloat(data.post_tax_amount) || parseFloat(data.debit) || parseFloat(data.amount) || 0;
             const debtTraceMarker = isManualTaxExpense
                 ? ` [INFO_ONLY] [CP:${data.code}] [PRETAX:${parseFloat(data.debit) || 0}]`
                 : ' [INFO_ONLY]';
@@ -636,8 +678,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         }`;
 
     const labelCls = 'block text-sm font-bold text-slate-700 mb-1';
-    const manualTaxExpenseCodes = ['6413', '621', '6418'];
-    const expenseUsesManualTax = type === 'EXPENSE' && manualTaxExpenseCodes.includes(formData.code);
+    const expenseUsesManualTax = type === 'EXPENSE';
     const errorMsg = (field) => errors[field] ? (
         <span className="flex items-center gap-1 text-red-500 text-xs mt-1 font-medium">
             <AlertCircle size={12} /> {errors[field]}
@@ -933,6 +974,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         <option value="331">331 - Phải trả người bán</option>
                                         <option value="334">334 - Phải trả người lao động</option>
                                         <option value="338">338 - Phải trả khác</option>
+                                        <option value="622">622 - Chi nhân công</option>
                                         <option value="642">642 - Chi phí QLDN</option>
                                         <option value="Khác">Khác...</option>
                                     </select>

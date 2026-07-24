@@ -1391,10 +1391,52 @@ export default function Home() {
         try {
             if (type === 'EXPENSE' || type === 'OFFICE_INCOME') {
                 const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
-                const payload = {
-                    project_name: data.project_name, accounting_date: data.accounting_date, invoice_date: data.invoice_date || null, invoice_no: data.invoice_no || '', recipient: data.recipient || '', corresponding_account: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) : getAccountCodeOnly(data.corresponding_account || ''), code: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) : getAccountCodeOnly(data.code), debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit, note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''), created_by: data.creator || currentUser.username
-                };
-                const shouldCreateRecoveryRow = type === 'EXPENSE' && ['6413', '6418'].includes(String(data.code || ''));
+                const isCode131 = type === 'EXPENSE' && String(data.code || '').trim() === '131';
+                const expenseAmount = data.debit || data.post_tax_amount || 0;
+
+                let payload;
+                let dual131Payload = null;
+
+                if (isCode131) {
+                    const rawNote = data.note || '';
+                    const chiNote = rawNote.startsWith('[CHI]') ? rawNote : `[CHI] ${rawNote}`.trim();
+                    const thuNote = rawNote.startsWith('[THU]') ? rawNote : `[THU] ${rawNote}`.trim();
+
+                    // Dòng Chi (Nợ): code 622, đối ứng 131
+                    payload = {
+                        project_name: data.project_name,
+                        accounting_date: data.accounting_date,
+                        invoice_date: data.invoice_date || null,
+                        invoice_no: data.invoice_no || '',
+                        recipient: data.recipient || '',
+                        code: '622',
+                        corresponding_account: '131',
+                        debit: expenseAmount,
+                        credit: 0,
+                        note: chiNote,
+                        created_by: data.creator || currentUser.username
+                    };
+                    // Dòng Thu (Có): code 131, đối ứng 622
+                    dual131Payload = {
+                        project_name: data.project_name,
+                        accounting_date: data.accounting_date,
+                        invoice_date: data.invoice_date || null,
+                        invoice_no: data.invoice_no || '',
+                        recipient: data.recipient || '',
+                        code: '131',
+                        corresponding_account: '622',
+                        debit: 0,
+                        credit: expenseAmount,
+                        note: thuNote,
+                        created_by: data.creator || currentUser.username
+                    };
+                } else {
+                    payload = {
+                        project_name: data.project_name, accounting_date: data.accounting_date, invoice_date: data.invoice_date || null, invoice_no: data.invoice_no || '', recipient: data.recipient || '', corresponding_account: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.credit_account === 'Khác' ? data.custom_credit_account : data.credit_account) : getAccountCodeOnly(data.corresponding_account || ''), code: type === 'OFFICE_INCOME' ? getAccountCodeOnly(data.debit_account === 'Khác' ? data.custom_debit_account : data.debit_account) : getAccountCodeOnly(data.code), debit: type === 'OFFICE_INCOME' ? data.office_amount : data.debit, note: data.note || (type === 'OFFICE_INCOME' ? 'Thu văn phòng' : ''), created_by: data.creator || currentUser.username
+                    };
+                }
+                
+                const shouldCreateRecoveryRow = type === 'EXPENSE' && !isCode131 && ['6413', '6418'].includes(String(data.code || ''));
                 const recoveryPayload = shouldCreateRecoveryRow ? {
                     ...payload,
                     code: payload.corresponding_account || getAccountCodeOnly(data.corresponding_account || ''),
@@ -1405,7 +1447,7 @@ export default function Home() {
                 } : null;
 
                 if (editId) {
-                    if (type === 'EXPENSE') { payload.credit = 0; payload.debit = data.debit || 0; }
+                    if (type === 'EXPENSE' && !isCode131) { payload.credit = 0; payload.debit = data.debit || 0; }
                     const { data: updatedRow, error } = await supabase.from('transactions').update(payload).eq('id', editId).select().single();
                     if (error) throw error;
                     if (updatedRow) setTransactions(prev => prev.map(t => t.id === editId ? { ...updatedRow, code: updatedRow.code ? updatedRow.code.toString().trim().replace(',', '.') : updatedRow.code } : t));
@@ -1454,12 +1496,12 @@ export default function Home() {
                                     }
                                 }
                             }
-                        } catch (errSync) {
+                                                } catch (errSync) {
                             console.error('Error syncing transaction invoice to material order:', errSync);
                         }
                     }
                 } else {
-                    const rowsToInsert = recoveryPayload ? [payload, recoveryPayload] : [payload];
+                    const rowsToInsert = isCode131 ? [payload, dual131Payload] : (recoveryPayload ? [payload, recoveryPayload] : [payload]);
                     const { data: newRows, error } = await supabase.from('transactions').insert(rowsToInsert).select();
                     if (error) throw error;
                     if (newRows?.length) {

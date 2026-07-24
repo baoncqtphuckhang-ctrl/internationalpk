@@ -215,11 +215,12 @@ export default function MaterialCatalog({ projects, showToast }) {
                                     });
 
                                     reason.items = dnttItemsList;
+                                    const grandTotalAfterTax = Math.round(grandTotal * 1.08);
                                     
                                     await supabase.from('approval_requests')
                                         .update({ 
                                             reason: JSON.stringify(reason),
-                                            total_amount: grandTotal
+                                            total_amount: grandTotalAfterTax
                                         })
                                         .eq('id', dntt.id);
                                         
@@ -233,7 +234,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                         for (const debt of debts) {
                                             if (debt.note && debt.note.includes(noteMatch)) {
                                                 await supabase.from('partner_debts')
-                                                    .update({ amount: grandTotal })
+                                                    .update({ amount: grandTotalAfterTax })
                                                     .eq('id', debt.id);
                                             }
                                         }

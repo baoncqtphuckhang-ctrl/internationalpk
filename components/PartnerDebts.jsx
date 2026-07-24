@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
-import { PlusCircle, Search, CheckCircle, Clock, Trash2, Filter, Save, X, Eye } from 'lucide-react';
+import { PlusCircle, Search, CheckCircle, Clock, Trash2, Filter, Save, X, Eye, Printer } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
 export default function PartnerDebts({ 
@@ -28,7 +28,8 @@ export default function PartnerDebts({
         partner_name: '',
         debt_type: 'CẦN THU',
         amount_before_tax: '',
-        vat_rate: '8',
+        vat_amount: '0',
+        amount_after_tax: '',
         note: ''
     });
     const [editingId, setEditingId] = useState(null);
@@ -38,12 +39,31 @@ export default function PartnerDebts({
     const [viewDnttModal, setViewDnttModal] = useState(null);
 
     const getDebtDntt = (note) => {
-        if (!note || !dnttList) return null;
+        if (!note || !dnttList || dnttList.length === 0) return null;
         const noteStr = note.split('[PAYLOAD]')[0];
-        const match = noteStr.match(/\[(.*?)\]\s*([a-f0-9\-]{8,})/i);
-        if (!match) return null;
-        const shortId = match[2];
-        return dnttList.find(d => d.id.startsWith(shortId));
+        
+        // 1. Try finding ID match e.g. [Đơn Vật Tư] 17216034 or eb9e400d
+        const match = noteStr.match(/\[(.*?)\]\s*([a-f0-9\-]+)/i);
+        if (match && match[2]) {
+            const shortId = match[2].trim().toLowerCase();
+            if (shortId.length >= 6) {
+                const found = dnttList.find(d => d.id && d.id.toLowerCase().startsWith(shortId));
+                if (found) return found;
+            }
+        }
+
+        // 2. Try finding order phase match e.g. "ĐỢT 9" or "Đợt 9"
+        const phaseMatch = noteStr.match(/(?:ĐỢT|Đợt)\s*(\d+)/i);
+        if (phaseMatch) {
+            const phaseStr = phaseMatch[0].toUpperCase();
+            const found = dnttList.find(d => {
+                if (!d.reason) return false;
+                return d.reason.toUpperCase().includes(phaseStr);
+            });
+            if (found) return found;
+        }
+
+        return null;
     };
 
     const handleFormChange = (e) => {
@@ -57,14 +77,15 @@ export default function PartnerDebts({
         
         if (!formData.project_name) return setFormError('Vui lòng chọn công trình!');
         if (!formData.partner_name.trim()) return setFormError('Vui lòng nhập tên đối tượng / tổ đội!');
-        if (!formData.amount_before_tax || parseFloat(formData.amount_before_tax) <= 0) return setFormError('Số tiền trước thuế phải lớn hơn 0!');
         
-        const preTax = parseFloat(formData.amount_before_tax);
-        const vatRate = parseFloat(formData.vat_rate) || 0;
-        const vatAmount = preTax * (vatRate / 100);
-        const totalAmount = preTax + vatAmount;
+        const preTax = parseFloat(formData.amount_before_tax) || 0;
+        const vatAmount = parseFloat(formData.vat_amount) || 0;
+        const postTaxInput = parseFloat(formData.amount_after_tax);
+        
+        const totalAmount = (!isNaN(postTaxInput) && postTaxInput > 0) ? postTaxInput : (preTax + vatAmount);
+        if (totalAmount <= 0) return setFormError('Số tiền sau thuế phải lớn hơn 0!');
 
-        const payloadNote = `[PRE_TAX:${preTax}][VAT_RATE:${vatRate}] ${formData.note}`;
+        const payloadNote = `[PRE_TAX:${preTax}][VAT_AMOUNT:${vatAmount}] ${formData.note}`.trim();
 
         onAddDebt({
             id: editingId, // will be undefined if new
@@ -83,35 +104,84 @@ export default function PartnerDebts({
             partner_name: '',
             debt_type: 'CẦN THU',
             amount_before_tax: '',
-            vat_rate: '8',
+            vat_amount: '0',
+            amount_after_tax: '',
             note: ''
         });
     };
 
+    const getDebtPostTaxAmount = (debt) => {
+        if (!debt) return 0;
+        const rawAmount = parseFloat(debt.amount) || 0;
+        const note = debt.note || '';
+
+        const preTaxMatch = note.match(/\[PRE_TAX:([0-9.]+)\]/);
+        const vatAmountMatch = note.match(/\[VAT_AMOUNT:([0-9.]+)\]/);
+        const vatRateMatch = note.match(/\[VAT_RATE:([0-9.]+)\]/);
+        const pretaxTagMatch = note.match(/\[PRETAX:([0-9.]+)\]/);
+
+        if (preTaxMatch && vatAmountMatch) {
+            return (parseFloat(preTaxMatch[1]) || 0) + (parseFloat(vatAmountMatch[1]) || 0);
+        }
+        if (preTaxMatch && vatRateMatch) {
+            const p = parseFloat(preTaxMatch[1]) || 0;
+            const r = parseFloat(vatRateMatch[1]) || 0;
+            const v = r > 100 ? r : (p * r / 100);
+            return p + v;
+        }
+        if (pretaxTagMatch) {
+            const pretaxVal = parseFloat(pretaxTagMatch[1]) || 0;
+            if (pretaxVal > 0 && Math.abs(pretaxVal - rawAmount) < 1) {
+                return Math.round(rawAmount * 1.08);
+            }
+        }
+        const isVatTuOrDonVatTu = note.includes('[VẬT TƯ]') || note.includes('[Đơn Vật Tư]');
+        if (isVatTuOrDonVatTu && rawAmount > 0) {
+            const hasExplicitVat0 = note.includes('[VAT:0]') || note.includes('[VAT_RATE:0]');
+            if (!hasExplicitVat0 && !preTaxMatch && !vatAmountMatch) {
+                return Math.round(rawAmount * 1.08);
+            }
+        }
+
+        return rawAmount;
+    };
+
     const handleEditDebt = (debt) => {
         let preTax = debt.amount;
-        let vatRate = 0;
+        let vatAmount = 0;
         let cleanNote = debt.note || '';
 
-        // Extract from note if exists: [PRE_TAX:1000][VAT_RATE:8]
+        // Extract tags if exist: [PRE_TAX:1000][VAT_AMOUNT:80] or [VAT_RATE:8]
         const preTaxMatch = cleanNote.match(/\[PRE_TAX:([0-9.]+)\]/);
+        const vatAmountMatch = cleanNote.match(/\[VAT_AMOUNT:([0-9.]+)\]/);
         const vatRateMatch = cleanNote.match(/\[VAT_RATE:([0-9.]+)\]/);
         
         if (preTaxMatch) {
             preTax = preTaxMatch[1];
             cleanNote = cleanNote.replace(preTaxMatch[0], '');
         }
-        if (vatRateMatch) {
-            vatRate = vatRateMatch[1];
+        if (vatAmountMatch) {
+            vatAmount = vatAmountMatch[1];
+            cleanNote = cleanNote.replace(vatAmountMatch[0], '');
+        } else if (vatRateMatch) {
+            const rawRate = parseFloat(vatRateMatch[1]) || 0;
             cleanNote = cleanNote.replace(vatRateMatch[0], '');
+            if (rawRate > 100) {
+                vatAmount = rawRate;
+            } else {
+                vatAmount = (parseFloat(preTax) || 0) * (rawRate / 100);
+            }
         }
+
+        const postTaxVal = getDebtPostTaxAmount(debt);
         
         setFormData({
             project_name: debt.project_name,
             partner_name: debt.partner_name,
             debt_type: debt.debt_type,
-            amount_before_tax: preTax,
-            vat_rate: vatRate,
+            amount_before_tax: preTax ? String(preTax) : '',
+            vat_amount: vatAmount ? String(vatAmount) : String(Math.max(0, postTaxVal - (parseFloat(preTax) || 0))),
+            amount_after_tax: postTaxVal ? String(postTaxVal) : '',
             note: cleanNote.trim()
         });
         setEditingId(debt.id);
@@ -127,30 +197,36 @@ export default function PartnerDebts({
         if (!debts) return [];
         return debts.filter(d => {
             if (filterType !== 'ALL' && d.debt_type !== filterType) return false;
-            if (filterStatus !== 'ALL' && d.status !== filterStatus) return false;
             
-            const isVatTu = d.note && d.note.includes('[VẬT TƯ]');
-            if (activeCategory === 'VAT_TU' && !isVatTu) return false;
-            if (activeCategory === 'TO_DOI' && isVatTu) return false; // Assume anything not VAT_TU is TO_DOI (including legacy)
+            if (activeCategory === 'LICH_SU') {
+                if (d.status !== 'ĐÃ XONG') return false;
+            } else {
+                if (filterStatus !== 'ALL' && d.status !== filterStatus) return false;
+                const isVatTu = d.note && d.note.includes('[VẬT TƯ]');
+                if (activeCategory === 'VAT_TU' && !isVatTu) return false;
+                if (activeCategory === 'TO_DOI' && isVatTu) return false;
+            }
             
             if (searchTerm) {
                 const term = removeAccents(searchTerm.toLowerCase());
                 const pName = removeAccents((d.partner_name || '').toLowerCase());
                 const pProject = removeAccents((d.project_name || '').toLowerCase());
                 const pNote = removeAccents((d.note || '').toLowerCase());
+                const pCreator = removeAccents((d.created_by || '').toLowerCase());
                 
                 return (
                     pName.includes(term) ||
                     pProject.includes(term) ||
-                    pNote.includes(term)
+                    pNote.includes(term) ||
+                    pCreator.includes(term)
                 );
             }
             return true;
         });
     }, [debts, filterType, filterStatus, activeCategory, searchTerm]);
 
-    const totalNeedToCollect = filteredDebts.filter(d => d.debt_type === 'CẦN THU' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
-    const totalNeedToPay = filteredDebts.filter(d => d.debt_type === 'CẦN TRẢ' && d.status === 'CHƯA XONG').reduce((sum, d) => sum + Number(d.amount), 0);
+    const totalNeedToCollect = filteredDebts.filter(d => d.debt_type === 'CẦN THU' && (activeCategory === 'LICH_SU' ? d.status === 'ĐÃ XONG' : d.status === 'CHƯA XONG')).reduce((sum, d) => sum + getDebtPostTaxAmount(d), 0);
+    const totalNeedToPay = filteredDebts.filter(d => d.debt_type === 'CẦN TRẢ' && (activeCategory === 'LICH_SU' ? d.status === 'ĐÃ XONG' : d.status === 'CHƯA XONG')).reduce((sum, d) => sum + getDebtPostTaxAmount(d), 0);
 
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'KẾ TOÁN TRƯỞNG', 'KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase());
 
@@ -230,6 +306,16 @@ export default function PartnerDebts({
                 >
                     CÔNG NỢ VẬT TƯ / THIẾT BỊ
                 </button>
+                <button
+                    onClick={() => setActiveCategory('LICH_SU')}
+                    className={`px-6 py-3 rounded-xl font-bold whitespace-nowrap transition-all ${
+                        activeCategory === 'LICH_SU'
+                            ? 'bg-purple-600 text-white shadow-lg shadow-purple-600/30'
+                            : 'bg-white text-slate-500 hover:bg-slate-100 border border-slate-200'
+                    }`}
+                >
+                    LỊCH SỬ (ĐÃ HOÀN THÀNH)
+                </button>
             </div>
 
             {showAddForm && (
@@ -269,18 +355,71 @@ export default function PartnerDebts({
                                 <input type="text" name="partner_name" value={formData.partner_name} onChange={handleFormChange} placeholder="Nhập tên..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold focus:border-blue-500 outline-none" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền (Trước thuế)</label>
-                                <input type="number" name="amount_before_tax" value={formData.amount_before_tax} onChange={handleFormChange} placeholder="0" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold text-red-600 focus:border-blue-500 outline-none" />
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền Sau Thuế (VNĐ) <span className="text-red-500">*</span></label>
+                                <input 
+                                    type="number" 
+                                    name="amount_after_tax" 
+                                    value={formData.amount_after_tax} 
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const postTaxNum = parseFloat(val) || 0;
+                                        const preTaxNum = parseFloat(formData.amount_before_tax) || 0;
+                                        const vatNum = postTaxNum - preTaxNum;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            amount_after_tax: val,
+                                            vat_amount: vatNum >= 0 ? String(vatNum) : '0'
+                                        }));
+                                    }} 
+                                    placeholder="Nhập tổng sau thuế..." 
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-black text-emerald-600 text-base focus:border-blue-500 outline-none" 
+                                />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Thuế VAT (%)</label>
-                                <input type="number" name="vat_rate" value={formData.vat_rate} onChange={handleFormChange} placeholder="8" className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold focus:border-blue-500 outline-none" />
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền VAT (VNĐ)</label>
+                                <input 
+                                    type="number" 
+                                    name="vat_amount" 
+                                    value={formData.vat_amount} 
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const vatNum = parseFloat(val) || 0;
+                                        const preTaxNum = parseFloat(formData.amount_before_tax) || 0;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            vat_amount: val,
+                                            amount_after_tax: String(preTaxNum + vatNum)
+                                        }));
+                                    }} 
+                                    placeholder="0" 
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold text-blue-600 focus:border-blue-500 outline-none" 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Số Tiền (Trước thuế - Tham khảo)</label>
+                                <input 
+                                    type="number" 
+                                    name="amount_before_tax" 
+                                    value={formData.amount_before_tax} 
+                                    onChange={(e) => {
+                                        const val = e.target.value;
+                                        const preTaxNum = parseFloat(val) || 0;
+                                        const vatNum = parseFloat(formData.vat_amount) || 0;
+                                        setFormData(prev => ({
+                                            ...prev,
+                                            amount_before_tax: val,
+                                            amount_after_tax: String(preTaxNum + vatNum)
+                                        }));
+                                    }} 
+                                    placeholder="0" 
+                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 font-bold text-slate-600 focus:border-blue-500 outline-none" 
+                                />
                             </div>
                         </div>
                         <div>
                             <div className="mb-2 text-right">
-                                <span className="text-xs text-slate-500 font-bold uppercase">Số tiền thực tế (Sau thuế): </span>
-                                <span className="text-lg font-black text-blue-600">{formatCurrency((parseFloat(formData.amount_before_tax) || 0) * (1 + (parseFloat(formData.vat_rate) || 0) / 100))} VNĐ</span>
+                                <span className="text-xs text-slate-500 font-bold uppercase">Tổng Thực Tế (Sau thuế): </span>
+                                <span className="text-lg font-black text-blue-600">{formatCurrency(parseFloat(formData.amount_after_tax) || ((parseFloat(formData.amount_before_tax) || 0) + (parseFloat(formData.vat_amount) || 0)))} VNĐ</span>
                             </div>
                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Ghi Chú</label>
                             <input type="text" name="note" value={formData.note} onChange={handleFormChange} placeholder="Lý do ghi nhận công nợ..." className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-3 py-2 focus:border-blue-500 outline-none" />
@@ -300,14 +439,18 @@ export default function PartnerDebts({
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Tổng Còn Phải Thu</p>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">
+                            {activeCategory === 'LICH_SU' ? 'Tổng Đã Thu (Hoàn Thành)' : 'Tổng Còn Phải Thu (Sau Thuế)'}
+                        </p>
                         <p className="text-2xl font-black text-emerald-600">{formatCurrency(totalNeedToCollect)}</p>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500"><PlusCircle size={20}/></div>
                 </div>
                 <div className="bg-white p-4 rounded-2xl shadow-sm border border-slate-200 flex items-center justify-between">
                     <div>
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">Tổng Còn Phải Trả</p>
+                        <p className="text-xs font-black text-slate-400 uppercase tracking-wider mb-1">
+                            {activeCategory === 'LICH_SU' ? 'Tổng Đã Trả (Hoàn Thành)' : 'Tổng Còn Phải Trả (Sau Thuế)'}
+                        </p>
                         <p className="text-2xl font-black text-red-600">{formatCurrency(totalNeedToPay)}</p>
                     </div>
                     <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center text-red-500"><Clock size={20}/></div>
@@ -348,15 +491,16 @@ export default function PartnerDebts({
                                 <th className="p-4 font-black">Loại</th>
                                 <th className="p-4 font-black">Công Trình</th>
                                 <th className="p-4 font-black">Đối Tượng / Tổ Đội</th>
-                                <th className="p-4 font-black text-right">Số Tiền (VNĐ)</th>
+                                <th className="p-4 font-black text-right">Số Tiền Sau Thuế (VNĐ)</th>
                                 <th className="p-4 font-black text-center">Trạng Thái</th>
+                                <th className="p-4 font-black text-center">Người Nhập</th>
                                 <th className="p-4 font-black text-center">Thao Tác</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
                             {filteredDebts.length === 0 ? (
                                 <tr>
-                                    <td colSpan="7" className="p-8 text-center text-slate-400 font-bold">Chưa có dữ liệu công nợ nào.</td>
+                                    <td colSpan="8" className="p-8 text-center text-slate-400 font-bold">Chưa có dữ liệu công nợ nào.</td>
                                 </tr>
                             ) : (
                                 filteredDebts.map(debt => (
@@ -387,17 +531,28 @@ export default function PartnerDebts({
                                                 </div>
                                             )}
                                         </td>
-                                        <td className="p-4 text-right font-black text-slate-800">{formatCurrency(debt.amount)}</td>
+                                        <td className="p-4 text-right font-black text-slate-800">{formatCurrency(getDebtPostTaxAmount(debt))}</td>
                                         <td className="p-4 text-center">
                                             {debt.status === 'ĐÃ XONG' ? (
-                                                <span className="inline-flex items-center gap-1 text-xs font-bold bg-green-100 text-green-700 px-2.5 py-1 rounded-full">
+                                                <button 
+                                                    onClick={() => onUpdateDebtStatus(debt, 'CHƯA XONG')}
+                                                    className="inline-flex items-center gap-1 text-xs font-bold bg-green-100 hover:bg-amber-100 text-green-700 hover:text-amber-800 px-3 py-1.5 rounded-full transition shadow-sm cursor-pointer border border-green-200"
+                                                    title="Nhấn để chuyển lại thành Chưa Xong"
+                                                >
                                                     <CheckCircle size={12} /> Đã Xong
-                                                </span>
+                                                </button>
                                             ) : (
-                                                <span className="inline-flex items-center gap-1 text-xs font-bold bg-amber-100 text-amber-700 px-2.5 py-1 rounded-full">
+                                                <button 
+                                                    onClick={() => setConfirmDebtModal({ isOpen: true, debt })}
+                                                    className="inline-flex items-center gap-1 text-xs font-bold bg-amber-100 hover:bg-amber-200 text-amber-800 px-3 py-1.5 rounded-full transition shadow-sm cursor-pointer border border-amber-300 hover:scale-105 active:scale-95"
+                                                    title="Nhấn vào đây để xác nhận đã hoàn thành công nợ"
+                                                >
                                                     <Clock size={12} /> Chưa Xong
-                                                </span>
+                                                </button>
                                             )}
+                                        </td>
+                                        <td className="p-4 text-center text-sm font-bold text-slate-700">
+                                            {debt.created_by || 'admin'}
                                         </td>
                                         <td className="p-4 text-center">
                                             <div className="flex items-center justify-center gap-2">
@@ -408,24 +563,6 @@ export default function PartnerDebts({
                                                 >
                                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path></svg>
                                                 </button>
-                                                {debt.status === 'CHƯA XONG' && (
-                                                    <button 
-                                                        onClick={() => setConfirmDebtModal({ isOpen: true, debt })}
-                                                        className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition"
-                                                        title={`Đánh dấu là ${debt.debt_type === 'CẦN THU' ? 'Đã Thu' : 'Đã Trả'}`}
-                                                    >
-                                                        <CheckCircle size={16} />
-                                                    </button>
-                                                )}
-                                                {debt.status === 'ĐÃ XONG' && (
-                                                    <button 
-                                                        onClick={() => onUpdateDebtStatus(debt, 'CHƯA XONG')}
-                                                        className="p-1.5 bg-slate-100 text-slate-500 hover:bg-amber-500 hover:text-white rounded-lg transition"
-                                                        title="Đánh dấu lại là Chưa Xong"
-                                                    >
-                                                        <Clock size={16} />
-                                                    </button>
-                                                )}
                                                 {(() => {
                                                     const isPendingDelete = deleteRequests.some(r => r.original_table === 'partner_debts' && r.record_id === debt.id);
                                                     if (isPendingDelete) {
@@ -480,9 +617,9 @@ export default function PartnerDebts({
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
                     <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden animate-in zoom-in-95 border border-slate-100">
                         <div className="p-8">
-                            <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2"><CheckCircle className="text-emerald-500" /> Xác nhận công nợ</h3>
-                            <p className="text-slate-600 mb-6 font-medium leading-relaxed">
-                                Bạn đang đánh dấu công nợ của <b>{confirmDebtModal.debt?.partner_name}</b> là <b>{confirmDebtModal.debt?.debt_type === 'CẦN THU' ? 'ĐÃ THU' : 'ĐÃ THANH TOÁN'}</b>.
+                            <h3 className="text-xl font-black text-slate-800 mb-4 flex items-center gap-2"><CheckCircle className="text-emerald-500" /> Xác nhận đã hoàn thành</h3>
+                            <p className="text-slate-600 mb-6 font-medium leading-relaxed text-sm">
+                                Bạn có chắc chắn muốn xác nhận đã hoàn thành công nợ của <b>{confirmDebtModal.debt?.partner_name}</b> ({formatCurrency(getDebtPostTaxAmount(confirmDebtModal.debt))} VNĐ - <b>{confirmDebtModal.debt?.debt_type === 'CẦN THU' ? 'ĐÃ THU' : 'ĐÃ THANH TOÁN'}</b>)?
                             </p>
                             <div className="flex flex-col gap-3">
                                 <button
@@ -490,9 +627,9 @@ export default function PartnerDebts({
                                         onUpdateDebtStatus(confirmDebtModal.debt, 'ĐÃ XONG');
                                         setConfirmDebtModal({ isOpen: false, debt: null });
                                     }}
-                                    className="w-full py-4 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-2xl transition shadow-lg shadow-emerald-600/20 flex justify-center items-center gap-2"
+                                    className="w-full py-3.5 bg-emerald-600 text-white hover:bg-emerald-700 font-bold rounded-2xl transition shadow-lg shadow-emerald-600/20 flex justify-center items-center gap-2 text-base"
                                 >
-                                    <CheckCircle size={20} /> XÁC NHẬN
+                                    <CheckCircle size={20} /> XÁC NHẬN ĐÃ HOÀN THÀNH
                                 </button>
                                 <button
                                     onClick={() => setConfirmDebtModal({ isOpen: false, debt: null })}
@@ -508,93 +645,191 @@ export default function PartnerDebts({
 
             {viewDnttModal && (
                 <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4 animate-in fade-in">
-                    <div className="bg-white rounded-3xl shadow-2xl max-w-4xl w-full max-h-[90vh] flex flex-col overflow-hidden animate-in zoom-in-95 border border-slate-100">
-                        <div className="p-6 border-b flex justify-between items-center bg-slate-50">
-                            <h3 className="text-xl font-black text-slate-800 flex items-center gap-2"><Eye className="text-blue-500"/> Chi tiết [{viewDnttModal.doc_type}]</h3>
-                            <button onClick={() => setViewDnttModal(null)} className="text-slate-400 hover:text-slate-600 p-2"><X size={20}/></button>
+                    <div className="bg-white rounded-3xl shadow-2xl max-w-5xl w-full max-h-[92vh] flex flex-col overflow-hidden animate-in zoom-in-95 border border-slate-100">
+                        <div className="p-4 sm:p-6 border-b flex justify-between items-center bg-slate-50">
+                            <h3 className="text-lg sm:text-xl font-black text-slate-800 flex items-center gap-2">
+                                <Eye className="text-blue-500"/> Chi tiết [{viewDnttModal.doc_type || 'Đơn Vật Tư'}]
+                            </h3>
+                            <div className="flex items-center gap-2">
+                                <button 
+                                    onClick={() => window.print()} 
+                                    className="px-4 py-2 bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold rounded-xl flex items-center gap-2 transition text-sm"
+                                >
+                                    <Printer size={16} /> In đơn
+                                </button>
+                                <button onClick={() => setViewDnttModal(null)} className="text-slate-400 hover:text-slate-600 p-2">
+                                    <X size={20}/>
+                                </button>
+                            </div>
                         </div>
-                        <div className="p-6 overflow-auto custom-scrollbar bg-slate-50">
+                        
+                        <div className="p-6 overflow-auto custom-scrollbar bg-slate-100 print:bg-white print:p-0">
                             {(() => {
                                 let parsed;
                                 try {
-                                    parsed = JSON.parse(viewDnttModal.reason);
+                                    parsed = typeof viewDnttModal.reason === 'string' ? JSON.parse(viewDnttModal.reason) : viewDnttModal.reason;
                                 } catch(e) {
-                                    return <div className="text-slate-500">{viewDnttModal.reason}</div>;
+                                    return <div className="text-slate-600 font-medium p-4 bg-white rounded-xl border border-slate-200">{viewDnttModal.reason || 'Không có ghi chú thêm'}</div>;
                                 }
+
+                                const isMaterialOrder = viewDnttModal.doc_type === 'Đơn Vật Tư' || (parsed && parsed.docType === 'Đơn Vật Tư');
                                 
-                                const isMaterialOrder = viewDnttModal.doc_type === 'Đơn Vật Tư';
-                                
+                                const parseItemDetails = (item) => {
+                                    let name = item.name || item.content || '';
+                                    let colorCode = item.colorCode || item.color_code || '';
+                                    let unit = item.unit || item.dvt || '';
+                                    let qty = item.quantity || item.qty || item.sl || '';
+                                    let price = item.price || 0;
+                                    let total = item.total || item.amount || 0;
+
+                                    if (typeof item.content === 'string') {
+                                        const nameMatch = item.content.match(/- Tên vật tư:\s*([^\n]+)/);
+                                        if (nameMatch) name = nameMatch[1].trim();
+
+                                        const colorMatch = item.content.match(/- Mã màu:\s*([^\n]+)/);
+                                        if (colorMatch) colorCode = colorMatch[1].trim();
+
+                                        const unitMatch = item.content.match(/- Đơn vị:\s*([^\n]+)/);
+                                        if (unitMatch) unit = unitMatch[1].trim();
+
+                                        const slMatch = item.content.match(/- SL:\s*([^\n]+)/);
+                                        if (slMatch) qty = slMatch[1].trim();
+
+                                        const priceMatch = item.content.match(/- Đơn giá:\s*([^\n]+)/);
+                                        if (priceMatch) price = priceMatch[1].trim();
+                                    }
+
+                                    const qtyNum = parseFloat(qty) || 0;
+                                    const priceNum = typeof price === 'number' ? price : (parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0);
+                                    const totalNum = total ? (parseFloat(total) || 0) : (qtyNum * priceNum);
+
+                                    return { name, colorCode, unit, qty: qtyNum, price: priceNum, total: totalNum };
+                                };
+
+                                const filterValidItems = (itemsList) => {
+                                    if (!Array.isArray(itemsList)) return [];
+                                    return itemsList.map(it => parseItemDetails(it)).filter(it => it.qty > 0 || it.total > 0);
+                                };
+
+                                let categories = [];
+                                let flatItems = [];
+
+                                if (isMaterialOrder && Array.isArray(parsed?.items) && parsed.items.length > 0 && Array.isArray(parsed.items[0]?.items)) {
+                                    categories = parsed.items.map(cat => ({
+                                        name: cat.categoryName || cat.name || 'HỆ VẬT TƯ',
+                                        items: filterValidItems(cat.items)
+                                    })).filter(cat => cat.items.length > 0);
+                                } else if (Array.isArray(parsed?.items)) {
+                                    flatItems = filterValidItems(parsed.items);
+                                }
+
+                                const hasData = categories.length > 0 || flatItems.length > 0;
+
+                                let subtotal = 0;
+                                if (categories.length > 0) {
+                                    subtotal = categories.reduce((sum, cat) => sum + cat.items.reduce((s, it) => s + it.total, 0), 0);
+                                } else if (flatItems.length > 0) {
+                                    subtotal = flatItems.reduce((sum, it) => sum + it.total, 0);
+                                }
+
+                                const vat = subtotal > 0 ? Math.round(subtotal * 0.08) : 0;
+                                const totalAfterTax = subtotal > 0 ? (subtotal + vat) : (parseFloat(viewDnttModal.total_amount || parsed?.totalAmount) || 0);
+                                const orderPhaseStr = parsed?.orderPhase || (viewDnttModal.note?.match(/(?:ĐỢT|Đợt)\s*\d+/i)?.[0]) || '';
+
                                 return (
-                                    <div className="space-y-4">
-                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6 bg-white p-4 rounded-xl border border-slate-200">
-                                            <div>
-                                                <p className="text-xs text-slate-500 uppercase font-bold">Người đề nghị</p>
-                                                <p className="font-bold text-slate-800">{viewDnttModal.recipient}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-slate-500 uppercase font-bold">Tổng tiền</p>
-                                                <p className="font-black text-blue-600 text-lg">{formatCurrency(viewDnttModal.total_amount)} VNĐ</p>
-                                            </div>
-                                            {isMaterialOrder && parsed.orderPhase && (
-                                                <div>
-                                                    <p className="text-xs text-slate-500 uppercase font-bold">Đợt đặt hàng</p>
-                                                    <p className="font-bold text-slate-800">{parsed.orderPhase}</p>
-                                                </div>
-                                            )}
+                                    <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm print:p-0 print:border-none print:shadow-none font-sans">
+                                        <div className="text-center mb-6 border-b pb-4 border-slate-200">
+                                            <h2 className="text-xl sm:text-2xl font-black text-slate-900 uppercase tracking-wide">
+                                                ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC {orderPhaseStr.toUpperCase()}
+                                            </h2>
                                         </div>
 
-                                        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-                                            <table className="w-full text-left text-sm">
-                                                <thead className="bg-slate-100 text-slate-600">
-                                                    <tr>
-                                                        <th className="p-3 font-bold border-b border-slate-200 w-12 text-center">STT</th>
-                                                        <th className="p-3 font-bold border-b border-slate-200">Nội dung / Tên vật tư</th>
-                                                        <th className="p-3 font-bold border-b border-slate-200 w-24">ĐVT</th>
-                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-24">Khối lượng</th>
-                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-32">Đơn giá</th>
-                                                        <th className="p-3 font-bold border-b border-slate-200 text-right w-32">Thành tiền</th>
+                                        <div className="mb-6 grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs sm:text-sm border-l-4 border-amber-500 pl-4 py-2 bg-amber-50/60 rounded-r-xl">
+                                            <p><strong>DỰ ÁN:</strong> <span className="font-bold text-blue-700 uppercase">{viewDnttModal.project_name || parsed?.project || '-'}</span></p>
+                                            <p><strong>NGƯỜI NHẬN HÀNG:</strong> <span className="font-bold text-slate-800">{viewDnttModal.recipient || parsed?.recipient || parsed?.supplier || '-'}</span></p>
+                                            <p><strong>HẠNG MỤC:</strong> <span className="font-bold text-slate-800">SƠN NƯỚC</span></p>
+                                            <p><strong>ĐỢT:</strong> <span className="font-bold text-slate-800">{orderPhaseStr || 'ĐỢT 1'}</span></p>
+                                        </div>
+
+                                        <div className="overflow-x-auto border border-slate-300 rounded-lg">
+                                            <table className="w-full text-left text-xs sm:text-sm border-collapse min-w-[700px]">
+                                                <thead>
+                                                    <tr className="bg-slate-100 text-slate-700 border-b border-slate-300 uppercase font-black">
+                                                        <th className="p-2.5 text-center border-r border-slate-300 w-12">STT</th>
+                                                        <th className="p-2.5 border-r border-slate-300">Chủng loại vật tư</th>
+                                                        <th className="p-2.5 border-r border-slate-300 text-center w-28">Mã màu</th>
+                                                        <th className="p-2.5 border-r border-slate-300 text-center w-24">ĐVT</th>
+                                                        <th className="p-2.5 border-r border-slate-300 text-right w-24">Số lượng</th>
+                                                        <th className="p-2.5 border-r border-slate-300 text-right w-32">Đơn giá</th>
+                                                        <th className="p-2.5 text-right w-36">Thành tiền</th>
                                                     </tr>
                                                 </thead>
-                                                <tbody className="divide-y divide-slate-100">
-                                                    {isMaterialOrder && Array.isArray(parsed.items) ? (
-                                                        parsed.items.map((cat, catIdx) => (
-                                                            <React.Fragment key={catIdx}>
-                                                                <tr className="bg-slate-50">
-                                                                    <td colSpan={6} className="p-3 font-black text-slate-800">{cat.categoryName}</td>
-                                                                </tr>
-                                                                {cat.items && cat.items.map((item, itemIdx) => (
-                                                                    <tr key={itemIdx} className="hover:bg-slate-50/50">
-                                                                        <td className="p-3 text-slate-500 text-center">{itemIdx + 1}</td>
-                                                                        <td className="p-3 font-medium">{item.name}</td>
-                                                                        <td className="p-3 text-slate-500">{item.unit || '-'}</td>
-                                                                        <td className="p-3 text-right">{item.quantity || '-'}</td>
-                                                                        <td className="p-3 text-right">{item.price ? formatCurrency(item.price) : '-'}</td>
-                                                                        <td className="p-3 text-right font-bold text-slate-700">{item.total ? formatCurrency(item.total) : '-'}</td>
+                                                <tbody className="divide-y divide-slate-200">
+                                                    {!hasData ? (
+                                                        <tr>
+                                                            <td colSpan={7} className="p-8 text-center text-slate-400 font-bold">
+                                                                Không có mặt hàng nào được đặt (Số lượng = 0)
+                                                            </td>
+                                                        </tr>
+                                                    ) : categories.length > 0 ? (
+                                                        categories.map((cat, catIdx) => {
+                                                            let runningStt = 1;
+                                                            return (
+                                                                <React.Fragment key={catIdx}>
+                                                                    <tr className="bg-slate-100/90 font-black border-y border-slate-300">
+                                                                        <td colSpan={7} className="p-2.5 text-center text-slate-800 uppercase tracking-wider bg-slate-200/80">
+                                                                            {cat.name}
+                                                                        </td>
                                                                     </tr>
-                                                                ))}
-                                                            </React.Fragment>
-                                                        ))
+                                                                    {cat.items.map((item, itemIdx) => (
+                                                                        <tr key={itemIdx} className="hover:bg-slate-50 transition">
+                                                                            <td className="p-2.5 text-center text-slate-500 border-r border-slate-200">{runningStt++}</td>
+                                                                            <td className="p-2.5 font-bold text-slate-800 border-r border-slate-200">{item.name}</td>
+                                                                            <td className="p-2.5 text-center text-slate-600 border-r border-slate-200">{item.colorCode || '-'}</td>
+                                                                            <td className="p-2.5 text-center text-slate-600 border-r border-slate-200">{item.unit || '-'}</td>
+                                                                            <td className="p-2.5 text-right font-bold text-blue-700 border-r border-slate-200">{item.qty ? formatCurrency(item.qty).replace(' ₫', '') : '-'}</td>
+                                                                            <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{item.price ? formatCurrency(item.price) : '-'}</td>
+                                                                            <td className="p-2.5 text-right font-black text-slate-800">{formatCurrency(item.total)}</td>
+                                                                        </tr>
+                                                                    ))}
+                                                                </React.Fragment>
+                                                            );
+                                                        })
                                                     ) : (
-                                                        Array.isArray(parsed.items) ? parsed.items.map((item, idx) => (
-                                                            <tr key={idx} className="hover:bg-slate-50/50">
-                                                                <td className="p-3 text-slate-500 text-center">{idx + 1}</td>
-                                                                <td className="p-3 font-medium">{item.content}</td>
-                                                                <td className="p-3">-</td>
-                                                                <td className="p-3">-</td>
-                                                                <td className="p-3">-</td>
-                                                                <td className="p-3 text-right font-bold text-slate-700">{item.amount ? formatCurrency(item.amount) : '-'}</td>
+                                                        flatItems.map((item, itemIdx) => (
+                                                            <tr key={itemIdx} className="hover:bg-slate-50 transition">
+                                                                <td className="p-2.5 text-center text-slate-500 border-r border-slate-200">{itemIdx + 1}</td>
+                                                                <td className="p-2.5 font-bold text-slate-800 border-r border-slate-200">{item.name}</td>
+                                                                <td className="p-2.5 text-center text-slate-600 border-r border-slate-200">{item.colorCode || '-'}</td>
+                                                                <td className="p-2.5 text-center text-slate-600 border-r border-slate-200">{item.unit || '-'}</td>
+                                                                <td className="p-2.5 text-right font-bold text-blue-700 border-r border-slate-200">{item.qty ? formatCurrency(item.qty).replace(' ₫', '') : '-'}</td>
+                                                                <td className="p-2.5 text-right text-slate-700 border-r border-slate-200">{item.price ? formatCurrency(item.price) : '-'}</td>
+                                                                <td className="p-2.5 text-right font-black text-slate-800">{formatCurrency(item.total)}</td>
                                                             </tr>
-                                                        )) : (
-                                                            <tr><td colSpan={6} className="p-8 text-center text-slate-400">Không có chi tiết</td></tr>
-                                                        )
+                                                        ))
                                                     )}
                                                 </tbody>
+                                                <tfoot className="border-t-2 border-slate-300 bg-slate-50 font-bold">
+                                                    <tr>
+                                                        <td colSpan={6} className="p-2.5 text-right uppercase text-xs font-black text-slate-600 border-r border-slate-300">TỔNG TRƯỚC THUẾ:</td>
+                                                        <td className="p-2.5 text-right font-black text-slate-800">{formatCurrency(subtotal)}</td>
+                                                    </tr>
+                                                    <tr>
+                                                        <td colSpan={6} className="p-2.5 text-right uppercase text-xs font-black text-slate-600 border-r border-slate-300">THUẾ VAT (8%):</td>
+                                                        <td className="p-2.5 text-right font-black text-slate-800">{formatCurrency(vat)}</td>
+                                                    </tr>
+                                                    <tr className="bg-blue-50/90 text-blue-950 text-sm">
+                                                        <td colSpan={6} className="p-3 text-right uppercase font-black border-r border-blue-200">TỔNG CỘNG (SAU THUẾ):</td>
+                                                        <td className="p-3 text-right font-black text-blue-700 text-base">{formatCurrency(totalAfterTax)}</td>
+                                                    </tr>
+                                                </tfoot>
                                             </table>
                                         </div>
                                     </div>
                                 );
                             })()}
                         </div>
+                        
                         <div className="p-4 border-t flex justify-end bg-white">
                             <button onClick={() => setViewDnttModal(null)} className="px-6 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition">Đóng lại</button>
                         </div>

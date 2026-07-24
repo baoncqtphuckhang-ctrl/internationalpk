@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw } from 'lucide-react';
+import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw, Plus } from 'lucide-react';
 import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import ConfirmModal from './ConfirmModal';
 
@@ -124,6 +124,7 @@ export default function ApprovalWorkflow({
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [hachToanThanhToanStatus, setHachToanThanhToanStatus] = useState('CHƯA XONG');
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
+    const [hidePrices, setHidePrices] = useState(false); // Ẩn đơn giá và thành tiền khi in đơn vật tư
     const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
     const [activeQrIndex, setActiveQrIndex] = useState(null); // Index của người đang quét QR trong TTL
     const [qrTransferContent, setQrTransferContent] = useState('');
@@ -400,7 +401,8 @@ export default function ApprovalWorkflow({
             note: it.note || '',
             invoiceDate: new Date().toISOString().split('T')[0],
             invoiceNumber: '',
-            correspondingAccount: item.doc_type === 'Đơn Vật Tư' ? '331' : (paymentMethod === 'tien_mat' ? '1111' : '1121')
+            correspondingAccount: item.doc_type === 'Đơn Vật Tư' ? '331' : (paymentMethod === 'tien_mat' ? '1111' : '1121'),
+            invoiceFiles: []
         })));
         setDistributeOption('auto');
     };
@@ -450,7 +452,8 @@ export default function ApprovalWorkflow({
             recipient: distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate || null,
-            invoice_no: d.invoiceNumber
+            invoice_no: d.invoiceNumber,
+            invoice_files: d.invoiceFiles || []
         }));
 
         onAccountDNTT(distributeItem.id, payload);
@@ -461,11 +464,16 @@ export default function ApprovalWorkflow({
             
             const phaseInfo = distributeItem.orderPhase ? ` - ${distributeItem.orderPhase}` : (distributeItem.phase ? ` - Đợt ${distributeItem.phase}` : '');
             
+            let debtAmount = distributeItem.total_amount || 0;
+            if (distributeItem.doc_type === 'Đơn Vật Tư' || hasVatTu) {
+                debtAmount = Math.round(debtAmount * 1.08);
+            }
+
             onAddDebt({
                 project_name: distributeItem.project_name,
                 partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
                 debt_type: 'CẦN TRẢ',
-                amount: distributeItem.total_amount,
+                amount: debtAmount,
                 status: status || 'CHƯA XONG',
                 note: `${categoryPrefix}Thanh toán chi phí${phaseInfo} - [${distributeItem.doc_type}] ${distributeItem.id.slice(0, 8)}`
             });
@@ -1274,6 +1282,88 @@ export default function ApprovalWorkflow({
                                                 </select>
                                             </div>
                                         </div>
+
+                                        {/* Cột PDF Hóa đơn đính kèm (Nhiều file) */}
+                                        <div className="pt-4 border-t border-slate-100">
+                                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+                                                <p className="text-[11px] text-slate-600 font-black uppercase flex items-center gap-1">
+                                                    <FileText size={14} className="text-blue-500"/> PDF Hóa Đơn / Ảnh Hóa Đơn (Đính kèm nhiều file)
+                                                </p>
+                                                <label className="cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 text-xs font-bold px-3 py-1.5 rounded-lg border border-blue-200 transition flex items-center gap-1 shadow-sm">
+                                                    <Plus size={14}/> Thêm file hóa đơn
+                                                    <input 
+                                                        type="file" 
+                                                        multiple 
+                                                        accept="application/pdf,image/*" 
+                                                        className="hidden" 
+                                                        onChange={(e) => {
+                                                            const files = Array.from(e.target.files || []);
+                                                            if (files.length === 0) return;
+                                                            
+                                                            files.forEach(file => {
+                                                                const reader = new FileReader();
+                                                                reader.onload = (event) => {
+                                                                    const newFileObj = {
+                                                                        name: file.name,
+                                                                        url: event.target.result,
+                                                                        type: file.type
+                                                                    };
+                                                                    setDistributionData(prev => {
+                                                                        const newData = [...prev];
+                                                                        if (!Array.isArray(newData[idx].invoiceFiles)) {
+                                                                            newData[idx].invoiceFiles = [];
+                                                                        }
+                                                                        newData[idx].invoiceFiles.push(newFileObj);
+                                                                        return newData;
+                                                                    });
+                                                                };
+                                                                reader.readAsDataURL(file);
+                                                            });
+                                                        }}
+                                                    />
+                                                </label>
+                                            </div>
+                                            
+                                            {/* File List */}
+                                            {Array.isArray(d.invoiceFiles) && d.invoiceFiles.length > 0 ? (
+                                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                                    {d.invoiceFiles.map((file, fileIdx) => (
+                                                        <div key={fileIdx} className="flex items-center justify-between p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs">
+                                                            <div className="flex items-center gap-2 overflow-hidden mr-2">
+                                                                <FileText size={16} className="text-red-500 shrink-0"/>
+                                                                <span className="font-bold text-slate-700 truncate" title={file.name}>{file.name}</span>
+                                                            </div>
+                                                            <div className="flex items-center gap-1 shrink-0">
+                                                                <a 
+                                                                    href={file.url} 
+                                                                    target="_blank" 
+                                                                    rel="noopener noreferrer" 
+                                                                    className="px-2.5 py-1 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition text-[11px]"
+                                                                >
+                                                                    Xem
+                                                                </a>
+                                                                <button 
+                                                                    type="button" 
+                                                                    onClick={() => {
+                                                                        setDistributionData(prev => {
+                                                                            const newData = [...prev];
+                                                                            newData[idx].invoiceFiles = newData[idx].invoiceFiles.filter((_, fIdx) => fIdx !== fileIdx);
+                                                                            return newData;
+                                                                        });
+                                                                    }} 
+                                                                    className="p-1 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition"
+                                                                    title="Xóa file"
+                                                                >
+                                                                    <X size={14}/>
+                                                                </button>
+                                                            </div>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            ) : (
+                                                <p className="text-xs text-slate-400 italic">Chưa có PDF hóa đơn nào được đính kèm.</p>
+                                            )}
+                                        </div>
                                     </div>
                                 ))}
                             </div>
@@ -1329,7 +1419,16 @@ export default function ApprovalWorkflow({
                                 <Printer className="text-blue-500" />
                                 <h3 className="text-lg sm:text-xl font-bold">Xem Trước & In Phiếu</h3>
                             </div>
-                            <div className="flex gap-2 w-full sm:w-auto justify-end">
+                            <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
+                                <label className="flex items-center gap-2 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition border border-slate-700">
+                                    <input 
+                                        type="checkbox" 
+                                        checked={hidePrices} 
+                                        onChange={(e) => setHidePrices(e.target.checked)} 
+                                        className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
+                                    />
+                                    <span>Ẩn Đơn giá & Thành tiền</span>
+                                </label>
                                 <button 
                                     onClick={() => window.print()}
                                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm"
@@ -1367,13 +1466,193 @@ export default function ApprovalWorkflow({
                                 }
                             `}</style>
                             <div className={`print-area document-view bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1250px]' : 'max-w-[1100px]'} text-[18px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
-                                <div>
-                                    {/* Company Header */}
-                                    <div className="flex justify-between items-start mb-8 print:mb-2">
-                                        <div className="text-center flex-1">
-                                            <h1 className="font-bold text-[17px] uppercase tracking-wide">
-                                                CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG
-                                            </h1>
+                                {(() => {
+                                    const isMaterialOrder = printItem.doc_type === 'Đơn Vật Tư' || printItem.parsed?.docType === 'Đơn Vật Tư';
+
+                                    if (isMaterialOrder) {
+                                        const parseItemDetails = (item) => {
+                                            let name = item.name || item.content || '';
+                                            let colorCode = item.colorCode || item.color_code || '';
+                                            let unit = item.unit || item.dvt || '';
+                                            let qty = item.quantity || item.qty || item.sl || 0;
+                                            let price = item.price || 0;
+                                            let total = item.total || item.amount || 0;
+                                            let note = item.note || '';
+
+                                            if (typeof item.content === 'string') {
+                                                const nameMatch = item.content.match(/- Tên vật tư:\s*([^\n]+)/);
+                                                if (nameMatch) name = nameMatch[1].trim();
+
+                                                const colorMatch = item.content.match(/- Mã màu:\s*([^\n]+)/);
+                                                if (colorMatch) colorCode = colorMatch[1].trim();
+
+                                                const unitMatch = item.content.match(/- Đơn vị:\s*([^\n]+)/);
+                                                if (unitMatch) unit = unitMatch[1].trim();
+
+                                                const slMatch = item.content.match(/- SL:\s*([^\n]+)/);
+                                                if (slMatch) qty = slMatch[1].trim();
+
+                                                const priceMatch = item.content.match(/- Đơn giá:\s*([^\n]+)/);
+                                                if (priceMatch) price = priceMatch[1].trim();
+                                            }
+
+                                            const qtyNum = parseFloat(qty) || 0;
+                                            const priceNum = typeof price === 'number' ? price : (parseFloat(String(price).replace(/[^0-9.]/g, '')) || 0);
+                                            const totalNum = total ? (parseFloat(total) || 0) : (qtyNum * priceNum);
+
+                                            return { name, colorCode, unit, qty: qtyNum, price: priceNum, total: totalNum, note };
+                                        };
+
+                                        const filterValidItems = (itemsList) => {
+                                            if (!Array.isArray(itemsList)) return [];
+                                            return itemsList.map(it => parseItemDetails(it)).filter(it => it.qty > 0 || it.total > 0);
+                                        };
+
+                                        let categories = [];
+                                        let flatItems = [];
+
+                                        if (Array.isArray(printItem.parsed?.items) && printItem.parsed.items.length > 0 && Array.isArray(printItem.parsed.items[0]?.items)) {
+                                            categories = printItem.parsed.items.map(cat => ({
+                                                name: cat.categoryName || cat.name || 'HỆ VẬT TƯ',
+                                                items: filterValidItems(cat.items)
+                                            })).filter(cat => cat.items.length > 0);
+                                        } else if (Array.isArray(printItem.parsed?.items)) {
+                                            flatItems = filterValidItems(printItem.parsed.items);
+                                        }
+
+                                        let subtotal = 0;
+                                        if (categories.length > 0) {
+                                            subtotal = categories.reduce((sum, cat) => sum + cat.items.reduce((s, it) => s + it.total, 0), 0);
+                                        } else if (flatItems.length > 0) {
+                                            subtotal = flatItems.reduce((sum, it) => sum + it.total, 0);
+                                        }
+
+                                        const vat = Math.round(subtotal * 0.08);
+                                        const totalAfterTax = subtotal > 0 ? (subtotal + vat) : (parseFloat(printItem.total_amount || printItem.parsed?.totalAmount) || 0);
+                                        const orderPhaseStr = printItem.parsed?.orderPhase || printItem.orderPhase || (printItem.reason?.match(/(?:ĐỢT|Đợt)\s*\d+/i)?.[0]) || '';
+
+                                        return (
+                                            <div className="font-serif text-black leading-relaxed">
+                                                {/* Header Title */}
+                                                <div className="text-center mb-6 border-b-2 border-black pb-4">
+                                                    <h2 className="text-2xl sm:text-3xl font-black uppercase tracking-wide">
+                                                        ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC {orderPhaseStr.toUpperCase()}
+                                                    </h2>
+                                                    <h3 className="text-lg font-bold uppercase mt-1">
+                                                        {printItem.recipient || printItem.parsed?.recipient || printItem.parsed?.supplier || ''}
+                                                    </h3>
+                                                </div>
+
+                                                {/* Metadata */}
+                                                <div className="grid grid-cols-2 gap-x-8 gap-y-2 text-sm sm:text-base mb-6 border-b border-black pb-4">
+                                                    <p><strong>DỰ ÁN:</strong> <span className="font-bold uppercase">{printItem.project_name || printItem.parsed?.project || '-'}</span></p>
+                                                    <p><strong>NGÀY ĐẶT:</strong> {formatDateVN(printItem.parsed?.date || printItem.created_at)}</p>
+                                                    <p><strong>ĐỊA CHỈ:</strong> {printItem.parsed?.address || 'aaa'}</p>
+                                                    <p><strong>ĐỢT ĐẶT HÀNG:</strong> {orderPhaseStr || 'ĐỢT 1'}</p>
+                                                    <p><strong>HẠNG MỤC:</strong> <span className="font-bold">SƠN NƯỚC</span></p>
+                                                    <p><strong>NGƯỜI NHẬN HÀNG:</strong> {printItem.recipient || printItem.parsed?.recipient || 'aaa'}</p>
+                                                </div>
+
+                                                {/* Table */}
+                                                <table className="w-full border-collapse border border-black text-xs sm:text-sm">
+                                                    <thead>
+                                                        <tr className="bg-slate-100 text-black border-b border-black font-bold uppercase">
+                                                            <th className="border border-black p-2 text-center w-10">STT</th>
+                                                            <th className="border border-black p-2 text-left">Chủng loại vật tư sơn nước</th>
+                                                            <th className="border border-black p-2 text-center w-28">Mã màu</th>
+                                                            <th className="border border-black p-2 text-center w-20">ĐVT</th>
+                                                            <th className="border border-black p-2 text-center w-20">Số lượng</th>
+                                                            {!hidePrices && <th className="border border-black p-2 text-right w-28">Đơn giá</th>}
+                                                            {!hidePrices && <th className="border border-black p-2 text-right w-32">Thành tiền</th>}
+                                                            <th className="border border-black p-2 text-left w-32">Ghi chú</th>
+                                                        </tr>
+                                                    </thead>
+                                                    <tbody>
+                                                        {categories.length > 0 ? (
+                                                            categories.map((cat, catIdx) => {
+                                                                let runningStt = 1;
+                                                                return (
+                                                                    <React.Fragment key={catIdx}>
+                                                                        <tr className="bg-slate-200/80 font-black border-y border-black">
+                                                                            <td colSpan={hidePrices ? 6 : 8} className="p-2 text-left uppercase font-bold">
+                                                                                {cat.name}
+                                                                            </td>
+                                                                        </tr>
+                                                                        {cat.items.map((item, itemIdx) => (
+                                                                            <tr key={itemIdx} className="border-b border-black">
+                                                                                <td className="border border-black p-2 text-center">{runningStt++}</td>
+                                                                                <td className="border border-black p-2 font-bold">{item.name}</td>
+                                                                                <td className="border border-black p-2 text-center">{item.colorCode || '-'}</td>
+                                                                                <td className="border border-black p-2 text-center">{item.unit || '-'}</td>
+                                                                                <td className="border border-black p-2 text-center font-bold">{item.qty ? formatCurrency(item.qty).replace(' ₫', '') : '-'}</td>
+                                                                                {!hidePrices && <td className="border border-black p-2 text-right">{item.price ? formatCurrency(item.price) : '-'}</td>}
+                                                                                {!hidePrices && <td className="border border-black p-2 text-right font-bold">{formatCurrency(item.total)}</td>}
+                                                                                <td className="border border-black p-2 text-left text-xs">{item.note || '-'}</td>
+                                                                            </tr>
+                                                                        ))}
+                                                                    </React.Fragment>
+                                                                );
+                                                            })
+                                                        ) : (
+                                                            flatItems.map((item, itemIdx) => (
+                                                                <tr key={itemIdx} className="border-b border-black">
+                                                                    <td className="border border-black p-2 text-center">{itemIdx + 1}</td>
+                                                                    <td className="border border-black p-2 font-bold">{item.name}</td>
+                                                                    <td className="border border-black p-2 text-center">{item.colorCode || '-'}</td>
+                                                                    <td className="border border-black p-2 text-center">{item.unit || '-'}</td>
+                                                                    <td className="border border-black p-2 text-center font-bold">{item.qty ? formatCurrency(item.qty).replace(' ₫', '') : '-'}</td>
+                                                                    {!hidePrices && <td className="border border-black p-2 text-right">{item.price ? formatCurrency(item.price) : '-'}</td>}
+                                                                    {!hidePrices && <td className="border border-black p-2 text-right font-bold">{formatCurrency(item.total)}</td>}
+                                                                    <td className="border border-black p-2 text-left text-xs">{item.note || '-'}</td>
+                                                                </tr>
+                                                            ))
+                                                        )}
+                                                    </tbody>
+                                                    {!hidePrices && (
+                                                        <tfoot className="border-t-2 border-black font-bold">
+                                                            <tr>
+                                                                <td colSpan={5} className="border border-black p-2 text-right uppercase text-xs font-black">TỔNG TRƯỚC THUẾ:</td>
+                                                                <td colSpan={2} className="border border-black p-2 text-right font-black">{formatCurrency(subtotal)}</td>
+                                                                <td className="border border-black p-2"></td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td colSpan={5} className="border border-black p-2 text-right uppercase text-xs font-black">THUẾ VAT (8%):</td>
+                                                                <td colSpan={2} className="border border-black p-2 text-right font-black">{formatCurrency(vat)}</td>
+                                                                <td className="border border-black p-2"></td>
+                                                            </tr>
+                                                            <tr className="bg-slate-100 font-black text-base">
+                                                                <td colSpan={5} className="border border-black p-2 text-right uppercase text-xs">TỔNG SAU THUẾ:</td>
+                                                                <td colSpan={2} className="border border-black p-2 text-right font-black text-blue-900">{formatCurrency(totalAfterTax)}</td>
+                                                                <td className="border border-black p-2"></td>
+                                                            </tr>
+                                                        </tfoot>
+                                                    )}
+                                                </table>
+
+                                                {/* Signatures */}
+                                                <div className="mt-12 grid grid-cols-2 text-center text-sm font-bold print:mt-10">
+                                                    <div>
+                                                        <p className="uppercase font-bold">ĐẠI DIỆN KHÁCH HÀNG</p>
+                                                        <p className="font-normal italic text-xs text-slate-600 mt-1">(Ký và ghi rõ họ tên)</p>
+                                                    </div>
+                                                    <div>
+                                                        <p className="uppercase font-bold">NGƯỜI LẬP ĐƠN</p>
+                                                        <p className="font-normal italic text-xs text-slate-600 mt-1">(Ký và ghi rõ họ tên)</p>
+                                                        <p className="mt-16 font-bold">{printItem.created_by || currentUser?.full_name || 'Admin'}</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div>
+                                            {/* Company Header */}
+                                            <div className="flex justify-between items-start mb-8 print:mb-2">
+                                                <div className="text-center flex-1">
+                                                    <h1 className="font-bold text-[17px] uppercase tracking-wide">
+                                                        CÔNG TY TNHH TM XD TTNT QUỐC TẾ PHÚC KHANG
+                                                    </h1>
                                             <p className="text-[13px]">72/5 Trần Đình Xu, Phường Cô Giang, Q1, TP HCM</p>
                                         </div>
                                         {printItem.parsed.paymentMethod === 'chuyen_khoan' && printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && printItem.parsed.bankAccountNumber && printItem.parsed.bankName && (
@@ -1569,45 +1848,44 @@ export default function ApprovalWorkflow({
                                             )}
                                         </>
                                     )}
-                                </div>
 
-                                {/* Signatures Block */}
-                                <div>
-                                    <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
-                                        {(() => {
-                                            const creatorUsername = printItem.created_by || currentUser?.username;
-                                            const creator = (currentUser?.username === creatorUsername ? currentUser : usersList?.find(u => u.username === creatorUsername)) || null;
-                                            const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
-                                            const roleLabel = printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
+                                    {/* Signatures Block */}
+                                    <div>
+                                        <div className="grid grid-cols-4 gap-2 text-center font-bold text-[14px] mt-8 print:mt-2">
+                                            {(() => {
+                                                const creatorUsername = printItem.created_by || currentUser?.username;
+                                                const creator = (currentUser?.username === creatorUsername ? currentUser : usersList?.find(u => u.username === creatorUsername)) || null;
+                                                const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
+                                                const roleLabel = printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 
-                                            if (isAdmin && creatorUsername === 'admin') {
+                                                if (isAdmin && creatorUsername === 'admin') {
+                                                    return (
+                                                        <div className="flex flex-col items-center">
+                                                            <div>{roleLabel}</div>
+                                                            <div className="h-24 signature-wrapper flex items-center justify-center"></div>
+                                                        </div>
+                                                    );
+                                                }
+
+                                                const fullName = creator?.name || '';
+                                                const sigName = fullName ? fullName.trim().split(' ').pop() : '';
+
                                                 return (
                                                     <div className="flex flex-col items-center">
                                                         <div>{roleLabel}</div>
-                                                        <div className="h-24 signature-wrapper flex items-center justify-center"></div>
+                                                        <div className="h-24 signature-wrapper flex items-center justify-center">
+                                                            {creator?.signature_url ? (
+                                                                <img src={creator.signature_url} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />
+                                                            ) : sigName ? (
+                                                                <div className="signature-text font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                                    {sigName}
+                                                                </div>
+                                                            ) : null}
+                                                        </div>
+                                                        {fullName && <div className="font-medium">{fullName}</div>}
                                                     </div>
                                                 );
-                                            }
-
-                                            const fullName = creator?.name || '';
-                                            const sigName = fullName ? fullName.trim().split(' ').pop() : '';
-
-                                            return (
-                                                <div className="flex flex-col items-center">
-                                                    <div>{roleLabel}</div>
-                                                    <div className="h-24 signature-wrapper flex items-center justify-center">
-                                                        {creator?.signature_url ? (
-                                                            <img src={creator.signature_url} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký" />
-                                                        ) : sigName ? (
-                                                            <div className="signature-text font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
-                                                                {sigName}
-                                                            </div>
-                                                        ) : null}
-                                                    </div>
-                                                    {fullName && <div className="font-medium">{fullName}</div>}
-                                                </div>
-                                            );
-                                        })()}
+                                            })()}
                                         <div>QS</div>
                                         <div>THỦ QUỸ</div>
                                         <div>GIÁM ĐỐC</div>
@@ -1615,10 +1893,13 @@ export default function ApprovalWorkflow({
                                     {printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && <div className="h-24"></div>}
                                 </div>
                             </div>
-                        </div>
+                        );
+                        })()}
                     </div>
                 </div>
-            )}
+            </div>
+        </div>
+    )}
 
 
 
