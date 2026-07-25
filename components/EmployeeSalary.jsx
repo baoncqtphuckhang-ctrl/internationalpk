@@ -144,6 +144,21 @@ const SALARY_COLUMNS = [
 ];
 
 export default function EmployeeSalary({ currentUser, usersList = [], projects = [], refreshData }) {
+    const userRole = (currentUser?.role || '').toUpperCase();
+    const normRole = (currentUser?.role || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+    const isAdminUser = userRole === 'ADMIN' || normRole === 'ADMIN' || currentUser?.username?.toLowerCase() === 'admin';
+    const isCostAccountant = userRole === 'KẾ TOÁN CHI PHÍ' || normRole === 'KE TOAN CHI PHI';
+    const canAccessSalary = isAdminUser || isCostAccountant;
+
+    if (!canAccessSalary) {
+        return (
+            <div className="p-8 text-center bg-white rounded-2xl shadow-sm border border-slate-200 my-6">
+                <h3 className="text-xl font-bold text-rose-600 mb-2">Quyền truy cập bị từ chối</h3>
+                <p className="text-slate-600">Tính năng Bảng lương nhân viên chỉ dành riêng cho tài khoản <strong>Admin</strong> và <strong>Kế toán chi phí</strong>.</p>
+            </div>
+        );
+    }
+
     const [expandedPeriods, setExpandedPeriods] = useState([]);
     const [accountedTxs, setAccountedTxs] = useState([]);
     
@@ -889,11 +904,11 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             });
         };
 
-        const timer = setInterval(syncFromDb, 10000);
+
         window.addEventListener('focus', syncFromDb);
 
         return () => {
-            clearInterval(timer);
+
             window.removeEventListener('focus', syncFromDb);
         };
     }, [initialLoaded, viewingHistoryId]);

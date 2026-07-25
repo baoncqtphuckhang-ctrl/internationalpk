@@ -127,6 +127,10 @@ export default function Sidebar({
         };
     };
 
+    const isCostAccountant = currentUser?.role?.toUpperCase() === 'KẾ TOÁN CHI PHÍ' || normalizeRoleName(currentUser?.role) === 'KE TOAN CHI PHI';
+    const isAdminUser = currentUser?.role?.toUpperCase() === 'ADMIN' || normalizeRoleName(currentUser?.role) === 'ADMIN' || currentUser?.username?.toLowerCase() === 'admin';
+    const canViewSalaryTab = isAdminUser || isCostAccountant;
+
     const menuItems = [
         { id: 'home', label: 'Trang Chủ', icon: Home, show: normalizeRoleName(currentUser?.role) === 'QS TRUONG' || normalizeRoleName(currentUser?.role) === 'ADMIN' },
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard && !isKeToanThue },
@@ -139,7 +143,7 @@ export default function Sidebar({
         { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: !['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase()) },
         { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy || isKeToanThue },
         { id: 'delete-approvals', label: 'Duyệt Xóa', icon: Trash2, show: currentUser?.role?.toUpperCase() === 'ADMIN', badge: deleteRequests.length > 0 ? deleteRequests.length : null },
-        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: (currentUser?.role === 'ADMIN' || currentUser?.role?.startsWith('KẾ TOÁN')) && !isKeToanThue },
+        { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: canViewSalaryTab },
     ];
 
     const toggleTab = (id) => {

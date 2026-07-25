@@ -258,7 +258,6 @@ const isTabAllowed = (tabId, user, systemConfig) => {
         case 'dashboard':
             return canViewDashboard && !isKeToanThue;
         case 'expense-summary':
-            return canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(role);
         case 'history':
             return canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(role);
         case 'input':
@@ -275,15 +274,18 @@ const isTabAllowed = (tabId, user, systemConfig) => {
             return canInputData || isThuKy || isKeToanThue;
         case 'delete-approvals':
             return role === 'ADMIN';
-        case 'employee-salary':
-            return (role === 'ADMIN' || role.startsWith('KẾ TOÁN')) && !isKeToanThue;
+        case 'employee-salary': {
+            const isAdminUser = role === 'ADMIN' || normRole === 'ADMIN' || user.username?.toLowerCase() === 'admin';
+            const isCostAccountant = role === 'KẾ TOÁN CHI PHÍ' || normRole === 'KE TOAN CHI PHI';
+            return isAdminUser || isCostAccountant;
+        }
         default:
             return true;
     }
 };
 
-const mojibakePattern = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]|�)/;
-const mojibakeArtifacts = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]|�|[¤¥§©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿])/g;
+const mojibakePattern = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]|)/;
+const mojibakeArtifacts = /(?:[ÃÄÅÆ][\u0080-\u00bf]|á[º»][\s\S]||[¤¥§©ª«¬®¯°±²³´µ¶·¸¹º»¼½¾¿])/g;
 
 const windows1252Bytes = {
     0x20ac: 0x80, 0x201a: 0x82, 0x0192: 0x83, 0x201e: 0x84,
@@ -967,7 +969,10 @@ export default function Home() {
     };
 
     const fetchProjectsData = async () => {
-        const { data: projData, error } = await supabase.from('projects').select('*').order('name');
+        const { data: projData, error } = await supabase
+            .from('projects')
+            .select('id, name, contract_value_after_tax, advance_value, debt_to_collect, plhds, status, contract_no, address, cht_name, cht_phone, project_type, general_contractor, investor')
+            .order('name');
         if (error) throw error;
         const sortedProjData = (projData || []).sort((a, b) => {
             const isCompletedA = a.status === 'Finish';
@@ -1030,8 +1035,9 @@ export default function Home() {
         let allTrans = [];
         let page = 0;
         const pageSize = 1000;
+        const maxPages = 2; // Tối đa 2,000 giao dịch mới nhất khi đăng nhập lần đầu
 
-        while (true) {
+        while (page < maxPages) {
             const { data, error } = await supabase
                 .from('transactions')
                 .select('id, project_name, accounting_date, code, debit, credit, invoice_no, invoice_date, note')
@@ -1065,10 +1071,11 @@ export default function Home() {
             let allTrans = [];
             let page = 0;
             const pageSize = 1000;
-            while(true) {
+            const maxPages = 5;
+            while(page < maxPages) {
                 const { data, error } = await supabase
                     .from('transactions')
-                    .select('*')
+                    .select('id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, supplier_customer, note, expense_category, cost_type, created_at, created_by')
                     .order('accounting_date', { ascending: false })
                     .order('id', { ascending: true })
                     .range(page * pageSize, (page + 1) * pageSize - 1);
@@ -1102,20 +1109,32 @@ export default function Home() {
     };
 
     const fetchIncomesData = async () => {
-        const { data: incData, error } = await supabase.from('incomes').select('*').order('date', { ascending: false });
+        const { data: incData, error } = await supabase
+            .from('incomes')
+            .select('id, project_name, date, amount, content, note, created_at, created_by')
+            .order('date', { ascending: false })
+            .limit(1000);
         if (error) throw error;
         setIncomes(incData || []);
     };
 
     const fetchApprovalRequestsData = async () => {
-        const { data: approvalData, error } = await supabase.from('approval_requests').select('*').order('created_at', { ascending: false });
+        const { data: approvalData, error } = await supabase
+            .from('approval_requests')
+            .select('id, code, title, amount, project_name, requester, status, created_at, category, priority, notes')
+            .order('created_at', { ascending: false })
+            .limit(1000);
         if (error) throw error;
         setDnttList(approvalData || []);
     };
 
     const fetchPartnerDebtsData = async () => {
         try {
-            const { data: debtsData, error: debtsError } = await supabase.from('partner_debts').select('*').order('created_at', { ascending: false });
+            const { data: debtsData, error: debtsError } = await supabase
+                .from('partner_debts')
+                .select('id, partner_name, project_name, debt_amount, paid_amount, status, created_at, notes')
+                .order('created_at', { ascending: false })
+                .limit(1000);
             if (!debtsError) {
                 setPartnerDebts(debtsData || []);
             }
@@ -1126,7 +1145,10 @@ export default function Home() {
 
     const fetchExpectedInvoicesData = async () => {
         try {
-            const { data: expInvData, error: expInvError } = await supabase.from('expected_invoices').select('*');
+            const { data: expInvData, error: expInvError } = await supabase
+                .from('expected_invoices')
+                .select('id, project_name, supplier_customer, expected_date, amount, note, status, created_at')
+                .limit(1000);
             if (!expInvError) {
                 setExpectedInvoices(expInvData || []);
             }
@@ -1146,7 +1168,7 @@ export default function Home() {
 
             let notificationQuery = supabase
                 .from('notifications')
-                .select('*')
+                .select('id, recipient_username, recipient_role, title, message, type, source_table, source_id, created_by, is_read, recipient_deleted, sender_deleted, created_at')
                 .order('created_at', { ascending: false })
                 .limit(100);
 
@@ -1159,9 +1181,9 @@ export default function Home() {
             if (notificationError) {
                 const fallback = await supabase
                     .from('notifications')
-                    .select('*')
+                    .select('id, recipient_username, recipient_role, title, message, type, source_table, source_id, created_by, is_read, recipient_deleted, sender_deleted, created_at')
                     .order('created_at', { ascending: false })
-                    .limit(500);
+                    .limit(100);
                 notificationData = fallback.data;
                 notificationError = fallback.error;
             }
@@ -1215,7 +1237,12 @@ export default function Home() {
 
     const fetchDeleteRequestsData = async () => {
         try {
-            const { data: delData, error: delError } = await supabase.from('delete_requests').select('*').eq('status', 'pending').order('created_at', { ascending: false });
+            const { data: delData, error: delError } = await supabase
+                .from('delete_requests')
+                .select('id, original_table, record_id, record_name, project_name, reason, status, requested_by, created_at')
+                .eq('status', 'pending')
+                .order('created_at', { ascending: false })
+                .limit(200);
             if (!delError) {
                 setDeleteRequests(delData || []);
                 await syncDeleteRequestNotifications(delData || []);
@@ -1231,12 +1258,17 @@ export default function Home() {
         const isAdminUser = currentRole === 'ADMIN';
         if (isAdminUser) {
             try {
-                const { data: logsData, error: logsError } = await supabase.from('activity_logs').select('*').order('created_at', { ascending: false });
+                const { data: logsData, error: logsError } = await supabase
+                    .from('activity_logs')
+                    .select('id, username, action_type, module, description, project_name, created_at')
+                    .order('created_at', { ascending: false })
+                    .limit(300);
                 if (!logsError) {
                     setActivityLogs(logsData || []);
                 }
             } catch (e) {
                 console.warn('Activity logs table might not exist yet', e);
+
             }
         } else {
             setActivityLogs([]);
@@ -1322,47 +1354,12 @@ export default function Home() {
         }
     }, [activeTab, currentUser]);
 
-    // Auto-refresh: Supabase Realtime subscription + polling mỗi 5 phút
+    // Supabase Realtime subscription (không dùng polling để tiết kiệm egress)
     useEffect(() => {
         if (!currentUser) return;
 
-        let debounceTimer = null;
-        let isRefreshing = false;
-        let hasPendingRefresh = false;
-
-        const runRefresh = async () => {
-            if (isRefreshing) {
-                hasPendingRefresh = true;
-                return;
-            }
-
-            isRefreshing = true;
-            try {
-                await fetchData(false);
-                if (['history', 'expense-summary', 'input', 'project-detail'].includes(activeTab)) {
-                    await fetchDetailedTransactionsData(true);
-                }
-            } finally {
-                isRefreshing = false;
-                if (hasPendingRefresh) {
-                    hasPendingRefresh = false;
-                    debouncedFetch();
-                }
-            }
-        };
-
-        const debouncedFetch = () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                runRefresh();
-                setRealtimeVersion(v => v + 1);
-            }, 2000);
-        };
-
         const handleRealtimeChange = (table, payload) => {
             const { eventType, new: newRow, old: oldRow } = payload;
-            console.log(`Realtime change in ${table}:`, eventType, payload);
-
             if (table === 'transactions') {
                 const normalize = (t) => ({
                     ...t,
@@ -1370,14 +1367,8 @@ export default function Home() {
                 });
                 if (eventType === 'INSERT') {
                     const norm = normalize(newRow);
-                    setTransactions(prev => {
-                        if (prev.some(x => x.id === norm.id)) return prev;
-                        return [norm, ...prev];
-                    });
-                    setDetailedTransactions(prev => {
-                        if (prev.some(x => x.id === norm.id)) return prev;
-                        return [norm, ...prev];
-                    });
+                    setTransactions(prev => prev.some(x => x.id === norm.id) ? prev : [norm, ...prev]);
+                    setDetailedTransactions(prev => prev.some(x => x.id === norm.id) ? prev : [norm, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     const norm = normalize(newRow);
                     setTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
@@ -1388,10 +1379,7 @@ export default function Home() {
                 }
             } else if (table === 'incomes') {
                 if (eventType === 'INSERT') {
-                    setIncomes(prev => {
-                        if (prev.some(x => x.id === newRow.id)) return prev;
-                        return [newRow, ...prev];
-                    });
+                    setIncomes(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     setIncomes(prev => prev.map(item => item.id === newRow.id ? newRow : item));
                 } else if (eventType === 'DELETE') {
@@ -1399,10 +1387,7 @@ export default function Home() {
                 }
             } else if (table === 'approval_requests') {
                 if (eventType === 'INSERT') {
-                    setDnttList(prev => {
-                        if (prev.some(x => x.id === newRow.id)) return prev;
-                        return [newRow, ...prev];
-                    });
+                    setDnttList(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     setDnttList(prev => prev.map(item => item.id === newRow.id ? newRow : item));
                 } else if (eventType === 'DELETE') {
@@ -1410,10 +1395,7 @@ export default function Home() {
                 }
             } else if (table === 'delete_requests') {
                 if (eventType === 'INSERT') {
-                    setDeleteRequests(prev => {
-                        if (prev.some(x => x.id === newRow.id)) return prev;
-                        return [newRow, ...prev];
-                    });
+                    setDeleteRequests(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     setDeleteRequests(prev => prev.map(item => item.id === newRow.id ? newRow : item));
                 } else if (eventType === 'DELETE') {
@@ -1421,22 +1403,16 @@ export default function Home() {
                 }
             } else if (table === 'partner_debts') {
                 if (eventType === 'INSERT') {
-                    setPartnerDebts(prev => {
-                        if (prev.some(x => x.id === newRow.id)) return prev;
-                        return [newRow, ...prev];
-                    });
+                    setPartnerDebts(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     setPartnerDebts(prev => prev.map(item => item.id === newRow.id ? newRow : item));
                 } else if (eventType === 'DELETE') {
                     setPartnerDebts(prev => prev.filter(item => item.id !== oldRow.id));
                 }
             }
-            
-            // Trigger a minor version increment to prompt reactive UI checks
             setRealtimeVersion(v => v + 1);
         };
 
-        // Supabase Realtime: lắng nghe thay đổi và cập nhật cục bộ
         const channel = supabase
             .channel('realtime-sync')
             .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_requests' }, (p) => handleRealtimeChange('approval_requests', p))
@@ -1446,16 +1422,10 @@ export default function Home() {
             .on('postgres_changes', { event: '*', schema: 'public', table: 'delete_requests' }, (p) => handleRealtimeChange('delete_requests', p))
             .subscribe();
 
-        const pollingInterval = setInterval(() => {
-            debouncedFetch();
-        }, 300000);
-
         return () => {
-            if (debounceTimer) clearTimeout(debounceTimer);
-            clearInterval(pollingInterval);
             supabase.removeChannel(channel);
         };
-    }, [currentUser, activeTab, isDetailsLoaded, detailedTransactions]);
+    }, [currentUser]);
 
     useEffect(() => {
         if (!currentUser || !notificationsAvailable) return;
@@ -1464,7 +1434,7 @@ export default function Home() {
         const refreshNotifications = () => {
             if (notificationTimer) clearTimeout(notificationTimer);
             notificationTimer = setTimeout(() => {
-                fetchData(false);
+                fetchNotificationsData();
                 setRealtimeVersion(v => v + 1);
             }, 500);
         };
@@ -3523,7 +3493,7 @@ export default function Home() {
                 
 
                 
-                {activeTab === 'employee-salary' && <EmployeeSalary currentUser={currentUser} usersList={usersList} projects={allowedProjects} refreshData={fetchData} />}
+                {activeTab === 'employee-salary' && isTabAllowed('employee-salary', currentUser, systemConfig) && <EmployeeSalary currentUser={currentUser} usersList={usersList} projects={allowedProjects} refreshData={fetchData} />}
                 
                 {(activeTab === 'dntt' || activeTab === 'approvals' || activeTab === 'dntt-approvals') && (
                     <ApprovalWorkflow 

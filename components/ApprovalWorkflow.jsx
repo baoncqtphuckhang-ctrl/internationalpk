@@ -1679,7 +1679,7 @@ export default function ApprovalWorkflow({
                                         {printItem.parsed.paymentMethod === 'chuyen_khoan' && printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && printItem.parsed.bankAccountNumber && printItem.parsed.bankName && (
                                             <div className="flex flex-col items-center p-2 border-2 border-dashed border-blue-200 rounded-xl bg-blue-50/50 print:border print:border-black print:bg-transparent print:p-1 w-28">
                                                 <img 
-                                                    src={`https://img.vietqr.io/image/${getBankCodeForQR(printItem.parsed.bankName)}-${printItem.parsed.bankAccountNumber.trim()}-compact2.png?amount=${printItem.total_amount}&addInfo=${encodeURIComponent(getTransferContent(printItem.parsed).normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D"))}&accountName=${encodeURIComponent(printItem.parsed.bankAccountName || '')}`} 
+                                                    src={`https://img.vietqr.io/image/${getBankCodeForQR(printItem.parsed.bankName)}-${printItem.parsed.bankAccountNumber.trim()}-compact2.png?amount=${printItem.total_amount}&accountName=${encodeURIComponent(printItem.parsed.bankAccountName || '')}`} 
                                                     alt="VietQR" 
                                                     className="w-full h-auto object-contain rounded bg-white"
                                                     onError={(e) => { e.target.onerror = null; e.target.style.display = 'none'; }}
