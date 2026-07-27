@@ -608,7 +608,7 @@ export default function HistoryTable({
                                     <td className={`p-3 border-r border-slate-100 text-right font-bold ${(t.credit - t.debit) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                                         {formatCurrency(t.credit - t.debit)}
                                     </td>
-                                    <td className="p-3 border-r border-slate-100">{t.recipient || '-'}</td>
+                                    <td className="p-3 border-r border-slate-100">{t.recipient || t.supplier_customer || '-'}</td>
                                     <td className="p-3 border-r border-slate-100">
                                         <div className="text-slate-500 italic">{t.created_by || '-'}</div>
                                         {t.created_at && (

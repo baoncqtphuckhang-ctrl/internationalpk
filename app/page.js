@@ -1051,7 +1051,7 @@ export default function Home() {
     const fetchTransactionsData = async () => {
         const allTrans = await fetchAllRows(() => supabase
             .from('transactions')
-            .select('id, project_name, accounting_date, code, debit, credit, invoice_no, invoice_date, note')
+            .select('id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, recipient, corresponding_account, supplier_customer, note, expense_category, cost_type, created_at, created_by')
             .order('accounting_date', { ascending: false })
             .order('id', { ascending: true })
         );
@@ -1067,7 +1067,7 @@ export default function Home() {
         if ((isDetailsLoaded || isLoadingDetails) && !force && detailedTransactionsScope === projectName) return;
         setIsLoadingDetails(true);
         try {
-            const fields = 'id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, supplier_customer, note, expense_category, cost_type, created_at, created_by';
+            const fields = 'id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, recipient, corresponding_account, supplier_customer, note, expense_category, cost_type, created_at, created_by';
             let allTrans = [];
 
             if (projectName) {

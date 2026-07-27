@@ -1,14 +1,14 @@
 -- ==========================================
--- SCRIPT KHỞI TẠO TOÀN BỘ CƠ SỞ DỮ LIỆU UNIFIED
--- Hỗ trợ chuyển đổi sang Supabase Project mới nhanh chóng
--- Chạy toàn bộ mã SQL dưới đây trong SQL Editor của Supabase mới.
+-- SCRIPT KHỞI TẠO TOÀN BỘ CƠ SỞ DỮ LIỆU SYSTEM
+-- Hỗ trợ khởi tạo Supabase Project mới nhanh chóng
+-- Coopy và dán TOÀN BỘ đoạn mã này vào SQL Editor trong Supabase Dashboard mới rồi nhấn RUN.
 -- ==========================================
 
--- Bật extension cho phép tạo UUID tự động (nếu chưa bật)
+-- Bật extension cho phép tạo UUID tự động
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- ==========================================
--- 1. BẢNG users
+-- 1. BẢNG users (Tài khoản người dùng)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS users (
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
--- Chèn dữ liệu ban đầu cho các tài khoản hệ thống nếu chưa tồn tại
+-- Khởi tạo các tài khoản mặc định
 INSERT INTO users (id, username, password, role, name, is_locked, can_view_finance)
 SELECT 'u1', 'admin', '0000', 'ADMIN', 'Quản trị hệ thống', FALSE, TRUE
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin');
@@ -46,12 +46,12 @@ WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'ketoan_01');
 
 
 -- ==========================================
--- 2. BẢNG projects
+-- 2. BẢNG projects (Danh sách công trình)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS projects (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     name TEXT UNIQUE NOT NULL,
-    contract_no TEXT, -- Lưu thông tin hợp đồng dạng JSON
+    contract_no TEXT,
     contract_value_after_tax NUMERIC DEFAULT 0,
     advance_value NUMERIC DEFAULT 0,
     debt_to_collect NUMERIC DEFAULT 0,
@@ -68,12 +68,13 @@ CREATE TABLE IF NOT EXISTS projects (
 
 
 -- ==========================================
--- 3. BẢNG transactions
+-- 3. BẢNG transactions (Giao dịch thu chi)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS transactions (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     project_name TEXT,
     accounting_date DATE,
+    document_date DATE,
     invoice_date DATE,
     invoice_no TEXT,
     recipient TEXT,
@@ -83,13 +84,16 @@ CREATE TABLE IF NOT EXISTS transactions (
     credit NUMERIC DEFAULT 0,
     note TEXT,
     status TEXT,
+    expense_category TEXT,
+    cost_type TEXT,
+    supplier_customer TEXT,
     created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
 
 -- ==========================================
--- 4. BẢNG incomes
+-- 4. BẢNG incomes (Doanh thu)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS incomes (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -100,6 +104,7 @@ CREATE TABLE IF NOT EXISTS incomes (
     vat_amount NUMERIC DEFAULT 0,
     post_tax_amount NUMERIC DEFAULT 0,
     is_paid BOOLEAN DEFAULT FALSE,
+    content TEXT,
     note TEXT,
     created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
@@ -111,27 +116,38 @@ CREATE TABLE IF NOT EXISTS incomes (
 -- ==========================================
 CREATE TABLE IF NOT EXISTS approval_requests (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    code TEXT,
+    title TEXT,
+    amount NUMERIC DEFAULT 0,
     doc_type TEXT,
     project_name TEXT,
     recipient TEXT,
+    requester TEXT,
     total_amount NUMERIC DEFAULT 0,
-    reason TEXT, -- Thông tin chi tiết DNTT lưu dạng chuỗi JSON
+    reason TEXT,
     status TEXT,
+    category TEXT,
+    priority TEXT,
+    notes TEXT,
+    cashier_approved BOOLEAN DEFAULT FALSE,
     created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
 
 -- ==========================================
--- 6. BẢNG partner_debts
+-- 6. BẢNG partner_debts (Công nợ đối tác)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS partner_debts (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     project_name TEXT,
     partner_name TEXT,
     debt_type TEXT,
+    debt_amount NUMERIC DEFAULT 0,
+    paid_amount NUMERIC DEFAULT 0,
     amount NUMERIC DEFAULT 0,
     note TEXT,
+    notes TEXT,
     status TEXT DEFAULT 'CHƯA XONG',
     created_by TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
@@ -139,11 +155,15 @@ CREATE TABLE IF NOT EXISTS partner_debts (
 
 
 -- ==========================================
--- 7. BẢNG expected_invoices (Đợt thu dự kiến)
+-- 7. BẢNG expected_invoices (Đợt thu dự kiến & Hóa đơn)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS expected_invoices (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     "projectName" TEXT,
+    "project_name" TEXT,
+    "supplier_customer" TEXT,
+    "expected_date" DATE,
+    "amount" NUMERIC DEFAULT 0,
     "preTaxValue" NUMERIC,
     "vatAmount" NUMERIC,
     "postTaxValue" NUMERIC,
@@ -152,8 +172,11 @@ CREATE TABLE IF NOT EXISTS expected_invoices (
     "teamName" TEXT,
     "team_pdf_url" TEXT,
     "project_pdf_url" TEXT,
+    "expected_invoice_no" TEXT,
+    "expected_invoice_pdf_url" TEXT,
     "phase" TEXT,
     "note" TEXT,
+    "status" TEXT,
     "invoice_month" TEXT,
     "is_completed" BOOLEAN DEFAULT FALSE,
     "deductionAmount" NUMERIC DEFAULT 0,
@@ -168,7 +191,7 @@ CREATE TABLE IF NOT EXISTS expected_invoices (
 
 
 -- ==========================================
--- 8. BẢNG notifications
+-- 8. BẢNG notifications (Thông báo)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS notifications (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -193,13 +216,14 @@ CREATE INDEX IF NOT EXISTS notifications_created_at_idx ON notifications (create
 
 
 -- ==========================================
--- 9. BẢNG delete_requests
+-- 9. BẢNG delete_requests (Đề nghị xóa)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS delete_requests (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     original_table TEXT NOT NULL,
     record_id TEXT NOT NULL,
     record_name TEXT NOT NULL,
+    project_name TEXT,
     requested_by TEXT NOT NULL,
     reason TEXT NOT NULL,
     status TEXT DEFAULT 'pending',
@@ -250,7 +274,7 @@ CREATE TABLE IF NOT EXISTS salary_history (
 
 
 -- ==========================================
--- 12. BẢNG material_templates (Đơn giá/Bản mẫu vật tư)
+-- 12. BẢNG material_templates (Đơn giá / Bản mẫu vật tư)
 -- ==========================================
 CREATE TABLE IF NOT EXISTS material_templates (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -260,7 +284,6 @@ CREATE TABLE IF NOT EXISTS material_templates (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
--- Trigger tự động cập nhật updated_at khi sửa dữ liệu bản mẫu vật tư
 CREATE OR REPLACE FUNCTION update_modified_column()
 RETURNS TRIGGER AS $$
 BEGIN
@@ -286,7 +309,7 @@ CREATE TABLE IF NOT EXISTS material_warehouse (
     color_code TEXT,
     unit TEXT NOT NULL,
     quantity NUMERIC NOT NULL,
-    transaction_type TEXT NOT NULL, -- 'NHẬP' hoặc 'XUẤT'
+    transaction_type TEXT NOT NULL,
     date DATE NOT NULL,
     note TEXT,
     created_by TEXT,
@@ -335,8 +358,32 @@ CREATE TABLE IF NOT EXISTS activity_logs (
 
 
 -- ==========================================
+-- 16. BẢNG team_info (Thông tin tài khoản ngân hàng đội thi công)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS team_info (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    team_name TEXT UNIQUE NOT NULL,
+    account_name TEXT,
+    account_number TEXT,
+    bank_name TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
+);
+
+
+-- ==========================================
+-- 17. BẢNG material_price_configs (Cấu hình đơn giá vật tư)
+-- ==========================================
+CREATE TABLE IF NOT EXISTS material_price_configs (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    project_name TEXT UNIQUE NOT NULL,
+    config_data JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
+);
+
+
+-- ==========================================
 -- CẤU HÌNH BẢO MẬT & PHÂN QUYỀN (RLS)
--- Để đơn giản hóa kết nối từ Client, tắt RLS hoặc cấp quyền ALL
+-- Tắt RLS để kết nối ứng dụng từ Client không bị chặn quyền
 -- ==========================================
 ALTER TABLE users DISABLE ROW LEVEL SECURITY;
 ALTER TABLE projects DISABLE ROW LEVEL SECURITY;
@@ -353,10 +400,12 @@ ALTER TABLE material_templates DISABLE ROW LEVEL SECURITY;
 ALTER TABLE material_warehouse DISABLE ROW LEVEL SECURITY;
 ALTER TABLE material_orders DISABLE ROW LEVEL SECURITY;
 ALTER TABLE activity_logs DISABLE ROW LEVEL SECURITY;
+ALTER TABLE team_info DISABLE ROW LEVEL SECURITY;
+ALTER TABLE material_price_configs DISABLE ROW LEVEL SECURITY;
 
 
 -- ==========================================
--- KÍCH HOẠT REALTIME CHO CÁC BẢNG CẦN THIẾT
+-- KÍCH HOẠT REALTIME CHO CÁC BẢNG NỀN TẢNG
 -- ==========================================
 BEGIN;
   DO $$
@@ -395,3 +444,38 @@ BEGIN;
   END
   $$;
 COMMIT;
+
+
+-- ==========================================
+-- KHỞI TẠO STORAGE BUCKET 'invoices' ĐỂ LƯU FILE PDF / HÓA ĐƠN
+-- ==========================================
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES (
+  'invoices',
+  'invoices',
+  true,
+  52428800, -- 50MB
+  ARRAY['application/pdf', 'image/jpeg', 'image/png', 'image/webp']::text[]
+)
+ON CONFLICT (id) DO NOTHING;
+
+DROP POLICY IF EXISTS "Allow public read access to invoices" ON storage.objects;
+CREATE POLICY "Allow public read access to invoices"
+ON storage.objects FOR SELECT
+USING (bucket_id = 'invoices');
+
+DROP POLICY IF EXISTS "Allow public uploads to invoices" ON storage.objects;
+CREATE POLICY "Allow public uploads to invoices"
+ON storage.objects FOR INSERT
+WITH CHECK (bucket_id = 'invoices');
+
+DROP POLICY IF EXISTS "Allow public updates to invoices" ON storage.objects;
+CREATE POLICY "Allow public updates to invoices"
+ON storage.objects FOR UPDATE
+USING (bucket_id = 'invoices')
+WITH CHECK (bucket_id = 'invoices');
+
+DROP POLICY IF EXISTS "Allow public deletes to invoices" ON storage.objects;
+CREATE POLICY "Allow public deletes to invoices"
+ON storage.objects FOR DELETE
+USING (bucket_id = 'invoices');
