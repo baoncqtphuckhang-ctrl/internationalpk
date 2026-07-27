@@ -1,7 +1,7 @@
 'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Sidebar from '@/components/Sidebar';
 import HomeDashboard from '@/components/HomeDashboard';
 import Dashboard from '@/components/Dashboard';
@@ -171,14 +171,16 @@ const syncMaterialOrderInvoicesFromDntt = async (requestId, distribution = []) =
     if (materialOrderId) {
         const { data, error } = await supabase
             .from('material_orders')
-            .select('*')
+            .select('id, project_name, order_phase, invoices, invoice_number, invoice_date, invoice_pdf_url')
             .eq('id', materialOrderId);
         if (error) throw error;
         materialOrders = data || [];
     } else {
         const { data, error } = await supabase
             .from('material_orders')
-            .select('*');
+            .select('id, project_name, order_phase, invoices, invoice_number, invoice_date, invoice_pdf_url')
+            .eq('project_name', targetProject)
+            .limit(10);
         if (error) throw error;
         const targetProjectKey = normalizeMaterialSyncText(targetProject);
         materialOrders = (data || []).filter(order => {
@@ -487,6 +489,7 @@ export default function Home() {
     const [detailedTransactions, setDetailedTransactions] = useState([]);
     const [isDetailsLoaded, setIsDetailsLoaded] = useState(false);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
+    const [detailedTransactionsScope, setDetailedTransactionsScope] = useState('');
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
     const [highlightedReqId, setHighlightedReqId] = useState(null);
@@ -539,6 +542,7 @@ export default function Home() {
     const [deleteRequests, setDeleteRequests] = useState([]);
     const [lastToastNotificationId, setLastToastNotificationId] = useState(null);
     const [highlightId, setHighlightId] = useState(null);
+    const loadedDataSourcesRef = useRef(new Set());
     
     const showToast = (msg, type = 'success') => {
         setToast({ show: true, msg, type });
@@ -1031,74 +1035,75 @@ export default function Home() {
         setProjectDetails(details);
     };
 
-    const fetchTransactionsData = async () => {
-        let allTrans = [];
+    const fetchAllRows = async (createQuery, pageSize = 1000) => {
+        const rows = [];
         let page = 0;
-        const pageSize = 1000;
-        const maxPages = 2; // Tối đa 2,000 giao dịch mới nhất khi đăng nhập lần đầu
-
-        while (page < maxPages) {
-            const { data, error } = await supabase
-                .from('transactions')
-                .select('id, project_name, accounting_date, code, debit, credit, invoice_no, invoice_date, note')
-                .order('accounting_date', { ascending: false })
-                .order('id', { ascending: true })
+        while (true) {
+            const { data, error } = await createQuery()
                 .range(page * pageSize, (page + 1) * pageSize - 1);
-
-            if (error) {
-                console.error('Fetch transactions error:', error);
-                throw error;
-            }
-
-            if (!data || data.length === 0) break;
-
-            allTrans = [...allTrans, ...data];
-            if (data.length < pageSize) break;
+            if (error) throw error;
+            rows.push(...(data || []));
+            if (!data || data.length < pageSize) return rows;
             page++;
         }
+    };
 
-        const normalizedTransData = allTrans.map(t => ({
+    const fetchTransactionsData = async () => {
+        const allTrans = await fetchAllRows(() => supabase
+            .from('transactions')
+            .select('id, project_name, accounting_date, code, debit, credit, invoice_no, invoice_date, note')
+            .order('accounting_date', { ascending: false })
+            .order('id', { ascending: true })
+        );
+
+        const normalizedTransData = (allTrans || []).map(t => ({
             ...t,
             code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
         }));
         setTransactions(normalizedTransData);
     };
 
-    const fetchDetailedTransactionsData = async (force = false) => {
-        if ((isDetailsLoaded || isLoadingDetails) && !force) return;
+    const fetchDetailedTransactionsData = async (force = false, projectName = '') => {
+        if ((isDetailsLoaded || isLoadingDetails) && !force && detailedTransactionsScope === projectName) return;
         setIsLoadingDetails(true);
         try {
+            const fields = 'id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, supplier_customer, note, expense_category, cost_type, created_at, created_by';
             let allTrans = [];
-            let page = 0;
-            const pageSize = 1000;
-            const maxPages = 5;
-            while(page < maxPages) {
-                const { data, error } = await supabase
+
+            if (projectName) {
+                const pageSize = 1000;
+                let page = 0;
+                while (true) {
+                    const { data, error } = await supabase
+                        .from('transactions')
+                        .select(fields)
+                        .eq('project_name', projectName)
+                        .order('accounting_date', { ascending: false })
+                        .order('id', { ascending: true })
+                        .range(page * pageSize, (page + 1) * pageSize - 1);
+                    if (error) {
+                        console.error('Fetch project transactions error:', error);
+                        throw error;
+                    }
+                    allTrans = [...allTrans, ...(data || [])];
+                    if (!data || data.length < pageSize) break;
+                    page++;
+                }
+            } else {
+                allTrans = await fetchAllRows(() => supabase
                     .from('transactions')
-                    .select('id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, supplier_customer, note, expense_category, cost_type, created_at, created_by')
+                    .select(fields)
                     .order('accounting_date', { ascending: false })
                     .order('id', { ascending: true })
-                    .range(page * pageSize, (page + 1) * pageSize - 1);
-                
-                if (error) {
-                    console.error('Fetch detailed transactions error:', error);
-                    throw error;
-                }
-                
-                if (data && data.length > 0) {
-                    allTrans = [...allTrans, ...data];
-                    if (data.length < pageSize) break;
-                    page++;
-                } else {
-                    break;
-                }
+                );
             }
 
-            const normalizedTransData = allTrans.map(t => ({
+            const normalizedTransData = (allTrans || []).map(t => ({
                 ...t,
                 code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
             }));
             setDetailedTransactions(normalizedTransData);
+            setDetailedTransactionsScope(projectName);
             setIsDetailsLoaded(true);
         } catch (error) {
             console.error('Error fetching detailed transactions:', error);
@@ -1109,35 +1114,31 @@ export default function Home() {
     };
 
     const fetchIncomesData = async () => {
-        const { data: incData, error } = await supabase
+        const incData = await fetchAllRows(() => supabase
             .from('incomes')
-            .select('id, project_name, date, amount, content, note, created_at, created_by')
+            .select('id, project_name, date, phase, amount, vat_amount, post_tax_amount, is_paid, content, note, created_at, created_by')
             .order('date', { ascending: false })
-            .limit(1000);
-        if (error) throw error;
+        );
         setIncomes(incData || []);
     };
 
     const fetchApprovalRequestsData = async () => {
-        const { data: approvalData, error } = await supabase
+        const approvalData = await fetchAllRows(() => supabase
             .from('approval_requests')
-            .select('id, code, title, amount, project_name, requester, status, created_at, category, priority, notes')
+            .select('id, code, title, amount, doc_type, project_name, recipient, requester, total_amount, reason, status, category, priority, notes, cashier_approved, created_by, created_at')
             .order('created_at', { ascending: false })
-            .limit(1000);
-        if (error) throw error;
+        );
         setDnttList(approvalData || []);
     };
 
     const fetchPartnerDebtsData = async () => {
         try {
-            const { data: debtsData, error: debtsError } = await supabase
+            const debtsData = await fetchAllRows(() => supabase
                 .from('partner_debts')
-                .select('id, partner_name, project_name, debt_amount, paid_amount, status, created_at, notes')
+                .select('id, partner_name, project_name, debt_type, debt_amount, paid_amount, amount, note, notes, status, created_by, created_at')
                 .order('created_at', { ascending: false })
-                .limit(1000);
-            if (!debtsError) {
-                setPartnerDebts(debtsData || []);
-            }
+            );
+            setPartnerDebts(debtsData || []);
         } catch (e) {
             console.warn('Partner debts table might not exist yet', e);
         }
@@ -1145,13 +1146,11 @@ export default function Home() {
 
     const fetchExpectedInvoicesData = async () => {
         try {
-            const { data: expInvData, error: expInvError } = await supabase
+            const expInvData = await fetchAllRows(() => supabase
                 .from('expected_invoices')
                 .select('id, project_name, supplier_customer, expected_date, amount, note, status, created_at')
-                .limit(1000);
-            if (!expInvError) {
-                setExpectedInvoices(expInvData || []);
-            }
+            );
+            setExpectedInvoices(expInvData || []);
         } catch (e) {
             console.warn('Expected invoices table might not exist yet', e);
         }
@@ -1166,29 +1165,25 @@ export default function Home() {
                 currentUser?.username ? `created_by.eq.${currentUser.username}` : null
             ].filter(Boolean).join(',');
 
-            let notificationQuery = supabase
-                .from('notifications')
-                .select('id, recipient_username, recipient_role, title, message, type, source_table, source_id, created_by, is_read, recipient_deleted, sender_deleted, created_at')
-                .order('created_at', { ascending: false })
-                .limit(100);
-
-            if (notificationFilters) {
-                notificationQuery = notificationQuery.or(notificationFilters);
-            }
-
-            let { data: notificationData, error: notificationError } = await notificationQuery;
-
-            if (notificationError) {
-                const fallback = await supabase
+            const notificationFields = 'id, recipient_username, recipient_role, title, message, type, source_table, source_id, created_by, is_read, recipient_deleted, sender_deleted, created_at';
+            let notificationData;
+            try {
+                notificationData = await fetchAllRows(() => {
+                    let query = supabase
+                        .from('notifications')
+                        .select(notificationFields)
+                        .order('created_at', { ascending: false });
+                    return notificationFilters ? query.or(notificationFilters) : query;
+                });
+            } catch (error) {
+                notificationData = await fetchAllRows(() => supabase
                     .from('notifications')
-                    .select('id, recipient_username, recipient_role, title, message, type, source_table, source_id, created_by, is_read, recipient_deleted, sender_deleted, created_at')
+                    .select(notificationFields)
                     .order('created_at', { ascending: false })
-                    .limit(100);
-                notificationData = fallback.data;
-                notificationError = fallback.error;
+                );
             }
 
-            if (!notificationError) {
+            if (notificationData) {
                 setNotificationsAvailable(true);
                 const currentRoleName = normalizeRoleName(currentUser?.role);
                 const visibleNotifications = Array.from(
@@ -1224,9 +1219,6 @@ export default function Home() {
                     ).values()
                 );
                 setNotifications(visibleNotifications);
-            } else {
-                setNotificationsAvailable(false);
-                setNotifications([]);
             }
         } catch (e) {
             console.warn('Notifications table might not exist yet', e);
@@ -1237,17 +1229,15 @@ export default function Home() {
 
     const fetchDeleteRequestsData = async () => {
         try {
-            const { data: delData, error: delError } = await supabase
+            const delData = await fetchAllRows(() => supabase
                 .from('delete_requests')
                 .select('id, original_table, record_id, record_name, project_name, reason, status, requested_by, created_at')
                 .eq('status', 'pending')
                 .order('created_at', { ascending: false })
-                .limit(200);
-            if (!delError) {
-                setDeleteRequests(delData || []);
-                await syncDeleteRequestNotifications(delData || []);
-                await cleanupStaleDeleteRequestNotifications(delData || []);
-            }
+            );
+            setDeleteRequests(delData || []);
+            await syncDeleteRequestNotifications(delData || []);
+            await cleanupStaleDeleteRequestNotifications(delData || []);
         } catch (e) {
             console.warn('delete_requests table might not exist yet', e);
         }
@@ -1258,14 +1248,12 @@ export default function Home() {
         const isAdminUser = currentRole === 'ADMIN';
         if (isAdminUser) {
             try {
-                const { data: logsData, error: logsError } = await supabase
+                const logsData = await fetchAllRows(() => supabase
                     .from('activity_logs')
                     .select('id, username, action_type, module, description, project_name, created_at')
                     .order('created_at', { ascending: false })
-                    .limit(300);
-                if (!logsError) {
-                    setActivityLogs(logsData || []);
-                }
+                );
+                setActivityLogs(logsData || []);
             } catch (e) {
                 console.warn('Activity logs table might not exist yet', e);
 
@@ -1275,7 +1263,7 @@ export default function Home() {
         }
     };
 
-    const fetchData = async (showLoading = true) => {
+    const fetchData = async (showLoading = true, force = false) => {
         console.log("fetchData called, showLoading:", showLoading);
         if (showLoading) setIsLoading(true);
         try {
@@ -1290,17 +1278,49 @@ export default function Home() {
                 ['nhật ký hoạt động', fetchActivityLogsData]
             ];
 
+            const tabTaskMap = {
+                home: [fetchProjectsData, fetchTransactionsData, fetchIncomesData, fetchApprovalRequestsData, fetchPartnerDebtsData, fetchExpectedInvoicesData, fetchDeleteRequestsData, fetchActivityLogsData],
+                dashboard: [fetchProjectsData, fetchTransactionsData, fetchIncomesData, fetchDeleteRequestsData],
+                'expense-summary': [fetchProjectsData, fetchTransactionsData],
+                history: [fetchProjectsData, fetchTransactionsData, fetchDeleteRequestsData],
+                input: [fetchProjectsData, fetchTransactionsData, fetchIncomesData, fetchDeleteRequestsData],
+                'partner-debts': [fetchProjectsData, fetchPartnerDebtsData, fetchApprovalRequestsData, fetchDeleteRequestsData],
+                'customer-debts': [fetchProjectsData, fetchIncomesData],
+                dntt: [fetchProjectsData, fetchTransactionsData, fetchApprovalRequestsData, fetchDeleteRequestsData],
+                approvals: [fetchProjectsData, fetchTransactionsData, fetchApprovalRequestsData, fetchDeleteRequestsData],
+                'dntt-approvals': [fetchProjectsData, fetchTransactionsData, fetchApprovalRequestsData, fetchDeleteRequestsData],
+                'expected-invoices': [fetchProjectsData, fetchExpectedInvoicesData],
+                'project-detail': [fetchProjectsData, fetchTransactionsData, fetchIncomesData, fetchApprovalRequestsData, fetchPartnerDebtsData],
+                'delete-approvals': [fetchProjectsData, fetchDeleteRequestsData],
+                users: [fetchProjectsData, fetchActivityLogsData]
+            };
+            const allowedTasks = new Set(tabTaskMap[activeTab] || [fetchProjectsData]);
+            const selectedTasks = tasks.filter(([, task]) => allowedTasks.has(task));
+            const tasksToLoad = force
+                ? selectedTasks
+                : selectedTasks.filter(([label]) => !loadedDataSourcesRef.current.has(label));
             const dataResults = await Promise.allSettled(
-                tasks.map(([label, task]) => withTimeout(task(), label))
+                tasksToLoad.map(([label, task]) => withTimeout(task(), label))
             );
-            const notificationResult = await withTimeout(fetchNotificationsData(), 'thông báo')
-                .then(() => ({ status: 'fulfilled' }))
-                .catch(reason => ({ status: 'rejected', reason }));
+            dataResults.forEach((result, index) => {
+                if (result.status === 'fulfilled') {
+                    loadedDataSourcesRef.current.add(tasksToLoad[index][0]);
+                }
+            });
+            let notificationResult = { status: 'fulfilled' };
+            if (force || !loadedDataSourcesRef.current.has('thông báo')) {
+                notificationResult = await withTimeout(fetchNotificationsData(), 'thông báo')
+                    .then(() => ({ status: 'fulfilled' }))
+                    .catch(reason => ({ status: 'rejected', reason }));
+                if (notificationResult.status === 'fulfilled') {
+                    loadedDataSourcesRef.current.add('thông báo');
+                }
+            }
             const results = [
                 ...dataResults,
                 notificationResult
             ];
-            const labels = [...tasks.map(([label]) => label), 'thông báo'];
+            const labels = [...tasksToLoad.map(([label]) => label), 'thông báo'];
 
             const failedLabels = results
                 .map((result, index) => result.status === 'rejected' ? labels[index] : null)
@@ -1345,14 +1365,23 @@ export default function Home() {
     };
 
     useEffect(() => {
-        if (currentUser) fetchData();
+        if (currentUser) {
+            loadedDataSourcesRef.current.clear();
+            fetchData(true, true);
+        }
     }, [currentUser]);
 
     useEffect(() => {
-        if (['history', 'expense-summary', 'input', 'project-detail'].includes(activeTab)) {
+        if (currentUser && activeTab !== 'home') fetchData(false);
+    }, [activeTab]);
+
+    useEffect(() => {
+        if (activeTab === 'project-detail' && selectedProject) {
+            fetchDetailedTransactionsData(false, selectedProject);
+        } else if (['history', 'expense-summary', 'input'].includes(activeTab)) {
             fetchDetailedTransactionsData();
         }
-    }, [activeTab, currentUser]);
+    }, [activeTab, currentUser, selectedProject]);
 
     // Supabase Realtime subscription (không dùng polling để tiết kiệm egress)
     useEffect(() => {
@@ -1413,19 +1442,30 @@ export default function Home() {
             setRealtimeVersion(v => v + 1);
         };
 
-        const channel = supabase
-            .channel('realtime-sync')
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'approval_requests' }, (p) => handleRealtimeChange('approval_requests', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'transactions' }, (p) => handleRealtimeChange('transactions', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'incomes' }, (p) => handleRealtimeChange('incomes', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'partner_debts' }, (p) => handleRealtimeChange('partner_debts', p))
-            .on('postgres_changes', { event: '*', schema: 'public', table: 'delete_requests' }, (p) => handleRealtimeChange('delete_requests', p))
-            .subscribe();
+        const tablesByTab = {
+            home: ['approval_requests', 'transactions', 'incomes', 'partner_debts', 'delete_requests'],
+            dashboard: ['transactions', 'incomes', 'delete_requests'],
+            'expense-summary': ['transactions'],
+            history: ['transactions', 'delete_requests'],
+            input: ['transactions', 'incomes', 'delete_requests'],
+            'partner-debts': ['approval_requests', 'partner_debts', 'delete_requests'],
+            'customer-debts': ['incomes'],
+            dntt: ['approval_requests', 'transactions', 'delete_requests'],
+            approvals: ['approval_requests', 'transactions', 'delete_requests'],
+            'dntt-approvals': ['approval_requests', 'transactions', 'delete_requests'],
+            'project-detail': ['approval_requests', 'transactions', 'incomes', 'partner_debts'],
+            'delete-approvals': ['delete_requests']
+        };
+        let channel = supabase.channel(`realtime-sync-${activeTab}`);
+        (tablesByTab[activeTab] || []).forEach((table) => {
+            channel = channel.on('postgres_changes', { event: '*', schema: 'public', table }, (p) => handleRealtimeChange(table, p));
+        });
+        channel.subscribe();
 
         return () => {
             supabase.removeChannel(channel);
         };
-    }, [currentUser]);
+    }, [currentUser, activeTab]);
 
     useEffect(() => {
         if (!currentUser || !notificationsAvailable) return;

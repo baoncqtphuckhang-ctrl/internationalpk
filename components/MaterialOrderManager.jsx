@@ -144,7 +144,6 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                 .from('transactions')
                 .select('id, project_name, invoice_no, invoice_date, note, created_at')
                 .order('created_at', { ascending: false })
-                .limit(3000);
             if (data) setTxList(data);
         } catch (e) {
             console.error('Error fetching tx for material orders:', e);

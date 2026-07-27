@@ -192,7 +192,10 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
 
     const fetchTrash = async () => {
         try {
-            const { data, error } = await supabase.from('trash_bin').select('*').order('deleted_at', { ascending: false });
+            const { data, error } = await supabase
+                .from('trash_bin')
+                .select('*')
+                .order('deleted_at', { ascending: false });
             if (error) throw error;
             let fetchedData = data || [];
             

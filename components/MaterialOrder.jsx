@@ -275,7 +275,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             // Lấy templates từ Supabase
             let templatesMap = {};
             try {
-                const res = await supabase.from('material_templates').select('*');
+                const res = await supabase
+                    .from('material_templates')
+                    .select('project_name, data');
                 if (res.data) {
                     res.data.forEach(row => {
                         templatesMap[row.project_name] = row.data;

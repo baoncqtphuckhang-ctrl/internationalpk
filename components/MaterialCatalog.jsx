@@ -35,7 +35,9 @@ export default function MaterialCatalog({ projects, showToast }) {
         try {
             let data = [];
             try {
-                const res = await supabase.from('material_templates').select('*');
+                const res = await supabase
+                    .from('material_templates')
+                    .select('project_name, data');
                 if (res.error) throw res.error;
                 data = res.data || [];
             } catch (err) {
@@ -118,7 +120,7 @@ export default function MaterialCatalog({ projects, showToast }) {
         try {
             const { data: ordersData, error: ordersError } = await supabase
                 .from('material_orders')
-                .select('*')
+                .select('id, items, order_phase')
                 .eq('project_name', projectName);
                 
             if (ordersError || !ordersData || ordersData.length === 0) return;
@@ -191,7 +193,7 @@ export default function MaterialCatalog({ projects, showToast }) {
 
                     const { data: dnttData } = await supabase
                         .from('approval_requests')
-                        .select('*')
+                        .select('id, reason')
                         .eq('project_name', projectName)
                         .eq('doc_type', 'Đơn Vật Tư');
                     
@@ -227,7 +229,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                     const noteMatch = `[Đơn Vật Tư] ${dntt.id.slice(0, 8)}`;
                                     const { data: debts } = await supabase
                                         .from('partner_debts')
-                                        .select('*')
+                                        .select('id, note')
                                         .eq('project_name', projectName);
                                         
                                     if (debts && debts.length > 0) {

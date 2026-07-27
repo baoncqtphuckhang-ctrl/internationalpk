@@ -294,7 +294,10 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
     };
 
     const fetchSalaryHistoryFromDb = async ({ replace = false } = {}) => {
-        const { data, error } = await supabase.from('salary_history').select('*');
+        const { data, error } = await supabase
+            .from('salary_history')
+            .select('month_id, timestamp, global_standard_days, employees_data')
+            .order('timestamp', { ascending: false });
         if (error) throw error;
         return applySalaryHistoryRows(data, { replace });
     };
@@ -755,7 +758,10 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             } catch (e) {}
 
             try {
-                const { data, error } = await supabase.from('salary_history').select('*');
+                const { data, error } = await supabase
+                    .from('salary_history')
+                    .select('month_id, timestamp, global_standard_days, employees_data')
+                    .order('timestamp', { ascending: false });
                 if (error) throw error;
                 if (data && data.length > 0) {
                     data.forEach(item => {
@@ -802,7 +808,10 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             }
 
             try {
-                const { data, error } = await supabase.from('employees').select('*').order('order_index', { ascending: true });
+                const { data, error } = await supabase
+                    .from('employees')
+                    .select('*')
+                    .order('order_index', { ascending: true });
                 if (error) throw error;
                 setIsDbStorage(true);
                 if (data && data.length > 0) {
@@ -1495,9 +1504,10 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         if (historyTransactions[monthId]) return;
         try {
             const { data, error } = await supabase.from('transactions')
-                .select('*')
+                .select('id, accounting_date, code, debit, credit, invoice_no, invoice_date, note, created_at')
                 .ilike('note', `%[CHI LƯƠNG]%${monthId}%`)
-                .order('created_at', { ascending: false });
+                .order('created_at', { ascending: false })
+                .limit(100);
             if (!error && data) {
                 setHistoryTransactions(prev => ({ ...prev, [monthId]: data }));
             }

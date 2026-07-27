@@ -107,7 +107,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
             // Lấy templates từ Supabase
             let templatesMap = {};
             try {
-                const res = await supabase.from('material_templates').select('*');
+                const res = await supabase
+                    .from('material_templates')
+                    .select('project_name, data');
                 if (res.data) {
                     res.data.forEach(row => {
                         templatesMap[row.project_name] = row.data;
@@ -436,7 +438,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
         try {
             const { data, error } = await supabase
                 .from('material_warehouse')
-                .select('*')
+                .select('id, note')
                 .eq('project_name', projectName)
                 .ilike('note', `%Theo Đơn vật tư ${oldPhaseName}.%`);
                 
