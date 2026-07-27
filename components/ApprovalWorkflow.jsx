@@ -468,7 +468,7 @@ export default function ApprovalWorkflow({
             code: d.code,
             debit: parseFloat(d.amount) || 0,
             note: `[${distributeItem.orderPhase ? distributeItem.orderPhase : `Đợt ${distributeItem.phase || 1}`}] [${distributeItem.doc_type}] ${d.content}`,
-            recipient: distributeItem.recipient,
+            recipient: (d.recipient !== undefined && d.recipient !== null && d.recipient !== '') ? d.recipient : distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoice_date: d.invoiceDate || null,
             invoice_no: d.invoiceNumber,
@@ -488,9 +488,11 @@ export default function ApprovalWorkflow({
                 debtAmount = Math.round(debtAmount * 1.08);
             }
 
+            const chosenRecipient = distributionData.find(d => d.recipient)?.recipient || distributeItem.recipient;
+
             onAddDebt({
                 project_name: distributeItem.project_name,
-                partner_name: distributeItem.recipient || 'Đối tác/Nhà cung cấp',
+                partner_name: chosenRecipient || 'Đối tác/Nhà cung cấp',
                 debt_type: 'CẦN TRẢ',
                 amount: debtAmount,
                 status: status || 'CHƯA XONG',
@@ -1299,6 +1301,20 @@ export default function ApprovalWorkflow({
                                                     <option value="333">333 - Thuế và các khoản phải nộp</option>
                                                     <option value="3388">3388 - Phải trả, phải nộp khác</option>
                                                 </select>
+                                            </div>
+                                            <div className="flex-1">
+                                                <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Tên đối tượng</p>
+                                                <input 
+                                                    type="text"
+                                                    value={d.recipient !== undefined ? d.recipient : (distributeItem?.recipient || '')}
+                                                    onChange={(e) => {
+                                                        const newData = [...distributionData];
+                                                        newData[idx].recipient = e.target.value;
+                                                        setDistributionData(newData);
+                                                    }}
+                                                    className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                    placeholder="Sửa tên đối tượng..."
+                                                />
                                             </div>
                                         </div>
 
