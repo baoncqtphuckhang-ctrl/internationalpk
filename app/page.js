@@ -35,10 +35,16 @@ import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, D
 
 // --- CONFIG & CONSTANTS ---
 const getIncomeType = (i) => {
+    if (!i) return 'INCOME_REAL';
     if (i.note) {
         try {
             const parsed = JSON.parse(i.note);
             if (parsed?.type_data) return parsed.type_data;
+            if (parsed && typeof parsed === 'object') {
+                if (parsed.invoice_no || parsed.is_offset || (i.post_tax_amount === 0 && i.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
+                    return 'INCOME_INVOICE';
+                }
+            }
         } catch(e) {}
     }
     return (i.post_tax_amount > 0 || i.amount > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';

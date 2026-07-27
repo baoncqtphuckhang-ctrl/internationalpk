@@ -109,13 +109,36 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         return map;
     }, [projects]);
 
+    const isIncomeInvoiceRow = (income = {}) => {
+        if (!income) return false;
+        let typeData = income.type_data || '';
+        let hasHsttOrInvoiceNote = false;
+
+        if (income.note) {
+            try {
+                const parsed = JSON.parse(income.note);
+                if (parsed && typeof parsed === 'object') {
+                    if (parsed.type_data) typeData = parsed.type_data;
+                    if (parsed.invoice_no || parsed.is_offset || (income.post_tax_amount === 0 && income.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
+                        hasHsttOrInvoiceNote = true;
+                    }
+                }
+            } catch (e) {}
+        }
+
+        if (typeData === 'INCOME_REAL') return false;
+        if (typeData === 'INCOME_INVOICE') return true;
+
+        return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasHsttOrInvoiceNote;
+    };
+
     const debtData = useMemo(() => {
         if (!incomes) return [];
         const grouped = {};
         
         incomes.forEach(inc => {
             const key = `${inc.project_name}_${inc.phase}`;
-            const isInvoice = (inc.amount || 0) > 0 || (inc.post_tax_amount || 0) > 0;
+            const isInvoice = isIncomeInvoiceRow(inc);
             if (!grouped[key]) {
                 grouped[key] = {
                     id: key,

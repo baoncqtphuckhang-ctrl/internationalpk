@@ -330,8 +330,26 @@ const getIncomeInvoiceMeta = (income = {}) => {
 };
 
 const isIncomeInvoiceRow = (income = {}) => {
-    const meta = getIncomeInvoiceMeta(income);
-    return meta.type_data === 'INCOME_INVOICE' || (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0;
+    if (!income) return false;
+    let typeData = income.type_data || '';
+    let hasHsttOrInvoiceNote = false;
+
+    if (income.note) {
+        try {
+            const parsed = JSON.parse(income.note);
+            if (parsed && typeof parsed === 'object') {
+                if (parsed.type_data) typeData = parsed.type_data;
+                if (parsed.invoice_no || parsed.is_offset || (income.post_tax_amount === 0 && income.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
+                    hasHsttOrInvoiceNote = true;
+                }
+            }
+        } catch (e) {}
+    }
+
+    if (typeData === 'INCOME_REAL') return false;
+    if (typeData === 'INCOME_INVOICE') return true;
+
+    return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasHsttOrInvoiceNote;
 };
 
 const formatInvoiceDateForDisplay = (dateValue) => {
@@ -1931,7 +1949,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
             return sum + periodCount + 1; // Period total
         }, 1); // Table header
-
         if (rowCount >= 58) {
             return { rowCount, fontSize: 9.5, headerFontSize: 10.5, summaryFontSize: 10.5, cellPaddingY: 4, cellPaddingX: 6 };
         }
@@ -1953,11 +1970,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const details = projectDetails[name] || {};
             const advanceValue = details.advanceValue || 0;
             const projIncomes = incomes.filter(i => i.project_name === name);
-            const allPhases = [...new Set(projIncomes.map(i => i.phase).filter(Boolean))].sort();
+            const projExpectedInvoices = invoices.filter(i => i.projectName === name);
+            const allPhases = [...new Set([
+                ...projIncomes.map(i => i.phase),
+                ...projExpectedInvoices.map(i => i.phase)
+            ].filter(Boolean))].sort((a, b) => {
+                const numA = parseInt((a || '').match(/\d+/) || [0], 10);
+                const numB = parseInt((b || '').match(/\d+/) || [0], 10);
+                return numA - numB;
+            });
 
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
-                const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
+                const invoiceRecords = phaseIncs.filter(i => isIncomeInvoiceRow(i));
                 
                 let phaseHstt = undefined;
                 let invoice_no = '';
@@ -1993,6 +2018,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 }
                             }
                         } catch(e) {}
+                    }
+                }
+
+                if (phaseHstt === undefined) {
+                    const matchedExpInv = projExpectedInvoices.find(i => i.phase === phase);
+                    if (matchedExpInv) {
+                        phaseHstt = Number(matchedExpInv.postTaxValue) || Number(matchedExpInv.teamValue) || Number(matchedExpInv.preTaxValue) || 0;
+                        if (matchedExpInv.invoice_no && !invoice_no) invoice_no = matchedExpInv.invoice_no;
+                        if (matchedExpInv.invoice_date && !invoice_date) invoice_date = matchedExpInv.invoice_date;
                     }
                 }
                 
