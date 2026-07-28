@@ -2,7 +2,7 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronLeft, ChevronRight, MapPin, User, HardHat, X } from 'lucide-react';
+import { Plus, Edit3, Save, Trash2, Building2, FileText, Coins, Search, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
 
 export default function ProjectManager({ currentUser, projects, projectDetails, onUpsertProject, onDeleteProject, isLoading, usersList = [] }) {
@@ -35,8 +35,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         project_type: 'TRỰC TIẾP ORDER',
         debt_to_collect: 0,
         plhd_list: [],
-        settlement_value: 0,
-        gtbl_value: 0,
         status: 'Doing'
     });
 
@@ -100,8 +98,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             project_type: details.projectType || 'TRỰC TIẾP ORDER',
             debt_to_collect: details.debtToCollect || 0,
             plhd_list: p.plhds || [],
-            settlement_value: details.settlementValue || 0,
-            gtbl_value: details.gtblValue || 0,
             status: p.status || 'Doing',
             general_contractor: gc,
             investor: inv
@@ -121,7 +117,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
         if (!saved) return;
         setIsAdding(false);
         setEditingProject(null);
-        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], settlement_value: 0, gtbl_value: 0, status: 'Doing', general_contractor: '', investor: '' });
+        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
     };
 
     const handleDelete = (projectName) => {
@@ -184,7 +180,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                 {canCreateProject && <button 
                     onClick={() => {
                         setEditingProject(null);
-                        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], settlement_value: 0, gtbl_value: 0, status: 'Doing', general_contractor: '', investor: '' });
+                        setFormData({ original_name: '', name: '', main_contract: '', sub_contracts: [], contract_value_after_tax: 0, advance_value: 0, debt_to_collect: 0, address: '', cht_list: [{ name: '', phone: '' }], project_type: 'TRỰC TIẾP ORDER', plhd_list: [], status: 'Doing', general_contractor: '', investor: '' });
                         setIsAdding(true);
                     }}
                     className="bg-indigo-600 text-white px-4 py-2 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2"
@@ -194,22 +190,12 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
             </header>
 
             {isAdding && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md overflow-y-auto animate-in fade-in" onClick={(e) => { if (e.target === e.currentTarget) setIsAdding(false); }}>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/40 backdrop-blur-sm overflow-y-auto animate-in fade-in">
                     <div className="bg-white p-6 md:p-8 rounded-3xl shadow-2xl border border-slate-200 w-full max-w-3xl my-auto animate-in zoom-in-95">
-                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-slate-100">
-                            <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                                <Building2 className="text-indigo-600" /> 
-                                {editingProject ? 'Sửa thông tin công trình' : 'Thêm công trình mới'}
-                            </h3>
-                            <button 
-                                type="button" 
-                                onClick={() => setIsAdding(false)} 
-                                className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition"
-                                title="Đóng"
-                            >
-                                <X size={20} />
-                            </button>
-                        </div>
+                        <h3 className="text-xl font-bold text-slate-800 mb-6 flex items-center gap-2">
+                            <Building2 className="text-indigo-600" /> 
+                            {editingProject ? 'Sửa thông tin công trình' : 'Thêm công trình mới'}
+                        </h3>
                         <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="block text-sm font-black text-slate-900">Tên công trình *</label>
@@ -441,32 +427,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                         value={formData.advance_value ? formatCurrency(formData.advance_value) : ''}
                                         onChange={(e) => setFormData({...formData, advance_value: parseVietnameseNumber(e.target.value)})}
                                         className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-amber-600"
-                                        placeholder="0"
-                                    />
-                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Giá trị Quyết toán</label>
-                                <div className="relative flex items-center">
-                                    <input 
-                                        type="text"
-                                        value={formData.settlement_value ? formatCurrency(formData.settlement_value) : ''}
-                                        onChange={(e) => setFormData({...formData, settlement_value: parseVietnameseNumber(e.target.value)})}
-                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-emerald-700"
-                                        placeholder="0"
-                                    />
-                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Giá trị GTBL</label>
-                                <div className="relative flex items-center">
-                                    <input 
-                                        type="text"
-                                        value={formData.gtbl_value ? formatCurrency(formData.gtbl_value) : ''}
-                                        onChange={(e) => setFormData({...formData, gtbl_value: parseVietnameseNumber(e.target.value)})}
-                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-purple-700"
                                         placeholder="0"
                                     />
                                     <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
@@ -728,8 +688,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     <th className="p-4 text-right">Giá trị HĐ</th>
                                     <th className="p-4 text-right">Phụ Lục HĐ</th>
                                     <th className="p-4 text-right">Tạm ứng</th>
-                                    <th className="p-4 text-right">Quyết toán</th>
-                                    <th className="p-4 text-right">GTBL</th>
                                     <th className="p-4 text-center">Trạng thái</th>
                                     <th className="p-4 text-center pr-6">Thao tác</th>
                                 </tr>
@@ -794,8 +752,6 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                             <td className="p-4 text-right text-sm font-bold text-blue-700">{formatCurrency(details.totalContractAndPlhd)} VNĐ</td>
                                             <td className="p-4 text-right text-sm font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0) + (details.subContractsAnnexesTotal || 0))} VNĐ</td>
                                             <td className="p-4 text-right text-sm font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</td>
-                                            <td className="p-4 text-right text-sm font-bold text-emerald-700">{formatCurrency(details.settlementValue)} VNĐ</td>
-                                            <td className="p-4 text-right text-sm font-bold text-purple-700">{formatCurrency(details.gtblValue)} VNĐ</td>
                                             <td className="p-4 text-center">
                                                 <span className={`text-sm px-2 py-1 rounded-full font-black ${isCompleted ? 'bg-red-50 text-red-600 border border-red-100' : 'bg-green-50 text-green-600 border border-green-100'}`}>
                                                     {isCompleted ? '🔒 Finish' : '⚙️ Doing'}
@@ -835,7 +791,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                     </div>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {filteredProjects.length === 0 ? (
                         <div className="md:col-span-2 bg-white p-12 text-center rounded-2xl border border-dashed border-slate-300 text-slate-400 font-bold">
                             Không tìm thấy công trình nào khớp với từ khóa.
@@ -876,36 +832,36 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                             {details.projectType || 'TRỰC TIẾP ORDER'}
                                         </span>
                                         <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold border ${isCompleted ? 'bg-red-100 text-red-700 border-red-200' : 'bg-green-100 text-green-700 border-green-200'}`}>
-                                            {isCompleted ? 'Finish' : 'Doing'}
+                                            {isCompleted ? '🔒 Finish' : '⚙️ Doing'}
                                         </span>
                                     </div>
-                                    <div className="space-y-0 text-sm">
+                                    <div className="space-y-2 text-sm">
                                         {details.address && (
-                                            <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                                <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><MapPin size={15} className="shrink-0 text-slate-400" />Địa chỉ:</span>
-                                                <span className="font-bold text-slate-700 flex-1 min-w-0 text-right break-words text-sm" title={details.address}>{details.address}</span>
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">📍 Địa chỉ:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.address}>{details.address}</span>
                                             </div>
                                         )}
                                         {details.generalContractor && (
-                                            <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                                <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Building2 size={15} className="shrink-0 text-slate-400" />Tổng thầu:</span>
-                                                <span className="font-bold text-slate-700 flex-1 min-w-0 text-right break-words text-sm" title={details.generalContractor}>{details.generalContractor}</span>
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">🏢 Tổng thầu:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.generalContractor}>{details.generalContractor}</span>
                                             </div>
                                         )}
                                         {details.investor && (
-                                            <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                                <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><User size={15} className="shrink-0 text-slate-400" />Chủ đầu tư:</span>
-                                                <span className="font-bold text-slate-700 flex-1 min-w-0 text-right break-words text-sm" title={details.investor}>{details.investor}</span>
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1">👤 Chủ đầu tư:</span>
+                                                <span className="font-bold text-slate-700 truncate max-w-[250px]" title={details.investor}>{details.investor}</span>
                                             </div>
                                         )}
                                         {(details.chtName || details.chtPhone) && (
-                                            <div className="flex items-start gap-3 py-2 border-b border-slate-100">
-                                                <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5 pt-0.5"><HardHat size={15} className="shrink-0 text-slate-400" />CHT:</span>
-                                                <div className="flex flex-col items-end gap-1 flex-1 min-w-0">
+                                            <div className="flex justify-between border-b border-slate-50 pb-2">
+                                                <span className="text-slate-400 flex items-center gap-1 whitespace-nowrap min-w-[140px]">👷 Chỉ Huy Trưởng:</span>
+                                                <div className="flex flex-col items-end gap-1 text-right max-w-full">
                                                     {(details.chtName || '').split(',').map(s => s.trim()).filter(Boolean).map((name, i) => {
                                                         const phone = (details.chtPhone || '').split(',').map(s => s.trim())[i] || '';
                                                         return (
-                                                            <span key={i} className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md break-words text-right text-xs">
+                                                            <span key={i} className="font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded-md break-words whitespace-normal text-right inline-block w-full text-xs">
                                                                 {name} {phone ? `(${phone})` : ''}
                                                             </span>
                                                         );
@@ -914,9 +870,9 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                 </div>
                                             </div>
                                         )}
-                                        <div className="flex items-start gap-3 py-2 border-b border-slate-100">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5 pt-0.5"><FileText size={15} className="shrink-0 text-slate-400" />Số HĐ:</span>
-                                            <span className="font-bold text-slate-700 flex-1 min-w-0 text-right break-words text-sm">
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><FileText size={14}/> Số HĐ:</span>
+                                            <span className="font-bold text-slate-700">
                                                 {(() => {
                                                     if (!details.contractNo) return '---';
                                                     try {
@@ -941,25 +897,17 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                 })()}
                                             </span>
                                         </div>
-                                        <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Coins size={15} className="shrink-0 text-slate-400" />Giá trị HĐ:</span>
-                                            <span className="font-bold text-blue-700 flex-1 min-w-0 text-right text-sm">{formatCurrency(details.totalContractAndPlhd)} VNĐ</span>
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị HĐ:</span>
+                                            <span className="font-bold text-blue-700">{formatCurrency(details.totalContractAndPlhd)} VNĐ</span>
                                         </div>
-                                        <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Coins size={15} className="shrink-0 text-slate-400" />Giá trị PLHĐ:</span>
-                                            <span className="font-bold text-orange-600 flex-1 min-w-0 text-right text-sm">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0) + (details.subContractsAnnexesTotal || 0))} VNĐ</span>
+                                        <div className="flex justify-between border-b border-slate-50 pb-2">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Giá trị PLHĐ:</span>
+                                            <span className="font-bold text-orange-600">{formatCurrency((details.debtToCollect || 0) + (details.extraPlhdTotal || 0) + (details.subContractsAnnexesTotal || 0))} VNĐ</span>
                                         </div>
-                                        <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Coins size={15} className="shrink-0 text-slate-400" />Tạm ứng:</span>
-                                            <span className="font-bold text-amber-600 flex-1 min-w-0 text-right text-sm">{formatCurrency(details.advanceValue)} VNĐ</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 py-2 border-b border-slate-100">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Coins size={15} className="shrink-0 text-slate-400" />Quyết toán:</span>
-                                            <span className="font-bold text-emerald-700 flex-1 min-w-0 text-right text-sm">{formatCurrency(details.settlementValue)} VNĐ</span>
-                                        </div>
-                                        <div className="flex items-center gap-3 py-2">
-                                            <span className="text-slate-500 shrink-0 w-[148px] min-w-[148px] text-sm font-medium whitespace-nowrap flex items-center gap-1.5"><Coins size={15} className="shrink-0 text-slate-400" />GTBL:</span>
-                                            <span className="font-bold text-purple-700 flex-1 min-w-0 text-right text-sm">{formatCurrency(details.gtblValue)} VNĐ</span>
+                                        <div className="flex justify-between">
+                                            <span className="text-slate-400 flex items-center gap-1"><Coins size={14} className="text-slate-400" /> Tạm ứng:</span>
+                                            <span className="font-bold text-amber-600">{formatCurrency(details.advanceValue)} VNĐ</span>
                                         </div>
                                     </div>
                                 </div>

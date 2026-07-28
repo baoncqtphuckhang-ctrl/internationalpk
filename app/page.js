@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -30,7 +30,7 @@ import Trash from '@/components/Trash';
 import SignatureScannerModal from '@/components/SignatureScannerModal';
 import DeleteApprovals from '@/components/DeleteApprovals';
 import { supabase } from '@/lib/supabase';
-import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPENSE_CATEGORIES, sortPhases, comparePhases } from '@/lib/utils';
+import { formatCurrency, formatDateVN, parseVietnameseNumber, parseDateVN, EXPENSE_CATEGORIES } from '@/lib/utils';
 import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, Download, Clock, Lock, Unlock, Filter, Eye, EyeOff } from 'lucide-react';
 
 // --- CONFIG & CONSTANTS ---
@@ -41,14 +41,13 @@ const getIncomeType = (i) => {
             const parsed = JSON.parse(i.note);
             if (parsed?.type_data) return parsed.type_data;
             if (parsed && typeof parsed === 'object') {
-                if (parsed.invoice_no || parsed.is_offset) {
+                if (parsed.invoice_no || parsed.is_offset || (i.post_tax_amount === 0 && i.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
                     return 'INCOME_INVOICE';
                 }
             }
         } catch(e) {}
     }
-    if (i.invoice_no) return 'INCOME_INVOICE';
-    return (Number(i.post_tax_amount) > 0 || Number(i.amount) > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';
+    return (i.post_tax_amount > 0 || i.amount > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';
 };
 
 const getIncomeInvoiceDate = (i) => {
@@ -60,7 +59,7 @@ const getIncomeInvoiceDate = (i) => {
             }
         } catch(e) {}
     }
-    return i?.invoice_date || i?.date || '';
+    return i?.invoice_date || '';
 };
 
 const ROLES = {
@@ -980,21 +979,10 @@ export default function Home() {
     };
 
     const fetchProjectsData = async () => {
-        const baseSelect = 'id, name, contract_value_after_tax, advance_value, debt_to_collect, plhds, status, contract_no, address, cht_name, cht_phone, project_type, general_contractor, investor';
-        let projData = null;
-        let error = null;
-
-        ({ data: projData, error } = await supabase
+        const { data: projData, error } = await supabase
             .from('projects')
-            .select(`${baseSelect}, settlement_value, gtbl_value`)
-            .order('name'));
-
-        if (error) {
-            ({ data: projData, error } = await supabase
-                .from('projects')
-                .select(baseSelect)
-                .order('name'));
-        }
+            .select('id, name, contract_value_after_tax, advance_value, debt_to_collect, plhds, status, contract_no, address, cht_name, cht_phone, project_type, general_contractor, investor')
+            .order('name');
         if (error) throw error;
         const sortedProjData = (projData || []).sort((a, b) => {
             const isCompletedA = a.status === 'Finish';
@@ -1047,9 +1035,7 @@ export default function Home() {
                 plhds: plhdArray,
                 status: p.status || 'Doing',
                 generalContractor: p.general_contractor || '',
-                investor: p.investor || '',
-                settlementValue: p.settlement_value || 0,
-                gtblValue: p.gtbl_value || 0
+                investor: p.investor || ''
             };
         });
         setProjectDetails(details);
@@ -1311,7 +1297,6 @@ export default function Home() {
                 'dntt-approvals': [fetchProjectsData, fetchTransactionsData, fetchApprovalRequestsData, fetchDeleteRequestsData],
                 'expected-invoices': [fetchProjectsData, fetchExpectedInvoicesData],
                 'project-detail': [fetchProjectsData, fetchTransactionsData, fetchIncomesData, fetchApprovalRequestsData, fetchPartnerDebtsData],
-                projects: [fetchProjectsData],
                 'delete-approvals': [fetchProjectsData, fetchDeleteRequestsData],
                 users: [fetchProjectsData, fetchActivityLogsData]
             };
@@ -1807,9 +1792,7 @@ export default function Home() {
                 project_type: data.project_type || 'TRỰC TIẾP ORDER',
                 status: data.status || 'Doing',
                 general_contractor: data.general_contractor || '',
-                investor: data.investor || '',
-                settlement_value: Number(data.settlement_value) || 0,
-                gtbl_value: Number(data.gtbl_value) || 0
+                investor: data.investor || ''
             };
 
             if (!projectPayload.name) {
@@ -1842,105 +1825,13 @@ export default function Home() {
                     const { error } = await supabase.from('projects').update(projectPayload).eq('name', data.original_name || projectPayload.name);
                     if (error) throw error;
                 }
-            }
-
-            // Tự động đồng bộ dòng đợt Quyết toán & GTBL trong dữ liệu thu khi thay đổi giá trị
-            if (projectPayload.settlement_value > 0) {
-                const { data: existingQuyetToan } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%quyết toán%')
-                    .limit(1);
-                if (existingQuyetToan && existingQuyetToan.length > 0) {
-                    let parsed = {};
-                    try { parsed = JSON.parse(existingQuyetToan[0].note || '{}'); } catch(e){}
-                    parsed.actual_received_amount = projectPayload.settlement_value;
-                    await supabase.from('incomes')
-                        .update({
-                            post_tax_amount: projectPayload.settlement_value,
-                            note: JSON.stringify(parsed)
-                        })
-                        .eq('id', existingQuyetToan[0].id);
-                } else {
-                    await supabase.from('incomes').insert([{
-                        project_name: projectPayload.name,
-                        phase: 'Quyết toán',
-                        amount: 0,
-                        vat_amount: 0,
-                        post_tax_amount: projectPayload.settlement_value,
-                        date: new Date().toISOString().split('T')[0],
-                        note: JSON.stringify({ actual_received_amount: projectPayload.settlement_value, text: 'Giá trị Quyết toán' })
-                    }]);
-                }
             } else {
-                // Nếu Quyết toán = 0, xóa bản ghi tự tạo (chưa phát hành HĐ)
-                const { data: existingQuyetToan } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%quyết toán%');
-                if (existingQuyetToan && existingQuyetToan.length > 0) {
-                    for (const q of existingQuyetToan) {
-                        let parsed = {};
-                        try { parsed = JSON.parse(q.note || '{}'); } catch(e){}
-                        if (!parsed.invoice_no && !parsed.invoice_pdf) {
-                            await supabase.from('incomes').delete().eq('id', q.id);
-                        }
-                    }
-                }
+                const { error } = await supabase.from('projects').insert([projectPayload]);
+                if (error) throw error;
             }
-
-            if (projectPayload.gtbl_value > 0) {
-                const { data: existingGtbl } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%gtbl%')
-                    .limit(1);
-                if (existingGtbl && existingGtbl.length > 0) {
-                    let parsed = {};
-                    try { parsed = JSON.parse(existingGtbl[0].note || '{}'); } catch(e){}
-                    parsed.actual_received_amount = projectPayload.gtbl_value;
-                    await supabase.from('incomes')
-                        .update({
-                            post_tax_amount: projectPayload.gtbl_value,
-                            note: JSON.stringify(parsed)
-                        })
-                        .eq('id', existingGtbl[0].id);
-                } else {
-                    await supabase.from('incomes').insert([{
-                        project_name: projectPayload.name,
-                        phase: 'GTBL',
-                        amount: 0,
-                        vat_amount: 0,
-                        post_tax_amount: projectPayload.gtbl_value,
-                        date: new Date().toISOString().split('T')[0],
-                        note: JSON.stringify({ actual_received_amount: projectPayload.gtbl_value, text: 'Giá trị GTBL' })
-                    }]);
-                }
-            } else {
-                // Nếu GTBL = 0, xóa bản ghi tự tạo (chưa phát hành HĐ)
-                const { data: existingGtbl } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%gtbl%');
-                if (existingGtbl && existingGtbl.length > 0) {
-                    for (const g of existingGtbl) {
-                        let parsed = {};
-                        try { parsed = JSON.parse(g.note || '{}'); } catch(e){}
-                        if (!parsed.invoice_no && !parsed.invoice_pdf) {
-                            await supabase.from('incomes').delete().eq('id', g.id);
-                        }
-                    }
-                }
-            }
-
             showToast('Đã cập nhật thông tin công trình!');
             logActivity(isEdit ? 'Sửa' : 'Thêm', 'Công trình', isEdit ? `Cập nhật thông tin: ${data.name}` : `Tạo mới: ${data.name}`, data.name);
-            loadedDataSourcesRef.current.delete('công trình');
-            loadedDataSourcesRef.current.delete('thu');
-            await Promise.all([
-                fetchProjectsData(),
-                fetchIncomesData()
-            ]);
+            fetchData();
             return true;
         } catch (error) {
             const errorInfo = {
@@ -1983,14 +1874,12 @@ export default function Home() {
             showToast('Đã chuyển công trình vào thùng rác!');
             logActivity('Xóa', 'Công trình', `Xóa công trình: ${name}`, name);
             if (selectedProject === name) setSelectedProject('');
-            loadedDataSourcesRef.current.delete('công trình');
-            await fetchProjectsData();
+            fetchData();
         } catch (error) {
             console.error('Delete Error:', error);
             // Nếu lỗi do khóa ngoại hoặc bảng không tồn tại, vẫn cố gắng fetch lại
             showToast('Lỗi khi xóa công trình! Vui lòng kiểm tra lại dữ liệu liên quan.', 'error');
-            loadedDataSourcesRef.current.delete('công trình');
-            await fetchProjectsData();
+            fetchData();
         } finally {
             setIsLoading(false);
         }
@@ -3917,23 +3806,16 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                             </thead>
                                             <tbody>
                                                 {(() => {
+                                                    // Bug 1 fix: Hiển thị tất cả đợt, bao gồm cả đợt chỉ có INCOME_REAL
                                                     const allProjectIncomes = allowedIncomes.filter(i => i.project_name === selectedProject);
                                                     const invoiceRecords = allProjectIncomes.filter(i => getIncomeType(i) === 'INCOME_INVOICE');
-                                                    const currentProjectObj = projects.find(p => p.name === selectedProject) || {};
-                                                    const projDetails = projectDetails[selectedProject] || {};
-
-                                                    const settlementVal = Number(projDetails.settlementValue || currentProjectObj.settlement_value || currentProjectObj.settlementValue) || 0;
-                                                    const gtblVal = Number(projDetails.gtblValue || currentProjectObj.gtbl_value || currentProjectObj.gtblValue) || 0;
-
-                                                    const extraPhases = [];
-                                                    if (settlementVal > 0 && !allProjectIncomes.some(i => (i.phase || '').toLowerCase().includes('quyết toán'))) {
-                                                        extraPhases.push('Quyết toán');
-                                                    }
-                                                    if (gtblVal > 0 && !allProjectIncomes.some(i => (i.phase || '').toLowerCase().includes('gtbl'))) {
-                                                        extraPhases.push('GTBL');
-                                                    }
                                                     
-                                                    const uniquePhases = sortPhases([...allProjectIncomes.map(i => i.phase), ...extraPhases]);
+                                                    // Lấy tất cả unique phases cho project này
+                                                    const uniquePhases = [...new Set(allProjectIncomes.map(i => i.phase))].sort((a, b) => {
+                                                        const numA = parseInt(a.match(/\d+/) || [0], 10);
+                                                        const numB = parseInt(b.match(/\d+/) || [0], 10);
+                                                        return numA - numB;
+                                                    });
 
                                                     if (uniquePhases.length === 0) {
                                                         return (
@@ -3943,91 +3825,24 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                         );
                                                     }
 
+                                                    // Gom nhóm invoice records theo phase (1 dòng / đợt)
                                                     const phaseRows = uniquePhases.map(phase => {
                                                         const phaseInvoices = invoiceRecords.filter(i => i.phase === phase);
                                                         const phaseReals = allProjectIncomes.filter(i => i.phase === phase && getIncomeType(i) === 'INCOME_REAL');
                                                         
                                                         if (phaseInvoices.length > 0) {
-                                                            const sortedInvs = [...phaseInvoices].sort((a, b) => {
-                                                                const getInvNo = (inv) => {
-                                                                    if (inv.invoice_no) return inv.invoice_no;
-                                                                    if (inv.note) {
-                                                                        try {
-                                                                            const p = JSON.parse(inv.note);
-                                                                            if (p?.invoice_no) return p.invoice_no;
-                                                                        } catch(e) {}
-                                                                    }
-                                                                    return '';
-                                                                };
-                                                                const noA = Boolean(getInvNo(a));
-                                                                const noB = Boolean(getInvNo(b));
-                                                                if (noA !== noB) return noB ? 1 : -1;
-                                                                const amtA = Number(a.post_tax_amount || a.amount) || 0;
-                                                                const amtB = Number(b.post_tax_amount || b.amount) || 0;
-                                                                if (amtA !== amtB) return amtB - amtA;
-                                                                return new Date(b.date || 0) - new Date(a.date || 0);
-                                                            });
-
-                                                            const primaryInvoice = sortedInvs[0];
-
-                                                            const totalAmount = phaseInvoices.reduce((sum, inv) => sum + (Number(inv.amount) || 0), 0);
-                                                            const totalVat = phaseInvoices.reduce((sum, inv) => sum + (Number(inv.vat_amount) || 0), 0);
-                                                            const totalPostTax = phaseInvoices.reduce((sum, inv) => sum + (Number(inv.post_tax_amount || inv.amount) || 0), 0);
-
-                                                            const invoiceNos = phaseInvoices.map(inv => {
-                                                                let no = inv.invoice_no || '';
-                                                                if (inv.note) {
-                                                                    try {
-                                                                        const parsed = JSON.parse(inv.note);
-                                                                        if (parsed && typeof parsed === 'object' && parsed.invoice_no) no = parsed.invoice_no;
-                                                                    } catch(e) {}
-                                                                }
-                                                                return no;
-                                                            }).filter(Boolean);
-                                                            const combinedInvoiceNo = [...new Set(invoiceNos)].join(', ');
-
-                                                            return [{
-                                                                ...primaryInvoice,
-                                                                amount: totalAmount,
-                                                                vat_amount: totalVat,
-                                                                post_tax_amount: totalPostTax,
-                                                                _combinedInvoiceNo: combinedInvoiceNo,
-                                                                _phaseReals: phaseReals,
-                                                                _allPhaseInvoices: phaseInvoices,
-                                                                _isRealOnly: false
-                                                            }];
-                                                        } else if (phaseReals.length > 0) {
+                                                            // Đợt có INCOME_INVOICE - hiển thị từng invoice record
+                                                            return phaseInvoices.map(inv => ({ ...inv, _phaseReals: phaseReals, _allPhaseInvoices: phaseInvoices }));
+                                                        } else {
                                                             // Đợt chỉ có INCOME_REAL - tạo dòng đại diện
                                                             const latestReal = phaseReals.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0))[0];
-                                                            return [{ 
-                                                                ...latestReal, 
-                                                                _isRealOnly: true, 
-                                                                _phaseReals: phaseReals,
-                                                                _allPhaseInvoices: []
-                                                            }];
-                                                        } else {
-                                                            // Đợt Quyết toán hoặc GTBL được tạo tự động từ Thông tin công trình
-                                                            const isQuyetToan = phase.toLowerCase().includes('quyết toán');
-                                                            const isGtbl = phase.toLowerCase().includes('gtbl');
-                                                            if (isQuyetToan || isGtbl) {
-                                                                const val = isQuyetToan ? settlementVal : gtblVal;
-                                                                if (val > 0) {
-                                                                    return [{
-                                                                        id: `virtual_${phase}_${selectedProject}`,
-                                                                        project_name: selectedProject,
-                                                                        phase: phase,
-                                                                        amount: 0,
-                                                                        vat_amount: 0,
-                                                                        post_tax_amount: isQuyetToan ? val : 0,
-                                                                        date: '',
-                                                                        _combinedInvoiceNo: '',
-                                                                        _phaseReals: [],
-                                                                        _allPhaseInvoices: [],
-                                                                        _isRealOnly: isGtbl,
-                                                                        _isVirtual: true,
-                                                                        _virtualHstt: val
-                                                                    }];
-                                                                }
+                                                            if (latestReal) {
+                                                                return [{ 
+                                                                    ...latestReal, 
+                                                                    _isRealOnly: true, 
+                                                                    _phaseReals: phaseReals,
+                                                                    _allPhaseInvoices: []
+                                                                }];
                                                             }
                                                             return [];
                                                         }
@@ -4199,8 +4014,6 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                     {incomeTableCols.dot && <td className="p-3 font-bold text-slate-700 text-center">{i.phase}</td>}
                                                                     {incomeTableCols.soHd && <td className="p-3 font-bold text-slate-600 text-center">{(() => {
                                                                         if (i._isRealOnly) return '-';
-                                                                        if (i._combinedInvoiceNo) return i._combinedInvoiceNo;
-                                                                        if (i.invoice_no) return i.invoice_no;
                                                                         if (i.note) {
                                                                             try {
                                                                                 const parsed = JSON.parse(i.note);
@@ -4214,10 +4027,6 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                     {incomeTableCols.sauThue && <td className="p-3 text-right font-black text-blue-600">{i._isRealOnly ? '-' : formatCurrency(i.post_tax_amount || i.amount)}</td>}
                                                                     {incomeTableCols.thucNhanHstt && <td className="p-3 text-right font-black text-emerald-600">
                                                                         {(() => {
-                                                                            if (i._virtualHstt) return formatCurrency(i._virtualHstt);
-                                                                            const phaseLowerH = (i.phase || '').toLowerCase();
-                                                                            if (phaseLowerH.includes('gtbl') && gtblVal > 0) return formatCurrency(gtblVal);
-                                                                            if (phaseLowerH.includes('quy\u1ebft to\u00e1n') && settlementVal > 0) return formatCurrency(settlementVal);
                                                                             if (i._isRealOnly) return '-';
                                                                             let hstt = 0;
                                                                             let isOffset = false;

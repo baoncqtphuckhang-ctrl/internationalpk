@@ -63,8 +63,6 @@ CREATE TABLE IF NOT EXISTS projects (
     status TEXT DEFAULT 'Doing',
     general_contractor TEXT,
     investor TEXT,
-    settlement_value NUMERIC DEFAULT 0,
-    gtbl_value NUMERIC DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT TIMEZONE('utc'::text, NOW())
 );
 
