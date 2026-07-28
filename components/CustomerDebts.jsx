@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { formatCurrency } from '@/lib/utils';
+import { formatCurrency, normalizePdfUrl, comparePhases } from '@/lib/utils';
 import { FileText, Save, Search, Filter, Upload, Eye, EyeOff, Download, Trash2, Edit3, X } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
@@ -112,15 +112,15 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     const isIncomeInvoiceRow = (income = {}) => {
         if (!income) return false;
         let typeData = income.type_data || '';
-        let hasHsttOrInvoiceNote = false;
+        let hasInvoiceNote = false;
 
         if (income.note) {
             try {
                 const parsed = JSON.parse(income.note);
                 if (parsed && typeof parsed === 'object') {
                     if (parsed.type_data) typeData = parsed.type_data;
-                    if (parsed.invoice_no || parsed.is_offset || (income.post_tax_amount === 0 && income.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
-                        hasHsttOrInvoiceNote = true;
+                    if (parsed.invoice_no || parsed.is_offset) {
+                        hasInvoiceNote = true;
                     }
                 }
             } catch (e) {}
@@ -129,7 +129,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         if (typeData === 'INCOME_REAL') return false;
         if (typeData === 'INCOME_INVOICE') return true;
 
-        return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasHsttOrInvoiceNote;
+        return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasInvoiceNote;
     };
 
     const debtData = useMemo(() => {
@@ -230,19 +230,118 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 }
             }
         });
+
+        if (projects && Array.isArray(projects)) {
+            projects.forEach(p => {
+                const pName = p.name;
+                const advanceVal = Number(p.advance_value || p.advanceValue) || 0;
+                const setVal = Number(p.settlement_value || p.settlementValue) || 0;
+                const gtblVal = Number(p.gtbl_value || p.gtblValue) || 0;
+                const normalizePhase = (phase) => (phase || '')
+                    .normalize('NFD')
+                    .replace(/[\u0300-\u036f]/g, '')
+                    .toLowerCase();
+
+                const advanceKey = Object.keys(grouped).find(key =>
+                    key.startsWith(`${pName}_`) && normalizePhase(grouped[key].phase).includes('tam ung')
+                );
+                if (advanceKey) {
+                    grouped[advanceKey].hsttAmount = advanceVal;
+                } else if (advanceVal > 0) {
+                    const keyAdvance = `${pName}_Tạm ứng`;
+                    grouped[keyAdvance] = {
+                        id: keyAdvance,
+                        first_income_id: null,
+                        project_name: pName,
+                        phase: 'Tạm ứng',
+                        beforeTaxAmount: 0,
+                        vatAmount: 0,
+                        invoiceAmount: 0,
+                        hsttAmount: advanceVal,
+                        receivedAmount: 0,
+                        invoiceNo: '',
+                        voucherNo: '',
+                        invoiceDate: '',
+                        invoicePdf: null,
+                        hsttPdf: null,
+                        noteRaw: '',
+                        invoice_id: null,
+                        invoice_noteRaw: null,
+                        invoice_date_col: null
+                    };
+                }
+
+                if (setVal > 0) {
+                    const keyQuyetToan = `${pName}_Quyết toán`;
+                    if (!grouped[keyQuyetToan] && !Object.keys(grouped).some(k => k.startsWith(`${pName}_`) && k.toLowerCase().includes('quyết toán'))) {
+                        grouped[keyQuyetToan] = {
+                            id: keyQuyetToan,
+                            first_income_id: null,
+                            project_name: pName,
+                            phase: 'Quyết toán',
+                            beforeTaxAmount: 0,
+                            vatAmount: 0,
+                            invoiceAmount: setVal,
+                            hsttAmount: setVal,
+                            receivedAmount: 0,
+                            invoiceNo: '',
+                            voucherNo: '',
+                            invoiceDate: '',
+                            invoicePdf: null,
+                            hsttPdf: null,
+                            noteRaw: '',
+                            invoice_id: null,
+                            invoice_noteRaw: null,
+                            invoice_date_col: null
+                        };
+                    }
+                }
+
+                if (gtblVal > 0) {
+                    const keyGtbl = `${pName}_GTBL`;
+                    if (!grouped[keyGtbl] && !Object.keys(grouped).some(k => k.startsWith(`${pName}_`) && k.toLowerCase().includes('gtbl'))) {
+                        grouped[keyGtbl] = {
+                            id: keyGtbl,
+                            first_income_id: null,
+                            project_name: pName,
+                            phase: 'GTBL',
+                            beforeTaxAmount: 0,
+                            vatAmount: 0,
+                            invoiceAmount: 0,
+                            hsttAmount: gtblVal,
+                            receivedAmount: 0,
+                            invoiceNo: '',
+                            voucherNo: '',
+                            invoiceDate: '',
+                            invoicePdf: null,
+                            hsttPdf: null,
+                            noteRaw: '',
+                            invoice_id: null,
+                            invoice_noteRaw: null,
+                            invoice_date_col: null
+                        };
+                    }
+                }
+            });
+        }
         
         return Object.values(grouped).map(g => ({
             ...g,
             amount: g.beforeTaxAmount, // For compatibility
             remainingAmount: g.hsttAmount - g.receivedAmount
-        })).sort((a, b) => {
+        })).filter(g => {
+            const isQuyetToan = (g.phase || '').toLowerCase().includes('quyết toán');
+            const isGtbl = (g.phase || '').toLowerCase().includes('gtbl');
+            if (isQuyetToan || isGtbl) {
+                const hasVal = g.hsttAmount > 0 || g.invoiceAmount > 0 || g.beforeTaxAmount > 0 || g.receivedAmount > 0 || (g.invoiceNo && g.invoiceNo !== '-');
+                if (!hasVal) return false;
+            }
+            return true;
+        }).sort((a, b) => {
             if (a.project_name !== b.project_name) return a.project_name.localeCompare(b.project_name);
-            
-            const numA = parseInt((a.phase || '').match(/\d+/) || [0], 10);
-            const numB = parseInt((b.phase || '').match(/\d+/) || [0], 10);
-            return numA - numB;
+            return comparePhases(a.phase, b.phase);
         });
-    }, [incomes]);
+    }, [incomes, projects]);
 
 
     const filteredDebtData = useMemo(() => {
@@ -319,10 +418,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 );
             }
 
-            // Retrieve the public URL
-            const { data: { publicUrl } } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
+            // Lưu đường dẫn tương đối để không bị phụ thuộc vào tên miền Supabase
+            const relativePath = `invoices/${filePath}`;
             
             let parsedNote = {};
             if (debt.noteRaw) {
@@ -331,16 +428,29 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 } catch(e){}
             }
             if (type === 'invoice') {
-                parsedNote.invoice_pdf = publicUrl;
+                parsedNote.invoice_pdf = relativePath;
             } else {
-                parsedNote.hstt_pdf = publicUrl;
+                parsedNote.hstt_pdf = relativePath;
             }
             
-            const { error } = await supabase.from('incomes')
-                .update({ note: JSON.stringify(parsedNote) })
-                .eq('id', debt.first_income_id);
-            
-            if (error) throw error;
+            const targetId = debt.first_income_id || debt.invoice_id;
+            if (targetId) {
+                const { error } = await supabase.from('incomes')
+                    .update({ note: JSON.stringify(parsedNote) })
+                    .eq('id', targetId);
+                if (error) throw error;
+            } else {
+                const { error } = await supabase.from('incomes').insert([{
+                    project_name: debt.project_name,
+                    phase: debt.phase,
+                    amount: debt.beforeTaxAmount || 0,
+                    vat_amount: debt.vatAmount || 0,
+                    post_tax_amount: debt.invoiceAmount || debt.hsttAmount || 0,
+                    date: new Date().toISOString().split('T')[0],
+                    note: JSON.stringify(parsedNote)
+                }]);
+                if (error) throw error;
+            }
             
             if (showToast) {
                 showToast('Tải lên PDF thành công!', 'success');
@@ -348,20 +458,24 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             if (refreshData) refreshData();
         } catch (err) {
             console.error('Lỗi khi tải lên file:', err);
+            const msg = typeof err === 'object' && err !== null ? (err.message || err.details || JSON.stringify(err)) : String(err);
             if (showToast) {
-                showToast(err.message || 'Lỗi khi tải lên file!', 'error');
+                showToast(msg !== '{}' ? msg : 'Lỗi khi tải lên file!', 'error');
             }
         } finally {
             setUploadingId(null);
         }
     };
 
-    const handleDeletePdf = async (debt, type = 'invoice') => {
+    const handleConfirmDelete = async () => {
+        const { debt, type } = confirmDelete;
+        if (!debt) return;
         try {
             let parsedNote = {};
-            if (debt.noteRaw) {
+            const noteToParse = debt.invoice_noteRaw || debt.noteRaw;
+            if (noteToParse) {
                 try {
-                    parsedNote = JSON.parse(debt.noteRaw);
+                    parsedNote = JSON.parse(noteToParse);
                 } catch(e){}
             }
             
@@ -381,11 +495,13 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 delete parsedNote.hstt_pdf;
             }
             
-            const { error } = await supabase.from('incomes')
-                .update({ note: JSON.stringify(parsedNote) })
-                .eq('id', debt.first_income_id);
-            
-            if (error) throw error;
+            const targetId = debt.first_income_id || debt.invoice_id;
+            if (targetId) {
+                const { error } = await supabase.from('incomes')
+                    .update({ note: JSON.stringify(parsedNote) })
+                    .eq('id', targetId);
+                if (error) throw error;
+            }
             
             if (showToast) {
                 showToast('Xóa file PDF thành công!', 'success');
@@ -407,21 +523,20 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 parsedNote = JSON.parse(noteToParse);
             } catch(e){}
         }
-        
-        let defaultDate = parsedNote.invoice_date || '';
-        if (!defaultDate && debt.invoice_date_col) {
-            defaultDate = debt.invoice_date_col;
-        }
-        
+
+        const defaultDate = (parsedNote && parsedNote.invoice_date) 
+            ? parsedNote.invoice_date 
+            : (debt.invoice_date_col || debt.invoiceDate || new Date().toISOString().split('T')[0]);
+
         setEditModal({
             isOpen: true,
             debt,
-            invoiceNo: parsedNote.invoice_no || '',
+            invoiceNo: parsedNote.invoice_no || debt.invoiceNo || '',
             invoiceDate: defaultDate,
-            voucherNo: parsedNote.voucher_no || '',
-            amount: debt.amount || 0,
+            voucherNo: parsedNote.voucher_no || debt.voucherNo || '',
+            amount: debt.beforeTaxAmount || debt.amount || 0,
             vatAmount: debt.vatAmount || 0,
-            postTaxAmount: debt.invoiceAmount || 0
+            postTaxAmount: debt.invoiceAmount || debt.hsttAmount || 0
         });
     };
 
@@ -443,17 +558,31 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             parsedNote.invoice_date = editModal.invoiceDate;
             parsedNote.voucher_no = editModal.voucherNo;
             
-            const { error } = await supabase.from('incomes')
-                .update({
+            if (targetId) {
+                const { error } = await supabase.from('incomes')
+                    .update({
+                        amount: editModal.amount,
+                        vat_amount: editModal.vatAmount,
+                        post_tax_amount: editModal.postTaxAmount,
+                        date: editModal.invoiceDate || null,
+                        note: JSON.stringify(parsedNote)
+                    })
+                    .eq('id', targetId);
+                    
+                if (error) throw error;
+            } else {
+                // Đợt ảo (Quyết toán / GTBL tự sinh từ Thông tin công trình): Tự động tạo mới bản ghi trong incomes
+                const { error } = await supabase.from('incomes').insert([{
+                    project_name: editModal.debt.project_name,
+                    phase: editModal.debt.phase,
                     amount: editModal.amount,
                     vat_amount: editModal.vatAmount,
                     post_tax_amount: editModal.postTaxAmount,
-                    date: editModal.invoiceDate || null,
+                    date: editModal.invoiceDate || new Date().toISOString().split('T')[0],
                     note: JSON.stringify(parsedNote)
-                })
-                .eq('id', targetId);
-                
-            if (error) throw error;
+                }]);
+                if (error) throw error;
+            }
             
             if (showToast) {
                 showToast('Cập nhật thông tin hóa đơn thành công!', 'success');
@@ -471,8 +600,9 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             if (refreshData) refreshData();
         } catch (err) {
             console.error('Lỗi khi cập nhật hóa đơn:', err);
+            const msg = typeof err === 'object' && err !== null ? (err.message || err.details || JSON.stringify(err)) : String(err);
             if (showToast) {
-                showToast(err.message || 'Lỗi khi cập nhật hóa đơn!', 'error');
+                showToast(msg !== '{}' ? msg : 'Lỗi khi cập nhật hóa đơn!', 'error');
             }
         } finally {
             setIsSaving(false);
@@ -527,7 +657,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             case 'invoicePdf':
                 return debt.invoicePdf ? (
                     <div className="flex items-center justify-center gap-1.5">
-                        <a href={debt.invoicePdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HĐ PDF">
+                        <a href={normalizePdfUrl(debt.invoicePdf)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HĐ PDF">
                             <Eye size={15} />
                         </a>
                         <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'invoice' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HĐ PDF">
@@ -552,7 +682,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
             case 'hsttPdf':
                 return debt.hsttPdf ? (
                     <div className="flex items-center justify-center gap-1.5">
-                        <a href={debt.hsttPdf} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HSTT PDF">
+                        <a href={normalizePdfUrl(debt.hsttPdf)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HSTT PDF">
                             <Eye size={15} />
                         </a>
                         <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'hstt' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HSTT PDF">
