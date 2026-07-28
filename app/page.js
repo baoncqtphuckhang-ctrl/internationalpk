@@ -36,19 +36,17 @@ import { AlertCircle, CheckCircle2, Plus, Trash2, Key, Edit3, Search, Printer, D
 // --- CONFIG & CONSTANTS ---
 const getIncomeType = (i) => {
     if (!i) return 'INCOME_REAL';
+    let metadata = null;
     if (i.note) {
         try {
             const parsed = JSON.parse(i.note);
+            metadata = parsed;
             if (parsed?.type_data) return parsed.type_data;
-            if (parsed && typeof parsed === 'object') {
-                if (parsed.invoice_no || parsed.is_offset) {
-                    return 'INCOME_INVOICE';
-                }
-            }
         } catch(e) {}
     }
-    if (i.invoice_no) return 'INCOME_INVOICE';
-    return (Number(i.post_tax_amount) > 0 || Number(i.amount) > 0) ? 'INCOME_INVOICE' : 'INCOME_REAL';
+    if (Number(i.post_tax_amount) > 0 || Number(i.amount) > 0 || i.invoice_no) return 'INCOME_INVOICE';
+    if (metadata && typeof metadata === 'object' && 'actual_received_amount' in metadata) return 'INCOME_REAL';
+    return metadata?.is_offset ? 'INCOME_INVOICE' : 'INCOME_REAL';
 };
 
 const getIncomeInvoiceDate = (i) => {

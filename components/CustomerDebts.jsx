@@ -112,24 +112,23 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
     const isIncomeInvoiceRow = (income = {}) => {
         if (!income) return false;
         let typeData = income.type_data || '';
-        let hasInvoiceNote = false;
+        let metadata = null;
 
         if (income.note) {
             try {
                 const parsed = JSON.parse(income.note);
+                metadata = parsed;
                 if (parsed && typeof parsed === 'object') {
                     if (parsed.type_data) typeData = parsed.type_data;
-                    if (parsed.invoice_no || parsed.is_offset) {
-                        hasInvoiceNote = true;
-                    }
                 }
             } catch (e) {}
         }
 
         if (typeData === 'INCOME_REAL') return false;
         if (typeData === 'INCOME_INVOICE') return true;
-
-        return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasInvoiceNote;
+        if ((Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || income.invoice_no) return true;
+        if (metadata && typeof metadata === 'object' && 'actual_received_amount' in metadata) return false;
+        return Boolean(metadata?.invoice_no || metadata?.is_offset);
     };
 
     const debtData = useMemo(() => {
