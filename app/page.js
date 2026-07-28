@@ -4160,7 +4160,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                                     const dateMap = {};
                                                                                     i._phaseReals.forEach(r => {
                                                                                     const dt = formatDateVN(r.date);
-                                                                                    let actAmt = Number(r.amount || r.post_tax_amount) || 0;
+                                                                                    let actAmt = 0;
                                                                                     let dedAmt = 0;
                                                                                     if (r.note) {
                                                                                         try {
