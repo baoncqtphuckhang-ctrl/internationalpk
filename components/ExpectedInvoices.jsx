@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { FileSpreadsheet, Plus, X, Edit2, Trash2, CheckCircle2, Search, Download, RotateCcw, ChevronDown, ChevronRight, Printer, Copy, Upload, Eye, EyeOff, ZoomIn, ZoomOut, Coins } from 'lucide-react';
-import { formatCurrency, parseVietnameseNumber } from '@/lib/utils';
+import { formatCurrency, parseVietnameseNumber, normalizePdfUrl, comparePhases } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from '@/components/ConfirmModal';
 
@@ -332,15 +332,15 @@ const getIncomeInvoiceMeta = (income = {}) => {
 const isIncomeInvoiceRow = (income = {}) => {
     if (!income) return false;
     let typeData = income.type_data || '';
-    let hasHsttOrInvoiceNote = false;
+    let hasInvoiceNote = false;
 
     if (income.note) {
         try {
             const parsed = JSON.parse(income.note);
             if (parsed && typeof parsed === 'object') {
                 if (parsed.type_data) typeData = parsed.type_data;
-                if (parsed.invoice_no || parsed.is_offset || (income.post_tax_amount === 0 && income.amount === 0 && !parsed.voucher_no && !('deduction_amount' in parsed) && 'actual_received_amount' in parsed)) {
-                    hasHsttOrInvoiceNote = true;
+                if (parsed.invoice_no || parsed.is_offset) {
+                    hasInvoiceNote = true;
                 }
             }
         } catch (e) {}
@@ -349,7 +349,7 @@ const isIncomeInvoiceRow = (income = {}) => {
     if (typeData === 'INCOME_REAL') return false;
     if (typeData === 'INCOME_INVOICE') return true;
 
-    return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasHsttOrInvoiceNote;
+    return (Number(income.post_tax_amount) || 0) > 0 || (Number(income.amount) || 0) > 0 || hasInvoiceNote;
 };
 
 const formatInvoiceDateForDisplay = (dateValue) => {
@@ -1700,18 +1700,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 );
             }
 
-            const { data: { publicUrl } } = supabase.storage
-                .from('invoices')
-                .getPublicUrl(filePath);
+            const relativePath = `invoices/${filePath}`;
 
             const { error } = await supabase
                 .from('expected_invoices')
-                .update({ team_pdf_url: publicUrl })
+                .update({ team_pdf_url: relativePath })
                 .eq('id', inv.id);
 
             if (error) throw error;
 
-            updateInvoicePdfUrl(inv.id, publicUrl);
+            updateInvoicePdfUrl(inv.id, relativePath);
             if (showToast) showToast('Tải lên PDF thành công!', 'success');
         } catch (err) {
             console.error('Error uploading team PDF:', err);
@@ -1777,18 +1775,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             });
             if (uploadError) throw uploadError;
 
-            const { data: { publicUrl } } = supabase.storage.from('invoices').getPublicUrl(filePath);
+            const relativePath = `invoices/${filePath}`;
             const ids = invoices
                 .filter(inv => (!projectName || inv.projectName === projectName) && getInvoicePeriod(inv) === period)
                 .map(inv => inv.id);
 
             const { error } = await supabase
                 .from('expected_invoices')
-                .update({ project_pdf_url: publicUrl })
+                .update({ project_pdf_url: relativePath })
                 .in('id', ids);
             if (error) throw error;
 
-            updateProjectPdfUrl(projectName, period, publicUrl);
+            updateProjectPdfUrl(projectName, period, relativePath);
             if (showToast) showToast('Tải lên PDF tổng công trình thành công!', 'success');
         } catch (err) {
             console.error('Error uploading project PDF:', err);
@@ -1969,16 +1967,22 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const name = p.name;
             const details = projectDetails[name] || {};
             const advanceValue = details.advanceValue || 0;
+            const settlementValue = Number(details.settlementValue || p.settlement_value || p.settlementValue) || 0;
+            const gtblValue = Number(details.gtblValue || p.gtbl_value || p.gtblValue) || 0;
             const projIncomes = incomes.filter(i => i.project_name === name);
             const projExpectedInvoices = invoices.filter(i => i.projectName === name);
+            const extraSettlementPhases = [];
+            if (settlementValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n')) && !projExpectedInvoices.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n'))) {
+                extraSettlementPhases.push('Quy\u1ebft to\u00e1n');
+            }
+            if (gtblValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('gtbl')) && !projExpectedInvoices.some(i => (i.phase||'').toLowerCase().includes('gtbl'))) {
+                extraSettlementPhases.push('GTBL');
+            }
             const allPhases = [...new Set([
                 ...projIncomes.map(i => i.phase),
-                ...projExpectedInvoices.map(i => i.phase)
-            ].filter(Boolean))].sort((a, b) => {
-                const numA = parseInt((a || '').match(/\d+/) || [0], 10);
-                const numB = parseInt((b || '').match(/\d+/) || [0], 10);
-                return numA - numB;
-            });
+                ...projExpectedInvoices.map(i => i.phase),
+                ...extraSettlementPhases
+            ].filter(Boolean))].sort(comparePhases);
 
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
@@ -2031,8 +2035,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 }
                 
                 let pExpected = 0;
-                if (phase === 'Tạm ứng' || phase?.toLowerCase() === 'tạm ứng') {
+                const phaseLower = (phase || '').toLowerCase();
+                if (phaseLower === 'tạm ứng') {
                     pExpected = Number(advanceValue) || 0;
+                } else if (phaseLower.includes('quyết toán')) {
+                    pExpected = phaseHstt !== undefined ? phaseHstt : settlementValue;
+                } else if (phaseLower.includes('gtbl')) {
+                    pExpected = phaseHstt !== undefined ? phaseHstt : gtblValue;
                 } else {
                     pExpected = phaseHstt !== undefined 
                         ? phaseHstt 
@@ -2194,12 +2203,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const customerDebtLayout = useMemo(() => {
         const count = visibleCustomerDebtColumns.length || 1;
         if (count <= 6) {
-            return { minWidth: 980, fontSize: '13px', headerFontSize: '13px', cellPaddingX: '14px', cellPaddingY: '10px' };
+            return { minWidth: 980, fontSize: '10.5px', headerFontSize: '13px', cellPaddingX: '14px', cellPaddingY: '6px', rowHeight: '36px' };
         }
         if (count <= 8) {
-            return { minWidth: 1180, fontSize: '12px', headerFontSize: '12.5px', cellPaddingX: '12px', cellPaddingY: '9px' };
+            return { minWidth: 1180, fontSize: '10.5px', headerFontSize: '12.5px', cellPaddingX: '12px', cellPaddingY: '6px', rowHeight: '36px' };
         }
-        return { minWidth: 1450, fontSize: '11px', headerFontSize: '12px', cellPaddingX: '10px', cellPaddingY: '8px' };
+        return { minWidth: 1450, fontSize: '10.5px', headerFontSize: '12px', cellPaddingX: '10px', cellPaddingY: '6px', rowHeight: '36px' };
     }, [visibleCustomerDebtColumns.length]);
 
     const toggleCustomerDebtColumn = (key) => {
@@ -3275,7 +3284,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             [groupName]: !prev[groupName]
                                                         }));
                                                     }}
-                                                    className={`bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black cursor-pointer select-none hover:bg-indigo-100/70 transition-colors ${printableDebts.length === 0 ? 'print:hidden' : ''}`}
+                                                    className={`h-12 bg-indigo-50 border-y-2 border-indigo-200/80 sticky top-[52px] z-10 print:bg-slate-200 print:border-slate-400 print:text-black cursor-pointer select-none hover:bg-indigo-100/70 transition-colors ${printableDebts.length === 0 ? 'print:hidden' : ''}`}
                                                 >
                                                     {visibleCustomerDebtColumns.map(col => {
                                                         if (col.key === 'stt') {
@@ -3320,14 +3329,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     const currentIdx = globalIdx++;
                                                     const hideUnissuedDebtInPrint = hideUnissuedCustomerDebtRowsOnPrint && !hasCustomerDebtInvoice(debt);
                                                     return (
-                                                        <tr key={debt.id} className={`hover:bg-slate-50 transition group ${hideUnissuedDebtInPrint ? 'print:hidden' : ''}`}>
+                                                        <tr
+                                                            key={debt.id}
+                                                            className={`h-9 hover:bg-slate-50 transition group ${hideUnissuedDebtInPrint ? 'print:hidden' : ''}`}
+                                                            style={{ height: customerDebtLayout.rowHeight }}
+                                                        >
                                                             {visibleCustomerDebtColumns.map(col => (
                                                                 <td
                                                                     key={col.key}
                                                                     className={`${col.cellClassName || ''}`}
                                                                     style={{
                                                                         padding: `${customerDebtLayout.cellPaddingY} ${customerDebtLayout.cellPaddingX}`,
-                                                                        fontSize: customerDebtLayout.fontSize
+                                                                        fontSize: customerDebtLayout.fontSize,
+                                                                        lineHeight: 1.1
                                                                     }}
                                                                 >
                                                                     {renderCustomerDebtCell(debt, currentIdx, col.key)}
@@ -3564,7 +3578,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className="p-4 text-center print:hidden">
                                                                 {teamPdfUrl ? (
                                                                     <div className="flex items-center justify-center gap-1.5">
-                                                                        <a href={teamPdfUrl} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF">
+                                                                        <a href={normalizePdfUrl(teamPdfUrl)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-indigo-50 text-indigo-600 hover:bg-indigo-600 hover:text-white rounded-lg transition border border-indigo-100" title="Xem PDF">
                                                                             <Eye size={16} />
                                                                         </a>
                                                                         <button onClick={() => setConfirmDeletePdf(inv)} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition border border-rose-100" title="Xóa PDF">
