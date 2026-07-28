@@ -289,15 +289,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         
         const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
             let actual = 0;
+            let deduction = 0;
             if (i.note) {
                 try {
                     const parsed = JSON.parse(i.note);
                     if (parsed && typeof parsed === 'object') {
                         actual = Number(parsed.actual_received_amount) || 0;
+                        deduction = Number(parsed.deduction_amount) || 0;
                     }
                 } catch(e) {}
             }
-            return sum + actual;
+            return sum + actual + deduction;
         }, 0);
         
         if (formData.phase !== 'Tạm ứng' && phaseIncs.length === 0) return null;
@@ -517,7 +519,11 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received + originalRealAmount;
                 const newTotal = (Number(formData.actual_received_amount) || 0) + (Number(formData.deduction_amount) || 0);
                 if (newTotal > maxAllowed) {
-                    newErrors.actual_received_amount = `Tổng thu và cấn trừ vượt quá giới hạn (tối đa còn lại: ${formatCurrency(maxAllowed)})`;
+                    if (maxAllowed <= 0) {
+                        newErrors.actual_received_amount = `Đợt thu này đã thu đủ theo HSTT (${formatCurrency(selectedPhaseStats.expected)})!`;
+                    } else {
+                        newErrors.actual_received_amount = `Tổng thu và cấn trừ vượt quá giới hạn (tối đa còn lại: ${formatCurrency(maxAllowed)})`;
+                    }
                 }
             }
         } else if (type === 'OFFICE_INCOME') {
@@ -1207,14 +1213,22 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     </select>
                                     {errorMsg('phase')}
                                     {!isAdvancePhase && selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
-                                        <div className="mt-2 text-[13px] p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
-                                            <span className="text-slate-600 font-medium">Tiến độ thu đợt này:</span>
-                                            <div className="font-bold">
-                                                <span className="text-blue-700">{formatCurrency(selectedPhaseStats.received)}</span>
-                                                <span className="text-slate-400 mx-1.5">/</span>
-                                                <span className="text-slate-700">{formatCurrency(selectedPhaseStats.expected)}</span>
+                                        <>
+                                            <div className="mt-2 text-[13px] p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
+                                                <span className="text-slate-600 font-medium">Tiến độ thu đợt này:</span>
+                                                <div className="font-bold">
+                                                    <span className="text-blue-700">{formatCurrency(selectedPhaseStats.received)}</span>
+                                                    <span className="text-slate-400 mx-1.5">/</span>
+                                                    <span className="text-slate-700">{formatCurrency(selectedPhaseStats.expected)}</span>
+                                                </div>
                                             </div>
-                                        </div>
+                                            {selectedPhaseStats.expected > 0 && selectedPhaseStats.received >= selectedPhaseStats.expected && (
+                                                <div className="mt-2 text-[13px] p-3 bg-emerald-50 border border-emerald-300 text-emerald-800 rounded-xl flex items-center gap-2 font-bold shadow-md">
+                                                    <span className="text-lg">🎉</span>
+                                                    <span>Đợt thu này đã thu đủ 100% theo HSTT ({formatCurrency(selectedPhaseStats.expected)})!</span>
+                                                </div>
+                                            )}
+                                        </>
                                     )}
                                 </div>
                                 {/* Số chứng từ */}
