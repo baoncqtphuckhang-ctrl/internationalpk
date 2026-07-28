@@ -931,11 +931,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                 confirmText="Xóa tệp"
                 type="danger"
                 onConfirm={async () => {
-                    const { debt, type } = confirmDelete;
+                    await handleConfirmDelete();
                     setConfirmDelete({ isOpen: false, debt: null, type: null });
-                    if (debt) {
-                        await handleDeletePdf(debt, type);
-                    }
                 }}
                 onCancel={() => setConfirmDelete({ isOpen: false, debt: null, type: null })}
             />
