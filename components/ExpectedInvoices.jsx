@@ -1970,17 +1970,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const settlementValue = Number(details.settlementValue || p.settlement_value || p.settlementValue) || 0;
             const gtblValue = Number(details.gtblValue || p.gtbl_value || p.gtblValue) || 0;
             const projIncomes = incomes.filter(i => i.project_name === name);
-            const projExpectedInvoices = invoices.filter(i => i.projectName === name);
             const extraSettlementPhases = [];
-            if (settlementValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n')) && !projExpectedInvoices.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n'))) {
+            if (settlementValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n'))) {
                 extraSettlementPhases.push('Quy\u1ebft to\u00e1n');
             }
-            if (gtblValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('gtbl')) && !projExpectedInvoices.some(i => (i.phase||'').toLowerCase().includes('gtbl'))) {
+            if (gtblValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('gtbl'))) {
                 extraSettlementPhases.push('GTBL');
             }
             const allPhases = [...new Set([
                 ...projIncomes.map(i => i.phase),
-                ...projExpectedInvoices.map(i => i.phase),
                 ...extraSettlementPhases
             ].filter(Boolean))].sort(comparePhases);
 
@@ -2027,15 +2025,6 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     }
                 }
 
-                if (phaseHstt === undefined) {
-                    const matchedExpInv = projExpectedInvoices.find(i => i.phase === phase);
-                    if (matchedExpInv) {
-                        phaseHstt = Number(matchedExpInv.postTaxValue) || Number(matchedExpInv.teamValue) || Number(matchedExpInv.preTaxValue) || 0;
-                        if (matchedExpInv.invoice_no && !invoice_no) invoice_no = matchedExpInv.invoice_no;
-                        if (matchedExpInv.invoice_date && !invoice_date) invoice_date = matchedExpInv.invoice_date;
-                    }
-                }
-                
                 let pExpected = 0;
                 const phaseLower = (phase || '').toLowerCase();
                 if (phaseLower === 'tạm ứng') {
@@ -2043,13 +2032,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 } else if (phaseLower.includes('quyết toán')) {
                     pExpected = phaseHstt !== undefined ? phaseHstt : settlementValue;
                 } else if (phaseLower.includes('gtbl')) {
-                    pExpected = phaseHstt !== undefined ? phaseHstt : gtblValue;
+                    // A placeholder GTBL invoice can legitimately carry a zero HSTT
+                    // while the project's retained-warranty amount is still unpaid.
+                    pExpected = phaseHstt > 0 ? phaseHstt : gtblValue;
                 } else {
                     // A phase without HSTT must not become receivable based on its post-tax amount.
                     pExpected = phaseHstt !== undefined ? phaseHstt : 0;
                 }
 
-                const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+                // Normal historical receipts are stored as zero-value rows, including
+                // rows carrying an invoice reference. Only the GTBL declaration itself
+                // must be excluded from "Đã thu".
+                const pActual = phaseIncs.filter(i => (
+                    i.post_tax_amount === 0 && i.amount === 0 &&
+                    (!phaseLower.includes('gtbl') || !isIncomeInvoiceRow(i))
+                )).reduce((sum, i) => {
                     let actual = 0;
                     if (i.voucher_no) voucher_nos.push(i.voucher_no);
                     if (i.note) {
@@ -2072,6 +2069,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 let manual_due_date = '';
                 let default_due_date_raw = '';
 
+                // The customer collection date defaults to 15 business days after the
+                // invoice date; Q/S may override it through the saved due_date field.
                 if (invoice_date) {
                     const dueDateObj = addBusinessDays(invoice_date, 15);
                     if (dueDateObj) {
@@ -2086,7 +2085,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && parsed.due_date) {
+                            if (parsed && parsed.due_date && (parsed.is_gtbl || parsed.is_due_date_manual)) {
                                 manual_due_date = parsed.due_date;
                                 break;
                             }
@@ -2120,6 +2119,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     ? 0
                     : phaseHstt > 0
                     ? phaseHstt
+                    : phaseLower.includes('gtbl')
+                        ? gtblValue
                     : invoiceRecords.length > 0
                         ? invoiceRecords.reduce((sum, invoice) => sum + (Number(invoice.post_tax_amount) || Number(invoice.amount) || 0), 0)
                         : pExpected;

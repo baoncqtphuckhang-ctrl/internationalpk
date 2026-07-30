@@ -72,6 +72,24 @@ const parseDateDisplayToIso = (value = '') => {
     return `${year}-${month}-${day}`;
 };
 
+const getDefaultCollectionDate = (invoiceDate = '') => {
+    if (!invoiceDate) return '';
+    const date = new Date(`${invoiceDate}T00:00:00`);
+    if (Number.isNaN(date.getTime())) return '';
+
+    let addedDays = 0;
+    while (addedDays < 15) {
+        date.setDate(date.getDate() + 1);
+        const day = date.getDay();
+        if (day !== 0 && day !== 6) addedDays += 1;
+    }
+
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, '0');
+    const dd = String(date.getDate()).padStart(2, '0');
+    return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome, deleteRequests = [] }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
@@ -100,7 +118,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         creator: '',
         is_offset: false,
         is_gtbl: false,
-        is_settlement: false
+        is_settlement: false,
+        is_due_date_manual: false
     });
 
     const [errors, setErrors] = useState({});
@@ -140,10 +159,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     if (editData.note) {
                         try {
                             const parsed = JSON.parse(editData.note);
-                            if (parsed && typeof parsed === 'object' && parsed.due_date) return parsed.due_date;
+                            if (parsed && typeof parsed === 'object') {
+                                if (parsed.is_gtbl || parsed.is_due_date_manual) return parsed.due_date || '';
+                                return getDefaultCollectionDate(parsed.invoice_date || editData.invoice_date || '');
+                            }
                         } catch(e) {}
                     }
-                    return '';
+                    return getDefaultCollectionDate(editData.invoice_date || '');
                 })(),
                 corresponding_account: getAccountCodeOnly(editData.corresponding_account) || '',
                 code: editData.code || '',
@@ -199,15 +221,24 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                      }
                      return false;
                  })(),
-                 is_settlement: (() => {
+                  is_settlement: (() => {
                      if (editData.note) {
                          try {
                              const parsed = JSON.parse(editData.note);
                              return !!parsed.is_settlement;
                          } catch(e) {}
                      }
-                     return false;
-                 })(),
+                      return false;
+                  })(),
+                  is_due_date_manual: (() => {
+                      if (editData.note) {
+                          try {
+                              const parsed = JSON.parse(editData.note);
+                              return !!parsed.is_due_date_manual;
+                          } catch(e) {}
+                      }
+                      return false;
+                  })(),
                 deduction_amount: (() => {
                     if (editData.note) {
                         try {
@@ -409,7 +440,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 phase: nextAutoPhase,
                 invoice_no: '',
                 invoice_date: '',
-                display_invoice_date: ''
+                display_invoice_date: '',
+                due_date: '',
+                display_due_date: '',
+                is_due_date_manual: false
             }));
             if (errors.project_name || errors.phase || errors.invoice_no || errors.invoice_date) {
                 setErrors(prev => {
@@ -424,7 +458,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             return;
         }
         if (field === 'invoice_no' && !value?.trim()) {
-            setFormData(prev => ({ ...prev, invoice_no: value, invoice_date: '', display_invoice_date: '' }));
+            setFormData(prev => ({ ...prev, invoice_no: value, invoice_date: '', display_invoice_date: '', due_date: '', display_due_date: '', is_due_date_manual: false }));
             if (errors.invoice_no || errors.invoice_date) {
                 setErrors(prev => {
                     const e = { ...prev };
@@ -433,6 +467,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     return e;
                 });
             }
+            return;
+        }
+        if (field === 'invoice_date' && type === 'INCOME_INVOICE' && !formData.is_gtbl) {
+            setFormData(prev => {
+                return {
+                    ...prev,
+                    invoice_date: value,
+                    due_date: prev.is_due_date_manual ? prev.due_date : getDefaultCollectionDate(value),
+                    display_due_date: prev.is_due_date_manual ? prev.display_due_date : formatDateInputDisplay(getDefaultCollectionDate(value))
+                };
+            });
+            return;
+        }
+        if (field === 'due_date' && type === 'INCOME_INVOICE' && !formData.is_gtbl) {
+            setFormData(prev => ({ ...prev, due_date: value, is_due_date_manual: true }));
             return;
         }
         if (type === 'EXPENSE') {
@@ -670,6 +719,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             invoice_no: '',
             invoice_date: '',
             display_invoice_date: '',
+            due_date: '',
+            display_due_date: '',
             debit: 0,
             credit: 0,
             note: '',
@@ -679,7 +730,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             post_tax_amount: 0,
             actual_received_amount: '',
             deduction_amount: 0,
-            is_offset: false
+            is_offset: false,
+            is_due_date_manual: false
         }));
         setIsCustomCode(false);
     };
@@ -1165,6 +1217,40 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                     const val = e.target.value;
                                                     handleChange(formData.is_gtbl ? 'due_date' : 'invoice_date', val);
                                                     handleChange(formData.is_gtbl ? 'display_due_date' : 'display_invoice_date', formatDateInputDisplay(val));
+                                                }}
+                                                className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
+                                            />
+                                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none">
+                                                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                                                <line x1="16" y1="2" x2="16" y2="6"></line>
+                                                <line x1="8" y1="2" x2="8" y2="6"></line>
+                                                <line x1="3" y1="10" x2="21" y2="10"></line>
+                                            </svg>
+                                        </div>
+                                    </div>
+                                )}
+                                {!formData.is_gtbl && formData.invoice_no?.trim() && (
+                                    <div>
+                                        <label className={labelCls}>Ngày cần thu tiền</label>
+                                        <div className="relative flex items-center">
+                                            <input
+                                                type="text"
+                                                placeholder="dd/mm/yyyy"
+                                                value={formData.display_due_date || formatDateInputDisplay(formData.due_date)}
+                                                onChange={(e) => {
+                                                    const val = normalizeDateTextInput(e.target.value);
+                                                    handleChange('display_due_date', val);
+                                                    handleChange('due_date', val.length === 10 ? parseDateDisplayToIso(val) : '');
+                                                }}
+                                                className={inputCls('due_date')}
+                                            />
+                                            <input
+                                                type="date"
+                                                value={formData.due_date || ''}
+                                                onChange={(e) => {
+                                                    const val = e.target.value;
+                                                    handleChange('due_date', val);
+                                                    handleChange('display_due_date', formatDateInputDisplay(val));
                                                 }}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
                                             />
@@ -1666,7 +1752,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         creator: '',
                         is_offset: false,
                         is_gtbl: false,
-                        is_settlement: false
+                        is_settlement: false,
+                        is_due_date_manual: false
                     });
                     setErrors({});
                     setConfirmReset(false);

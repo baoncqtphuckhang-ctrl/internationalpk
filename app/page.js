@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 /* eslint-disable react-hooks/exhaustive-deps, react-hooks/set-state-in-effect */
 
 import React, { useState, useMemo, useEffect, useRef } from 'react';
@@ -1690,7 +1690,7 @@ export default function Home() {
             } else {
                 const isReal = type === 'INCOME_REAL';
                 const payload = {
-                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', due_date: data.due_date || '', is_offset: !!data.is_offset, is_gtbl: !!data.is_gtbl, is_settlement: !!data.is_settlement }), created_by: data.creator || currentUser.username
+                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', due_date: data.due_date || '', is_due_date_manual: !!data.is_due_date_manual, is_offset: !!data.is_offset, is_gtbl: !!data.is_gtbl, is_settlement: !!data.is_settlement }), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);
@@ -1840,95 +1840,9 @@ export default function Home() {
                     const { error } = await supabase.from('projects').update(projectPayload).eq('name', data.original_name || projectPayload.name);
                     if (error) throw error;
                 }
-            }
-
-            // Tự động đồng bộ dòng đợt Quyết toán & GTBL trong dữ liệu thu khi thay đổi giá trị
-            if (projectPayload.settlement_value > 0) {
-                const { data: existingQuyetToan } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%quyết toán%')
-                    .limit(1);
-                if (existingQuyetToan && existingQuyetToan.length > 0) {
-                    let parsed = {};
-                    try { parsed = JSON.parse(existingQuyetToan[0].note || '{}'); } catch(e){}
-                    parsed.actual_received_amount = projectPayload.settlement_value;
-                    await supabase.from('incomes')
-                        .update({
-                            post_tax_amount: projectPayload.settlement_value,
-                            note: JSON.stringify(parsed)
-                        })
-                        .eq('id', existingQuyetToan[0].id);
-                } else {
-                    await supabase.from('incomes').insert([{
-                        project_name: projectPayload.name,
-                        phase: 'Quyết toán',
-                        amount: 0,
-                        vat_amount: 0,
-                        post_tax_amount: projectPayload.settlement_value,
-                        date: new Date().toISOString().split('T')[0],
-                        note: JSON.stringify({ actual_received_amount: projectPayload.settlement_value, text: 'Giá trị Quyết toán' })
-                    }]);
-                }
             } else {
-                // Nếu Quyết toán = 0, xóa bản ghi tự tạo (chưa phát hành HĐ)
-                const { data: existingQuyetToan } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%quyết toán%');
-                if (existingQuyetToan && existingQuyetToan.length > 0) {
-                    for (const q of existingQuyetToan) {
-                        let parsed = {};
-                        try { parsed = JSON.parse(q.note || '{}'); } catch(e){}
-                        if (!parsed.invoice_no && !parsed.invoice_pdf) {
-                            await supabase.from('incomes').delete().eq('id', q.id);
-                        }
-                    }
-                }
-            }
-
-            if (projectPayload.gtbl_value > 0) {
-                const { data: existingGtbl } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%gtbl%')
-                    .limit(1);
-                if (existingGtbl && existingGtbl.length > 0) {
-                    let parsed = {};
-                    try { parsed = JSON.parse(existingGtbl[0].note || '{}'); } catch(e){}
-                    parsed.actual_received_amount = projectPayload.gtbl_value;
-                    await supabase.from('incomes')
-                        .update({
-                            post_tax_amount: projectPayload.gtbl_value,
-                            note: JSON.stringify(parsed)
-                        })
-                        .eq('id', existingGtbl[0].id);
-                } else {
-                    await supabase.from('incomes').insert([{
-                        project_name: projectPayload.name,
-                        phase: 'GTBL',
-                        amount: 0,
-                        vat_amount: 0,
-                        post_tax_amount: projectPayload.gtbl_value,
-                        date: new Date().toISOString().split('T')[0],
-                        note: JSON.stringify({ actual_received_amount: projectPayload.gtbl_value, text: 'Giá trị GTBL' })
-                    }]);
-                }
-            } else {
-                // Nếu GTBL = 0, xóa bản ghi tự tạo (chưa phát hành HĐ)
-                const { data: existingGtbl } = await supabase.from('incomes')
-                    .select('id, note')
-                    .eq('project_name', projectPayload.name)
-                    .ilike('phase', '%gtbl%');
-                if (existingGtbl && existingGtbl.length > 0) {
-                    for (const g of existingGtbl) {
-                        let parsed = {};
-                        try { parsed = JSON.parse(g.note || '{}'); } catch(e){}
-                        if (!parsed.invoice_no && !parsed.invoice_pdf) {
-                            await supabase.from('incomes').delete().eq('id', g.id);
-                        }
-                    }
-                }
+                const { error } = await supabase.from('projects').insert([projectPayload]);
+                if (error) throw error;
             }
 
             showToast('Đã cập nhật thông tin công trình!');
