@@ -1690,7 +1690,7 @@ export default function Home() {
             } else {
                 const isReal = type === 'INCOME_REAL';
                 const payload = {
-                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', is_offset: !!data.is_offset }), created_by: data.creator || currentUser.username
+                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', due_date: data.due_date || '', is_offset: !!data.is_offset, is_gtbl: !!data.is_gtbl, is_settlement: !!data.is_settlement }), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);
@@ -3340,8 +3340,8 @@ export default function Home() {
                                     break;
                                 }
                                 if ('actual_received_amount' in parsed) {
-                                    const val = Number(parsed.actual_received_amount) || 0;
-                                    phaseHstt = val || inv.post_tax_amount || inv.amount || 0;
+                                    // HSTT = 0 is intentional; do not use the post-tax invoice value.
+                                    phaseHstt = Number(parsed.actual_received_amount) || 0;
                                     break; // Chỉ lấy giá trị mới nhất
                                 }
                             }
@@ -3356,7 +3356,7 @@ export default function Home() {
                 } else {
                     pExpected = phaseHstt !== undefined 
                         ? phaseHstt 
-                        : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                        : 0;
                 }
 
                 const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
@@ -4051,8 +4051,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                             break;
                                                                         }
                                                                         if ('actual_received_amount' in parsed) {
-                                                                            const val = Number(parsed.actual_received_amount) || 0;
-                                                                            expectedForPhase = val || inv.post_tax_amount || inv.amount || 0;
+                                                                            expectedForPhase = Number(parsed.actual_received_amount) || 0;
                                                                             break;
                                                                         }
                                                                     }
@@ -4093,8 +4092,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                             break;
                                                                         }
                                                                         if ('actual_received_amount' in parsed) {
-                                                                            const val = Number(parsed.actual_received_amount) || 0;
-                                                                            expectedForPhase = val || inv.post_tax_amount || inv.amount || 0;
+                                                                            expectedForPhase = Number(parsed.actual_received_amount) || 0;
                                                                             break;
                                                                         }
                                                                     }
@@ -4268,8 +4266,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                                                 break;
                                                                                             }
                                                                                             if ('actual_received_amount' in parsed) {
-                                                                                                const val = Number(parsed.actual_received_amount) || 0;
-                                                                                                expected = val || inv.post_tax_amount || inv.amount || 0;
+                                                                                                expected = Number(parsed.actual_received_amount) || 0;
                                                                                                 break;
                                                                                             }
                                                                                         }

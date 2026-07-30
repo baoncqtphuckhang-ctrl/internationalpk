@@ -1989,6 +1989,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 const invoiceRecords = phaseIncs.filter(i => isIncomeInvoiceRow(i));
                 
                 let phaseHstt = undefined;
+                let isOffsetInvoice = false;
                 let invoice_no = '';
                 let invoice_date = '';
                 let voucher_nos = [];
@@ -2012,11 +2013,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 }
                                 if (parsed.is_offset && phaseHstt === undefined) {
                                     phaseHstt = 0;
+                                    isOffsetInvoice = true;
                                     if (parsed.invoice_no) invoice_no = parsed.invoice_no;
                                     if (parsed.invoice_date) invoice_date = parsed.invoice_date;
                                 } else if ('actual_received_amount' in parsed && phaseHstt === undefined) {
-                                    const val = Number(parsed.actual_received_amount) || 0;
-                                    phaseHstt = val || inv.post_tax_amount || inv.amount || 0;
+                                    // HSTT = 0 is intentional; do not fall back to the invoice value.
+                                    phaseHstt = Number(parsed.actual_received_amount) || 0;
                                     if (parsed.invoice_no) invoice_no = parsed.invoice_no;
                                     if (parsed.invoice_date) invoice_date = parsed.invoice_date;
                                 }
@@ -2043,9 +2045,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 } else if (phaseLower.includes('gtbl')) {
                     pExpected = phaseHstt !== undefined ? phaseHstt : gtblValue;
                 } else {
-                    pExpected = phaseHstt !== undefined 
-                        ? phaseHstt 
-                        : invoiceRecords.reduce((sum, i) => sum + (i.post_tax_amount || i.amount || 0), 0);
+                    // A phase without HSTT must not become receivable based on its post-tax amount.
+                    pExpected = phaseHstt !== undefined ? phaseHstt : 0;
                 }
 
                 const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
@@ -2113,7 +2114,18 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 }
 
                 const remaining = pExpected - pActual;
-                if (remaining > 0) {
+                // "TN HSTT" tracks the invoice's full amount. If no HSTT was entered,
+                // its target is the post-tax invoice value, while "Cần thu" remains 0.
+                const tnHsttTarget = isOffsetInvoice
+                    ? 0
+                    : phaseHstt > 0
+                    ? phaseHstt
+                    : invoiceRecords.length > 0
+                        ? invoiceRecords.reduce((sum, invoice) => sum + (Number(invoice.post_tax_amount) || Number(invoice.amount) || 0), 0)
+                        : pExpected;
+
+                // The receivables list only contains phases whose TN HSTT has not been fully received.
+                if (pActual < tnHsttTarget) {
                     debts.push({
                         id: `${name}_${phase}`,
                         projectName: name,
@@ -2203,12 +2215,12 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     const customerDebtLayout = useMemo(() => {
         const count = visibleCustomerDebtColumns.length || 1;
         if (count <= 6) {
-            return { minWidth: 980, fontSize: '10.5px', headerFontSize: '13px', cellPaddingX: '14px', cellPaddingY: '6px', rowHeight: '36px' };
+            return { minWidth: 980, fontSize: '12.6px', headerFontSize: '13px', cellPaddingX: '14px', cellPaddingY: '7.2px', rowHeight: '43px' };
         }
         if (count <= 8) {
-            return { minWidth: 1180, fontSize: '10.5px', headerFontSize: '12.5px', cellPaddingX: '12px', cellPaddingY: '6px', rowHeight: '36px' };
+            return { minWidth: 1180, fontSize: '12.6px', headerFontSize: '12.5px', cellPaddingX: '12px', cellPaddingY: '7.2px', rowHeight: '43px' };
         }
-        return { minWidth: 1450, fontSize: '10.5px', headerFontSize: '12px', cellPaddingX: '10px', cellPaddingY: '6px', rowHeight: '36px' };
+        return { minWidth: 1450, fontSize: '12.6px', headerFontSize: '12px', cellPaddingX: '10px', cellPaddingY: '7.2px', rowHeight: '43px' };
     }, [visibleCustomerDebtColumns.length]);
 
     const toggleCustomerDebtColumn = (key) => {

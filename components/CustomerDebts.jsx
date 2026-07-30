@@ -176,7 +176,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     try {
                         const parsed = JSON.parse(inc.note);
                         if (parsed && typeof parsed === 'object') {
-                            grouped[key].hsttAmount += parseFloat(parsed.actual_received_amount) || inc.post_tax_amount || 0;
+                            // HSTT can explicitly be 0; it must never default to the post-tax invoice amount.
+                            grouped[key].hsttAmount += parseFloat(parsed.actual_received_amount) || 0;
                             if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
                                 grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
                             }
@@ -197,8 +198,6 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                             if (parsed.hstt_pdf) grouped[key].hsttPdf = parsed.hstt_pdf;
                         }
                     } catch(e) {}
-                } else {
-                    grouped[key].hsttAmount += inc.post_tax_amount || 0;
                 }
             } else {
                 // Real receipt (type INCOME_REAL)

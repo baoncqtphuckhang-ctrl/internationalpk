@@ -82,6 +82,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         invoice_no: '',
         invoice_date: '',
         display_invoice_date: '',
+        due_date: '',
+        display_due_date: '',
         corresponding_account: '',
         code: '',
         debit: 0,
@@ -96,7 +98,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         actual_received_amount: '',
         deduction_amount: 0,
         creator: '',
-        is_offset: false
+        is_offset: false,
+        is_gtbl: false,
+        is_settlement: false
     });
 
     const [errors, setErrors] = useState({});
@@ -131,6 +135,15 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         } catch(e) {}
                     }
                     return editData.invoice_date || '';
+                })(),
+                due_date: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && parsed.due_date) return parsed.due_date;
+                        } catch(e) {}
+                    }
+                    return '';
                 })(),
                 corresponding_account: getAccountCodeOnly(editData.corresponding_account) || '',
                 code: editData.code || '',
@@ -173,6 +186,24 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                          try {
                              const parsed = JSON.parse(editData.note);
                              return !!parsed.is_offset;
+                         } catch(e) {}
+                     }
+                     return false;
+                 })(),
+                 is_gtbl: (() => {
+                     if (editData.note) {
+                         try {
+                             const parsed = JSON.parse(editData.note);
+                             return !!parsed.is_gtbl;
+                         } catch(e) {}
+                     }
+                     return false;
+                 })(),
+                 is_settlement: (() => {
+                     if (editData.note) {
+                         try {
+                             const parsed = JSON.parse(editData.note);
+                             return !!parsed.is_settlement;
                          } catch(e) {}
                      }
                      return false;
@@ -287,7 +318,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
         }
         
-        const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+        const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0 && i.id !== editData?.id).reduce((sum, i) => {
             let actual = 0;
             let deduction = 0;
             if (i.note) {
@@ -305,7 +336,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (formData.phase !== 'Tạm ứng' && phaseIncs.length === 0) return null;
 
         return { expected, received };
-    }, [type, formData.project_name, formData.phase, incomes, projects]);
+    }, [type, formData.project_name, formData.phase, incomes, projects, editData]);
 
     useEffect(() => {
         if (editData || type !== 'INCOME_REAL') return;
@@ -356,8 +387,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (!editData && type === 'INCOME_INVOICE') {
             const nextAutoPhase = getNextIncomeInvoicePhase(formData.project_name);
             setFormData(prev => {
-                const projectChanged = prev.project_name !== lastAutoProjectRef.current;
-                const userTypedPhase = !projectChanged && prev.phase?.trim() && prev.phase !== lastAutoPhaseRef.current;
+                // Refreshing incomes must not overwrite a manually selected phase (e.g. GTBL/Quyết toán).
+                // Project changes already set their new automatic phase in handleChange below.
+                const userTypedPhase = prev.phase?.trim() && prev.phase !== lastAutoPhaseRef.current;
                 lastAutoProjectRef.current = prev.project_name;
                 lastAutoPhaseRef.current = nextAutoPhase;
                 return userTypedPhase ? prev : { ...prev, phase: nextAutoPhase };
@@ -505,18 +537,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
             
             if (!isAdvancePhase && selectedPhaseStats && selectedPhaseStats.expected > 0) {
-                let originalRealAmount = 0;
-                if (editData && editData.type === 'INCOME_REAL') {
-                    if (editData.note) {
-                        try {
-                            const p = JSON.parse(editData.note);
-                            if (p && typeof p === 'object') {
-                                originalRealAmount = (Number(p.actual_received_amount) || 0) + (Number(p.deduction_amount) || 0);
-                            }
-                        } catch(e) {}
-                    }
-                }
-                const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received + originalRealAmount;
+                const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received;
                 const newTotal = (Number(formData.actual_received_amount) || 0) + (Number(formData.deduction_amount) || 0);
                 if (newTotal > maxAllowed) {
                     if (maxAllowed <= 0) {
@@ -1105,39 +1126,45 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     {errorMsg('post_tax_amount')}
                                 </div>
                                 {/* Số hóa đơn */}
-                                <div>
-                                    <label className={labelCls}>Số hóa đơn</label>
-                                    <input
-                                        type="text"
-                                        value={formData.invoice_no || ''}
-                                        onChange={(e) => handleChange('invoice_no', e.target.value)}
-                                        placeholder="Nhập số hóa đơn..."
-                                        className={inputCls('invoice_no')}
-                                    />
-                                </div>
-                                {/* Ngày hóa đơn */}
-                                {formData.invoice_no?.trim() && (
+                                {!formData.is_gtbl && (
                                     <div>
-                                        <label className={labelCls}>Ngày hóa đơn</label>
+                                        <label className={labelCls}>Số hóa đơn</label>
+                                        <input
+                                            type="text"
+                                            value={formData.invoice_no || ''}
+                                            onChange={(e) => handleChange('invoice_no', e.target.value)}
+                                            placeholder="Nhập số hóa đơn..."
+                                            className={inputCls('invoice_no')}
+                                        />
+                                    </div>
+                                )}
+                                {/* Ngày hóa đơn / Ngày cần thu tiền */}
+                                {(formData.invoice_no?.trim() || formData.is_gtbl) && (
+                                    <div>
+                                        <label className={labelCls}>{formData.is_gtbl ? 'Ngày cần thu tiền' : 'Ngày hóa đơn'}</label>
                                         <div className="relative flex items-center">
                                             <input
                                                 type="text"
                                                 placeholder="dd/mm/yyyy"
-                                                value={formData.display_invoice_date || formatDateInputDisplay(formData.invoice_date)}
+                                                value={formData.is_gtbl
+                                                    ? (formData.display_due_date || formatDateInputDisplay(formData.due_date))
+                                                    : (formData.display_invoice_date || formatDateInputDisplay(formData.invoice_date))}
                                                 onChange={(e) => {
                                                     const val = normalizeDateTextInput(e.target.value);
-                                                    handleChange('display_invoice_date', val);
-                                                    handleChange('invoice_date', val.length === 10 ? parseDateDisplayToIso(val) : '');
+                                                    const dateField = formData.is_gtbl ? 'due_date' : 'invoice_date';
+                                                    const displayDateField = formData.is_gtbl ? 'display_due_date' : 'display_invoice_date';
+                                                    handleChange(displayDateField, val);
+                                                    handleChange(dateField, val.length === 10 ? parseDateDisplayToIso(val) : '');
                                                 }}
-                                                className={inputCls('invoice_date')}
+                                                className={inputCls(formData.is_gtbl ? 'due_date' : 'invoice_date')}
                                             />
                                             <input
                                                 type="date"
-                                                value={formData.invoice_date || ''}
+                                                value={formData.is_gtbl ? (formData.due_date || '') : (formData.invoice_date || '')}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
-                                                    handleChange('invoice_date', val);
-                                                    handleChange('display_invoice_date', formatDateInputDisplay(val));
+                                                    handleChange(formData.is_gtbl ? 'due_date' : 'invoice_date', val);
+                                                    handleChange(formData.is_gtbl ? 'display_due_date' : 'display_invoice_date', formatDateInputDisplay(val));
                                                 }}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
                                             />
@@ -1173,23 +1200,63 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             disabled={!!formData.is_offset}
                                         />
                                     </div>
-                                    <div className="flex items-center gap-2 pb-3.5">
-                                        <input 
-                                            type="checkbox"
-                                            id="is_offset"
-                                            checked={!!formData.is_offset}
-                                            onChange={(e) => {
-                                                const checked = e.target.checked;
-                                                setFormData(prev => ({
-                                                    ...prev,
-                                                    is_offset: checked,
-                                                    actual_received_amount: checked ? 0 : ''
-                                                }));
-                                            }}
-                                            className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
-                                        />
-                                        <label htmlFor="is_offset" className="text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                    <div className="flex flex-col gap-2 pb-3.5">
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                id="is_offset"
+                                                checked={!!formData.is_offset}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        is_offset: checked,
+                                                        actual_received_amount: checked ? 0 : ''
+                                                    }));
+                                                }}
+                                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                            />
                                             Là hóa đơn xuất bù (Không cần thu tiền / HSTT = 0đ)
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                id="is_gtbl"
+                                                checked={!!formData.is_gtbl}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        is_gtbl: checked,
+                                                        is_settlement: checked ? false : prev.is_settlement,
+                                                        phase: checked ? 'Đợt GTBL' : prev.phase,
+                                                        note: checked ? 'GTBL' : prev.note,
+                                                        invoice_no: checked ? '' : prev.invoice_no,
+                                                        invoice_date: checked ? '' : prev.invoice_date,
+                                                        display_invoice_date: checked ? '' : prev.display_invoice_date
+                                                    }));
+                                                }}
+                                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                            Đợt GTBL
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
+                                                id="is_settlement"
+                                                checked={!!formData.is_settlement}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        is_settlement: checked,
+                                                        is_gtbl: checked ? false : prev.is_gtbl,
+                                                        phase: checked ? 'Đợt Quyết toán' : prev.phase
+                                                    }));
+                                                }}
+                                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                            Đợt Quyết toán
                                         </label>
                                     </div>
                                 </div>
@@ -1582,6 +1649,8 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         invoice_no: '',
                         invoice_date: '',
                         display_invoice_date: '',
+                        due_date: '',
+                        display_due_date: '',
                         corresponding_account: '',
                         code: '',
                         debit: 0,
@@ -1594,7 +1663,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         vat_amount: 0,
                         post_tax_amount: 0,
                         actual_received_amount: 0,
-                        creator: ''
+                        creator: '',
+                        is_offset: false,
+                        is_gtbl: false,
+                        is_settlement: false
                     });
                     setErrors({});
                     setConfirmReset(false);
