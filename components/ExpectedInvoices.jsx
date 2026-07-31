@@ -937,6 +937,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         return Array.from(months).sort();
     }, [invoices, incomes]);
 
+    const allExistingPeriods = useMemo(() => {
+        const periods = new Set();
+        invoices.forEach(i => {
+            if (i.payment_period) {
+                periods.add(i.payment_period);
+            }
+        });
+        if (formData?.payment_period) {
+            periods.add(formData.payment_period);
+        }
+        return Array.from(periods).sort();
+    }, [invoices, formData.payment_period]);
+
     const allPeriods = useMemo(() => {
         const periodMap = new Map();
         invoices.forEach(i => {
@@ -1292,7 +1305,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             return;
         }
         
-        if (allPeriods.includes(newPeriodName)) {
+        if (allExistingPeriods.includes(newPeriodName)) {
             setRenameError('Tên kỳ thanh toán này đã tồn tại!');
             return;
         }
@@ -1320,7 +1333,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
     const handleClonePeriod = async (sourcePeriod, targetPeriod) => {
         if (!sourcePeriod || !targetPeriod || targetPeriod.trim() === '') return;
-        if (allPeriods.includes(targetPeriod.trim())) {
+        if (allExistingPeriods.includes(targetPeriod.trim())) {
             if (showToast) showToast('Tên kỳ thanh toán này đã tồn tại!', 'error');
             else alert('Tên kỳ thanh toán này đã tồn tại!');
             return;
@@ -4042,7 +4055,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                     className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition"
                                 >
                                     <option value="">-- Chọn kỳ cũ --</option>
-                                    {allPeriods.map(p => <option key={p} value={p}>{p}</option>)}
+                                    {allExistingPeriods.map(p => <option key={p} value={p}>{p}</option>)}
                                 </select>
                             </div>
                             <div>
