@@ -616,7 +616,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             };
 
             if (editingId) {
-                localList = localList.map(t => t.id === editingId ? { ...t, ...payload } : t);
+                localList = localList.map(t => String(t.id) === String(editingId) ? { ...t, ...payload } : t);
             } else {
                 const newId = `local_${Date.now()}`;
                 localList.push({ id: newId, ...payload });
@@ -1128,13 +1128,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
 
         if (activeSubTab === 'team') {
             const teamExistsInProject = invoices.some(i => 
-                i.id !== editingId &&
+                String(i.id) !== String(editingId) &&
                 i.projectName === formData.projectName && 
+                (i.phase || '') === (formData.phase || '') &&
+                (i.payment_period || '') === (formData.payment_period || '') &&
                 i.teamName && 
                 i.teamName.trim().toLowerCase() === (formData.teamName || '').trim().toLowerCase()
             );
             if (teamExistsInProject) {
-                const errMsg = `Tổ đội "${formData.teamName}" đã tồn tại trong công trình "${formData.projectName}"! Không thể tạo trùng lặp.`;
+                const errMsg = `Tổ đội "${formData.teamName}" đã tồn tại trong đợt ${formData.phase || ''} (${formData.payment_period || ''}) của công trình "${formData.projectName}"! Không thể tạo trùng lặp.`;
                 if (showToast) showToast(errMsg, 'error');
                 else alert(errMsg);
                 return;
@@ -1157,8 +1159,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     return;
                 }
 
+                const updatedItem = (data && data.length > 0) ? data[0] : { id: editingId, ...updatedRecord };
                 setInvoices(prev => prev.map(inv => 
-                    inv.id === editingId ? { ...inv, ...updatedRecord } : inv
+                    String(inv.id) === String(editingId) ? { ...inv, ...updatedItem } : inv
                 ));
             } else {
                 const newRecord = buildRecord();
