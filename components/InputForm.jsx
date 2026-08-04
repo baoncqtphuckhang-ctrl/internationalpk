@@ -107,6 +107,11 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         debit: 0,
         credit: 0,
         note: '',
+        corresponding_account: '',
+        code: '',
+        debit: 0,
+        credit: 0,
+        note: '',
         recipient: '',
         phase: 'Đợt 1',
         amount: 0,
@@ -117,6 +122,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         deduction_amount: 0,
         creator: '',
         is_offset: false,
+        is_advance: false,
         is_gtbl: false,
         is_settlement: false,
         is_due_date_manual: false
@@ -160,7 +166,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         try {
                             const parsed = JSON.parse(editData.note);
                             if (parsed && typeof parsed === 'object') {
-                                if (parsed.is_gtbl || parsed.is_due_date_manual) return parsed.due_date || '';
+                                if (parsed.is_advance || parsed.is_gtbl || parsed.is_due_date_manual) return parsed.due_date || '';
                                 return getDefaultCollectionDate(parsed.invoice_date || editData.invoice_date || '');
                             }
                         } catch(e) {}
@@ -180,7 +186,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 vat_amount: editData.vat_amount || 0,
                 post_tax_amount: editData.post_tax_amount || 0,
                 amount6418: editData.credit || 0,
-                creator: editData.created_by || '',
                 note: (() => {
                     if (editData.note) {
                         try {
@@ -192,22 +197,20 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     }
                     return editData.note || '';
                 })(),
-                 actual_received_amount: (() => {
-                     if (editData.note) {
-                         try {
-                             const parsed = JSON.parse(editData.note);
-                             if (parsed && typeof parsed === 'object' && 'actual_received_amount' in parsed) {
-                                 return parsed.actual_received_amount;
-                             }
-                         } catch(e) {}
-                     }
-                     return '';
-                 })(),
                  is_offset: (() => {
                      if (editData.note) {
                          try {
                              const parsed = JSON.parse(editData.note);
                              return !!parsed.is_offset;
+                         } catch(e) {}
+                     }
+                     return false;
+                 })(),
+                 is_advance: (() => {
+                     if (editData.note) {
+                         try {
+                             const parsed = JSON.parse(editData.note);
+                             return !!parsed.is_advance;
                          } catch(e) {}
                      }
                      return false;
@@ -278,7 +281,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const commonAccounts = ["", "111 - Tiền mặt", "112 - Tiền gửi NH", "131 - Công nợ phải thu", "141 - Tạm ứng", "152 - Nguyên liệu, vật liệu", "154 - Chi phí SXKD dở dang", "331 - Phải trả người bán", "334 - Phải trả người lao động", "338 - Phải trả khác", "642 - Chi phí QLDN"];
             const accountCode = getAccountCodeOnly(editData.corresponding_account);
             setIsCustomAccount(accountCode && !commonAccounts.some(acc => getAccountCodeOnly(acc) === accountCode));
-            
+
             const rawNote = (() => {
                 if (editData.note) {
                     try {
@@ -307,11 +310,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 }
             });
         }
-        
         return Array.from(phases);
     }, [formData.project_name, incomes]);
 
-    const isAdvancePhase = formData.phase === 'Tạm ứng' || formData.phase?.toLowerCase() === 'tạm ứng';
+    const isAdvancePhase = !!(formData.is_advance || formData.phase?.toLowerCase().includes('tạm ứng') || formData.phase?.toLowerCase().includes('tam ung'));
 
     const selectedPhaseStats = useMemo(() => {
         if (type !== 'INCOME_REAL' || !formData.project_name || !formData.phase || !incomes) return null;
@@ -320,13 +322,12 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         
         let expected = 0;
 
-        if (formData.phase === 'Tạm ứng') {
+        if (isAdvancePhase) {
             const proj = projects.find(p => p.name === formData.project_name);
             expected = proj?.advance_value || 0;
         } else {
             if (phaseIncs.length === 0) return null;
 
-            // Bug 2 fix: HSTT là giá trị duy nhất cho mỗi đợt (lấy bản ghi mới nhất, không cộng dồn)
             const invoiceRecords = phaseIncs.filter(i => i.post_tax_amount > 0 || i.amount > 0);
             const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
             for (const inv of sortedInvoices) {
@@ -341,7 +342,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                             if ('actual_received_amount' in parsed) {
                                 const val = Number(parsed.actual_received_amount) || 0;
                                 expected = val || inv.post_tax_amount || inv.amount || 0;
-                                break; // Chỉ lấy giá trị mới nhất
+                                break;
                             }
                         }
                     } catch(e) {}
@@ -364,10 +365,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             return sum + actual + deduction;
         }, 0);
         
-        if (formData.phase !== 'Tạm ứng' && phaseIncs.length === 0) return null;
+        if (!isAdvancePhase && phaseIncs.length === 0) return null;
 
         return { expected, received };
-    }, [type, formData.project_name, formData.phase, incomes, projects, editData]);
+    }, [type, formData.project_name, formData.phase, incomes, projects, editData, isAdvancePhase]);
 
     useEffect(() => {
         if (editData || type !== 'INCOME_REAL') return;
@@ -383,7 +384,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (remainingAdvance > 0 && !formData.actual_received_amount && !formData.deduction_amount) {
             setFormData(prev => ({ ...prev, actual_received_amount: remainingAdvance }));
         }
-    }, [type, formData.phase, formData.actual_received_amount, formData.deduction_amount, selectedPhaseStats, editData]);
+    }, [type, formData.phase, formData.actual_received_amount, formData.deduction_amount, selectedPhaseStats, editData, isAdvancePhase]);
 
     const projectRecipients = useMemo(() => {
         if (!formData.project_name || !projects) return ['Khác'];
@@ -976,6 +977,81 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         </div>
                                     </>
                                 )}
+                                {/* Mã CP */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Mã CP <span className="text-red-500">*</span>
+                                    </label>
+                                    <select
+                                        value={isCustomCode ? 'Khác' : formData.code}
+                                        onChange={(e) => {
+                                            const val = e.target.value;
+                                            if (val === 'Khác') {
+                                                setIsCustomCode(true);
+                                                handleChange('code', '');
+                                            } else {
+                                                setIsCustomCode(false);
+                                                handleChange('code', val);
+                                            }
+                                        }}
+                                        className={inputCls('code')}
+                                    >
+                                        <option value="">-- Chọn Mã CP --</option>
+                                        {EXPENSE_CATEGORIES.map(c => (
+                                            <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
+                                        ))}
+                                        <option value="Khác">Khác...</option>
+                                    </select>
+                                    {isCustomCode && (
+                                        <input
+                                            type="text"
+                                            value={formData.code}
+                                            onChange={(e) => handleChange('code', e.target.value.replace(',', '.'))}
+                                            placeholder="Nhập mã CP khác..."
+                                            className={`${inputCls('code')} mt-2`}
+                                        />
+                                    )}
+                                    {errorMsg('code')}
+                                </div>
+                                {/* Số tiền chi */}
+                                <div>
+                                    <label className={labelCls}>
+                                        Số tiền chi (Nợ)
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={formData.debit ? formatCurrency(formData.debit) : ''}
+                                        onChange={(e) => handleChange('debit', parseVietnameseNumber(e.target.value))}
+                                        placeholder="Nhập số tiền..."
+                                        className={`${inputCls('debit')} font-bold text-red-600`}
+                                    />
+                                    {errorMsg('debit')}
+                                </div>
+                                {expenseUsesManualTax && (
+                                    <>
+                                        <div>
+                                            <label className={labelCls}>VAT</label>
+                                            <input
+                                                type="text"
+                                                value={(formData.vat_amount !== undefined && formData.vat_amount !== null && formData.vat_amount !== '') ? formatCurrency(formData.vat_amount) : ''}
+                                                onChange={(e) => handleChange('vat_amount', parseVietnameseNumber(e.target.value))}
+                                                placeholder="Nhập VAT..."
+                                                className={`${inputCls('vat_amount')} font-bold text-slate-600`}
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className={labelCls}>Số tiền chi sau thuế</label>
+                                            <input
+                                                type="text"
+                                                value={(formData.post_tax_amount !== undefined && formData.post_tax_amount !== null && formData.post_tax_amount !== '') ? formatCurrency(formData.post_tax_amount) : ''}
+                                                onChange={(e) => handleChange('post_tax_amount', parseVietnameseNumber(e.target.value))}
+                                                placeholder="Nhập số tiền sau thuế..."
+                                                className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
+                                            />
+                                            {errorMsg('post_tax_amount')}
+                                        </div>
+                                    </>
+                                )}
                                 {/* Số hóa đơn */}
                                 <div>
                                     <label className={labelCls}>
@@ -1178,7 +1254,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     {errorMsg('post_tax_amount')}
                                 </div>
                                 {/* Số hóa đơn */}
-                                {!formData.is_gtbl && (
+                                {!formData.is_gtbl && !formData.is_advance && (
                                     <div>
                                         <label className={labelCls}>Số hóa đơn</label>
                                         <input
@@ -1191,32 +1267,34 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     </div>
                                 )}
                                 {/* Ngày hóa đơn / Ngày cần thu tiền */}
-                                {(formData.invoice_no?.trim() || formData.is_gtbl) && (
+                                {(formData.invoice_no?.trim() || formData.is_gtbl || formData.is_advance || formData.is_settlement) && (
                                     <div>
-                                        <label className={labelCls}>{formData.is_gtbl ? 'Ngày cần thu tiền' : 'Ngày hóa đơn'}</label>
+                                        <label className={labelCls}>{(formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim())) ? 'Ngày cần thu tiền' : 'Ngày hóa đơn'}</label>
                                         <div className="relative flex items-center">
                                             <input
                                                 type="text"
                                                 placeholder="dd/mm/yyyy"
-                                                value={formData.is_gtbl
+                                                value={(formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim()))
                                                     ? (formData.display_due_date || formatDateInputDisplay(formData.due_date))
                                                     : (formData.display_invoice_date || formatDateInputDisplay(formData.invoice_date))}
                                                 onChange={(e) => {
                                                     const val = normalizeDateTextInput(e.target.value);
-                                                    const dateField = formData.is_gtbl ? 'due_date' : 'invoice_date';
-                                                    const displayDateField = formData.is_gtbl ? 'display_due_date' : 'display_invoice_date';
+                                                    const isNoInvoiceDate = formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim());
+                                                    const dateField = isNoInvoiceDate ? 'due_date' : 'invoice_date';
+                                                    const displayDateField = isNoInvoiceDate ? 'display_due_date' : 'display_invoice_date';
                                                     handleChange(displayDateField, val);
                                                     handleChange(dateField, val.length === 10 ? parseDateDisplayToIso(val) : '');
                                                 }}
-                                                className={inputCls(formData.is_gtbl ? 'due_date' : 'invoice_date')}
+                                                className={inputCls((formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim())) ? 'due_date' : 'invoice_date')}
                                             />
                                             <input
                                                 type="date"
-                                                value={formData.is_gtbl ? (formData.due_date || '') : (formData.invoice_date || '')}
+                                                value={(formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim())) ? (formData.due_date || '') : (formData.invoice_date || '')}
                                                 onChange={(e) => {
                                                     const val = e.target.value;
-                                                    handleChange(formData.is_gtbl ? 'due_date' : 'invoice_date', val);
-                                                    handleChange(formData.is_gtbl ? 'display_due_date' : 'display_invoice_date', formatDateInputDisplay(val));
+                                                    const isNoInvoiceDate = formData.is_gtbl || formData.is_advance || (formData.is_settlement && !formData.invoice_no?.trim());
+                                                    handleChange(isNoInvoiceDate ? 'due_date' : 'invoice_date', val);
+                                                    handleChange(isNoInvoiceDate ? 'display_due_date' : 'display_invoice_date', formatDateInputDisplay(val));
                                                 }}
                                                 className="absolute right-3 top-1/2 -translate-y-1/2 opacity-0 cursor-pointer w-8 h-8 z-10"
                                             />
@@ -1229,7 +1307,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         </div>
                                     </div>
                                 )}
-                                {!formData.is_gtbl && formData.invoice_no?.trim() && (
+                                {!formData.is_gtbl && !formData.is_advance && !(formData.is_settlement && !formData.invoice_no?.trim()) && formData.invoice_no?.trim() && (
                                     <div>
                                         <label className={labelCls}>Ngày cần thu tiền</label>
                                         <div className="relative flex items-center">
@@ -1307,6 +1385,29 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
                                             <input
                                                 type="checkbox"
+                                                id="is_advance"
+                                                checked={!!formData.is_advance}
+                                                onChange={(e) => {
+                                                    const checked = e.target.checked;
+                                                    setFormData(prev => ({
+                                                        ...prev,
+                                                        is_advance: checked,
+                                                        is_gtbl: checked ? false : prev.is_gtbl,
+                                                        is_settlement: checked ? false : prev.is_settlement,
+                                                        phase: checked ? 'Đợt Tạm ứng' : prev.phase,
+                                                        note: checked ? 'Tạm ứng' : prev.note,
+                                                        invoice_no: checked ? '' : prev.invoice_no,
+                                                        invoice_date: checked ? '' : prev.invoice_date,
+                                                        display_invoice_date: checked ? '' : prev.display_invoice_date
+                                                    }));
+                                                }}
+                                                className="w-4 h-4 text-indigo-600 border-slate-300 rounded focus:ring-indigo-500 cursor-pointer"
+                                            />
+                                            Đợt Tạm Ứng
+                                        </label>
+                                        <label className="flex items-center gap-2 text-sm font-bold text-slate-700 cursor-pointer select-none">
+                                            <input
+                                                type="checkbox"
                                                 id="is_gtbl"
                                                 checked={!!formData.is_gtbl}
                                                 onChange={(e) => {
@@ -1314,6 +1415,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                     setFormData(prev => ({
                                                         ...prev,
                                                         is_gtbl: checked,
+                                                        is_advance: checked ? false : prev.is_advance,
                                                         is_settlement: checked ? false : prev.is_settlement,
                                                         phase: checked ? 'Đợt GTBL' : prev.phase,
                                                         note: checked ? 'GTBL' : prev.note,
@@ -1337,6 +1439,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                         ...prev,
                                                         is_settlement: checked,
                                                         is_gtbl: checked ? false : prev.is_gtbl,
+                                                        is_advance: checked ? false : prev.is_advance,
                                                         phase: checked ? 'Đợt Quyết toán' : prev.phase
                                                     }));
                                                 }}

@@ -433,19 +433,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                     <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
                                 </div>
                             </div>
-                            <div className="space-y-2">
-                                <label className="block text-sm font-black text-slate-900">Giá trị Tạm ứng</label>
-                                <div className="relative flex items-center">
-                                    <input 
-                                        type="text"
-                                        value={formData.advance_value ? formatCurrency(formData.advance_value) : ''}
-                                        onChange={(e) => setFormData({...formData, advance_value: parseVietnameseNumber(e.target.value)})}
-                                        className="w-full p-3 pr-14 border-2 border-slate-100 rounded-xl outline-none focus:border-indigo-500 bg-slate-50 font-bold text-amber-600"
-                                        placeholder="0"
-                                    />
-                                    <span className="absolute right-4 font-bold text-xs text-slate-400 pointer-events-none">VNĐ</span>
-                                </div>
-                            </div>
+
 
                             <div className="space-y-2 md:col-span-2">
                                 <label className="block text-sm font-black text-slate-900">Giá trị PLHĐ 1 (Trước thuế)</label>
@@ -550,23 +538,7 @@ export default function ProjectManager({ currentUser, projects, projectDetails, 
                                                     <span className="absolute right-4 font-bold text-[10px] text-slate-400 pointer-events-none">VNĐ</span>
                                                 </div>
                                             </div>
-                                            <div className="space-y-2">
-                                                <label className="block text-xs font-black text-slate-900">Giá trị Tạm ứng</label>
-                                                <div className="relative flex items-center">
-                                                    <input 
-                                                        type="text"
-                                                        value={sc.advance ? formatCurrency(sc.advance) : ''}
-                                                        onChange={(e) => {
-                                                            const newList = [...formData.sub_contracts];
-                                                            newList[scIndex] = { ...sc, advance: parseVietnameseNumber(e.target.value) };
-                                                            setFormData({...formData, sub_contracts: newList});
-                                                        }}
-                                                        className="w-full p-2.5 pr-12 border-2 border-slate-200 rounded-xl outline-none focus:border-indigo-500 bg-white text-slate-800 text-sm font-semibold text-amber-600"
-                                                        placeholder="0"
-                                                    />
-                                                    <span className="absolute right-4 font-bold text-[10px] text-slate-400 pointer-events-none">VNĐ</span>
-                                                </div>
-                                            </div>
+
                                         </div>
 
                                         {/* Phụ lục cho HĐ phụ */}

@@ -1030,9 +1030,39 @@ export default function Home() {
                 }
             } catch(e) {}
             
+            const projectIncomes = (allowedIncomes || incomes || []).filter(i => i.project_name === p.name);
+            const advanceIncomes = projectIncomes.filter(i => {
+                const phaseLower = (i.phase || '').toLowerCase();
+                let isAdv = phaseLower.includes('tạm ứng') || phaseLower.includes('tam ung');
+                if (i.note) {
+                    try {
+                        const parsed = JSON.parse(i.note);
+                        if (parsed?.is_advance) isAdv = true;
+                    } catch(e) {}
+                }
+                return isAdv;
+            });
+            const actualAdvanceTotal = advanceIncomes.reduce((sum, i) => {
+                let val = 0;
+                if (i.note) {
+                    try {
+                        const parsed = JSON.parse(i.note);
+                        if (parsed && typeof parsed === 'object') {
+                            val = Number(parsed.actual_received_amount) || 0;
+                        }
+                    } catch(e) {}
+                }
+                if (val === 0) {
+                    val = Number(i.post_tax_amount || i.amount) || 0;
+                }
+                return sum + val;
+            }, 0);
+
+            const dynamicAdvanceValue = actualAdvanceTotal > 0 ? actualAdvanceTotal : ((p.advance_value || 0) + subContractsAdvance);
+            
             details[p.name] = { 
                 contractValueAfterTax: p.contract_value_after_tax,
-                advanceValue: (p.advance_value || 0) + subContractsAdvance,
+                advanceValue: dynamicAdvanceValue,
                 debtToCollect: debtToCollect,
                 extraPlhdTotal: extraPlhdTotal,
                 subContractsAnnexesTotal: subContractsAnnexesTotal,
@@ -1690,7 +1720,7 @@ export default function Home() {
             } else {
                 const isReal = type === 'INCOME_REAL';
                 const payload = {
-                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', due_date: data.due_date || '', is_due_date_manual: !!data.is_due_date_manual, is_offset: !!data.is_offset, is_gtbl: !!data.is_gtbl, is_settlement: !!data.is_settlement }), created_by: data.creator || currentUser.username
+                    project_name: data.project_name, date: data.accounting_date, phase: data.phase, amount: isReal ? 0 : (data.amount || 0), vat_amount: isReal ? 0 : (data.vat_amount || 0), post_tax_amount: isReal ? 0 : (data.post_tax_amount || data.amount || 0), is_paid: isReal ? true : false, note: JSON.stringify({ type_data: isReal ? 'INCOME_REAL' : 'INCOME_INVOICE', text: data.note || '', actual_received_amount: data.actual_received_amount || 0, deduction_amount: data.deduction_amount || 0, invoice_no: data.invoice_no || '', voucher_no: data.voucher_no || '', invoice_date: data.invoice_date || '', due_date: data.due_date || '', is_due_date_manual: !!data.is_due_date_manual, is_offset: !!data.is_offset, is_advance: !!data.is_advance, is_gtbl: !!data.is_gtbl, is_settlement: !!data.is_settlement }), created_by: data.creator || currentUser.username
                 };
                 if (editId) {
                     const originalData = incomes.find(i => i.id === editId);

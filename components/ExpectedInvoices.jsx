@@ -2099,12 +2099,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             }
                         } catch(e) {}
                     }
+                    if (phaseHstt === undefined) {
+                        const invVal = Number(inv.post_tax_amount || inv.amount) || 0;
+                        if (invVal > 0) {
+                            phaseHstt = invVal;
+                        }
+                    }
                 }
 
                 let pExpected = 0;
                 const phaseLower = (phase || '').toLowerCase();
-                if (phaseLower === 'tạm ứng') {
-                    pExpected = Number(advanceValue) || 0;
+                const isAdvPhase = phaseLower.includes('tạm ứng') || phaseLower.includes('tam ung');
+                if (isAdvPhase) {
+                    pExpected = (phaseHstt !== undefined && phaseHstt > 0) ? phaseHstt : (Number(advanceValue) || 0);
                 } else if (phaseLower.includes('quyết toán')) {
                     pExpected = phaseHstt !== undefined ? phaseHstt : settlementValue;
                 } else if (phaseLower.includes('gtbl')) {
@@ -2161,7 +2168,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
-                            if (parsed && parsed.due_date && (parsed.is_gtbl || parsed.is_due_date_manual)) {
+                            if (parsed && parsed.due_date && (parsed.is_advance || parsed.is_gtbl || parsed.is_due_date_manual)) {
                                 manual_due_date = parsed.due_date;
                                 break;
                             }
