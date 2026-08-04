@@ -390,7 +390,14 @@ const getIncomeScanMonth = (income = {}) => {
     return getMonthFromDateValue(meta.invoice_date) || getMonthFromDateValue(income.date);
 };
 
-const hasExpectedInvoiceNo = (inv = {}) => Boolean(String(inv.invoice_no || '').trim());
+const hasExpectedInvoiceNo = (inv = {}, incomes = []) => {
+    if (inv.invoice_no && String(inv.invoice_no).trim()) return true;
+    if (incomes && incomes.length > 0) {
+        const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+        if (info.invoice_no && String(info.invoice_no).trim()) return true;
+    }
+    return false;
+};
 
 const getInvoiceNoSortValue = (invoiceNo = '') => {
     const value = String(invoiceNo || '').trim();
@@ -1860,19 +1867,65 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             if (!inv.accountant_approved) return false;
         }
 
+        const hasInvoiceNo = hasExpectedInvoiceNo(inv, incomes);
+
         if (filterProject && inv.projectName !== filterProject) return false;
         if (filterPhase && inv.phase !== filterPhase) return false;
         if (activeSubTab === 'invoice' && filterInvoiceMonth) {
-            const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
-            const m = getInvoiceScheduleMonth(inv, info);
-            if (m !== filterInvoiceMonth) return false;
+            // Nếu đã có Số HĐ (đã xuất HĐ), kiểm tra lọc theo tháng HĐ.
+            // Nếu CHƯA có Số HĐ, LUÔN LUÔN HIỆN bất kể đang chọn lọc theo tháng HĐ nào.
+            if (hasInvoiceNo) {
+                const info = getInvoiceInfoFromIncomes(incomes, inv.projectName, inv.phase);
+                const m = getInvoiceScheduleMonth(inv, info);
+                if (m !== filterInvoiceMonth) return false;
+            }
         }
         return true;
     };
 
-    const deleteAllTargetInvoices = invoices.filter(invoiceMatchesCurrentScope);
+    const effectiveInvoices = useMemo(() => {
+        if (activeSubTab !== 'invoice') return invoices;
 
-    let filteredInvoices = invoices.filter(inv => {
+        const combined = [...invoices];
+        const existingKeys = new Set(invoices.map(inv => `${(inv.projectName || '').trim().toLowerCase()}__${(inv.phase || '').trim().toLowerCase()}`));
+
+        // Tự động truy xuất tất cả đợt thu từ incomes chưa xuất HĐ
+        projects.forEach(p => {
+            const projName = p.name;
+            const projIncs = incomes.filter(i => (i.project_name || '').trim().toLowerCase() === projName.trim().toLowerCase());
+            const phases = [...new Set(projIncs.map(i => i.phase).filter(Boolean))];
+
+            phases.forEach(phase => {
+                const key = `${projName.trim().toLowerCase()}__${phase.trim().toLowerCase()}`;
+                if (existingKeys.has(key)) return; // Đã có trong expected_invoices
+
+                const info = getInvoiceInfoFromIncomes(incomes, projName, phase);
+                const hasNo = Boolean(String(info.invoice_no || '').trim());
+                
+                // Nếu CHƯA xuất HĐ (chưa có Số HĐ) hoặc có thông tin đợt, tự động truy xuất lên bảng HĐ Dự Kiến
+                if (!hasNo && (info.postTaxValue > 0 || info.preTaxValue > 0 || info.vatAmount > 0)) {
+                    combined.push({
+                        id: `auto_${projName}_${phase}`,
+                        projectName: projName,
+                        phase: phase,
+                        preTaxValue: info.preTaxValue,
+                        vatAmount: info.vatAmount,
+                        postTaxValue: info.postTaxValue,
+                        invoice_no: '',
+                        invoice_date: '',
+                        note: 'Tự động truy xuất từ đợt chi tiết',
+                        is_derived: true
+                    });
+                }
+            });
+        });
+
+        return combined;
+    }, [activeSubTab, invoices, incomes, projects]);
+
+    const deleteAllTargetInvoices = effectiveInvoices.filter(invoiceMatchesCurrentScope);
+
+    let filteredInvoices = effectiveInvoices.filter(inv => {
         if (!invoiceMatchesCurrentScope(inv)) return false;
 
         const term = searchTerm.trim().toLowerCase();
@@ -1898,6 +1951,16 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         filteredInvoices.sort((a, b) => {
             const infoA = getInvoiceInfoFromIncomes(incomes, a.projectName, a.phase);
             const infoB = getInvoiceInfoFromIncomes(incomes, b.projectName, b.phase);
+
+            const invoiceDateA = a.invoice_date || infoA.invoice_date || '';
+            const invoiceDateB = b.invoice_date || infoB.invoice_date || '';
+            const hasDateA = Boolean(String(invoiceDateA).trim());
+            const hasDateB = Boolean(String(invoiceDateB).trim());
+
+            // 2. CHỖ HD DỰ KIẾN SẼ LUÔN HIỆN NHỮNG HÓA ĐƠN CHƯA CÓ NGÀY HÓA ĐƠN (ưu tiên đưa lên đầu)
+            if (!hasDateA && hasDateB) return -1;
+            if (hasDateA && !hasDateB) return 1;
+
             const hasA = hasExpectedInvoiceNo(a);
             const hasB = hasExpectedInvoiceNo(b);
 
@@ -1908,8 +1971,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const invoiceNoB = getInvoiceNoSortValue(b.invoice_no);
             if (invoiceNoA !== invoiceNoB) return invoiceNoA - invoiceNoB;
 
-            const dateA = getComparableDateValue(a.invoice_date || infoA.invoice_date || '');
-            const dateB = getComparableDateValue(b.invoice_date || infoB.invoice_date || '');
+            const dateA = getComparableDateValue(invoiceDateA);
+            const dateB = getComparableDateValue(invoiceDateB);
             if (dateA && dateB && dateA !== dateB) {
                 return dateA.localeCompare(dateB);
             }
@@ -2010,11 +2073,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 
                 const sortedInvoices = [...invoiceRecords].sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
                 
-                if (sortedInvoices.length > 0) {
-                    invoice_date = sortedInvoices[0].date || '';
-                }
-
                 for (const inv of sortedInvoices) {
+                    if (inv.invoice_date) invoice_date = inv.invoice_date;
                     if (inv.note) {
                         try {
                             const parsed = JSON.parse(inv.note);
@@ -2022,7 +2082,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 if (!invoice_no && parsed.invoice_no) {
                                     invoice_no = parsed.invoice_no;
                                 }
-                                if (parsed.invoice_date && (!invoice_date || invoice_date === sortedInvoices[0].date)) {
+                                if (parsed.invoice_date) {
                                     invoice_date = parsed.invoice_date;
                                 }
                                 if (parsed.is_offset && phaseHstt === undefined) {

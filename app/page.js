@@ -58,7 +58,7 @@ const getIncomeInvoiceDate = (i) => {
             }
         } catch(e) {}
     }
-    return i?.invoice_date || i?.date || '';
+    return i?.invoice_date || '';
 };
 
 const ROLES = {

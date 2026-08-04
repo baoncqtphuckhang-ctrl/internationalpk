@@ -159,24 +159,16 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     invoice_noteRaw: isInvoice ? inc.note : null,
                     invoice_date_col: isInvoice ? inc.date : null
                 };
-            } else {
-                if (isInvoice && !grouped[key].invoice_id) {
-                    grouped[key].invoice_id = inc.id;
-                    grouped[key].invoice_noteRaw = inc.note;
-                    grouped[key].invoice_date_col = inc.date;
-                }
             }
             
             if (isInvoice) {
                 grouped[key].beforeTaxAmount += (inc.amount || 0);
                 grouped[key].vatAmount += (inc.vat_amount || 0);
                 grouped[key].invoiceAmount += (inc.post_tax_amount || 0);
-                
                 if (inc.note) {
                     try {
                         const parsed = JSON.parse(inc.note);
                         if (parsed && typeof parsed === 'object') {
-                            // HSTT can explicitly be 0; it must never default to the post-tax invoice amount.
                             grouped[key].hsttAmount += parseFloat(parsed.actual_received_amount) || 0;
                             if (parsed.invoice_no && !grouped[key].invoiceNo.split(', ').includes(parsed.invoice_no)) {
                                 grouped[key].invoiceNo += (grouped[key].invoiceNo ? ', ' : '') + parsed.invoice_no;
@@ -185,11 +177,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
                             }
                             
-                            let invDate = parsed.invoice_date || '';
-                            if (!invDate && inc.date) {
-                                invDate = inc.date;
-                            }
-                            
+                            let invDate = parsed.invoice_date || inc.invoice_date || '';
                             if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
                                 grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
                             }
@@ -216,7 +204,7 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                                 grouped[key].voucherNo += (grouped[key].voucherNo ? ', ' : '') + parsed.voucher_no;
                             }
                             
-                            let invDate = parsed.invoice_date || '';
+                            let invDate = parsed.invoice_date || inc.invoice_date || '';
                             if (invDate && !grouped[key].invoiceDate.split(', ').includes(invDate)) {
                                 grouped[key].invoiceDate += (grouped[key].invoiceDate ? ', ' : '') + invDate;
                             }
@@ -249,7 +237,6 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     const keyAdvance = `${pName}_Tạm ứng`;
                     grouped[keyAdvance] = {
                         id: keyAdvance,
-                        first_income_id: null,
                         project_name: pName,
                         phase: 'Tạm ứng',
                         beforeTaxAmount: 0,
