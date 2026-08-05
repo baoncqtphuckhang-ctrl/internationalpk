@@ -3388,8 +3388,7 @@ export default function Home() {
 
             if (calculatedDebtToCollect < 0) calculatedDebtToCollect = 0;
 
-            const hasAdvanceIncome = projIncomes.some(i => i.phase === 'Tạm ứng' || i.phase?.toLowerCase() === 'tạm ứng');
-            const totalReceivedAmount = totalPhaseReceived + (hasAdvanceIncome ? actualAdvanceReceived : advanceValue);
+            const totalReceivedAmount = totalPhaseReceived + actualAdvanceReceived;
             const totalReceivedBeforeVat = Math.round(totalReceivedAmount / 1.08);
             const receivedPhaseBeforeVat = Math.round(totalPhaseReceived / 1.08);
             const unreceivedPhaseBeforeVat = Math.round(totalUnreceivedPhase / 1.08);

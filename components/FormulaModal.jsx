@@ -49,9 +49,9 @@ const DEFAULT_FORMULAS = [
     },
     {
         id: 'totalReceivedBeforeVat',
-        name: 'TN đã thu trước VAT (có T.Ư)',
-        formula: 'TM (có T.Ư) / 1.08',
-        description: 'Tổng giá trị thực nhận (gồm Tạm ứng) sau khi quy đổi về giá trị trước thuế VAT (chia cho hệ số 1.08).'
+        name: 'Đã thu trước VAT',
+        formula: 'Thực nhận đã thu (có T.Ư) / 1.08',
+        description: 'Tổng giá trị thực tế đã nhận (gồm Tạm ứng) quy đổi về trước thuế VAT (chia cho hệ số 1.08).'
     },
     {
         id: 'totalAllBeforeVat',

@@ -126,11 +126,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         debit: 0,
         credit: 0,
         note: '',
-        corresponding_account: '',
-        code: '',
-        debit: 0,
-        credit: 0,
-        note: '',
         recipient: '',
         phase: 'Đợt 1',
         amount: 0,
@@ -963,81 +958,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
                         {type === 'EXPENSE' ? (
                             <>
-                                {/* Mã CP */}
-                                <div>
-                                    <label className={labelCls}>
-                                        Mã CP <span className="text-red-500">*</span>
-                                    </label>
-                                    <select
-                                        value={isCustomCode ? 'Khác' : formData.code}
-                                        onChange={(e) => {
-                                            const val = e.target.value;
-                                            if (val === 'Khác') {
-                                                setIsCustomCode(true);
-                                                handleChange('code', '');
-                                            } else {
-                                                setIsCustomCode(false);
-                                                handleChange('code', val);
-                                            }
-                                        }}
-                                        className={inputCls('code')}
-                                    >
-                                        <option value="">-- Chọn Mã CP --</option>
-                                        {EXPENSE_CATEGORIES.map(c => (
-                                            <option key={c.code} value={c.code}>{c.code} - {c.name}</option>
-                                        ))}
-                                        <option value="Khác">Khác...</option>
-                                    </select>
-                                    {isCustomCode && (
-                                        <input
-                                            type="text"
-                                            value={formData.code}
-                                            onChange={(e) => handleChange('code', e.target.value.replace(',', '.'))}
-                                            placeholder="Nhập mã CP khác..."
-                                            className={`${inputCls('code')} mt-2`}
-                                        />
-                                    )}
-                                    {errorMsg('code')}
-                                </div>
-                                {/* Số tiền chi */}
-                                <div>
-                                    <label className={labelCls}>
-                                        Số tiền chi (Nợ)
-                                    </label>
-                                    <input
-                                        type="text"
-                                        value={formData.debit ? formatCurrency(formData.debit) : ''}
-                                        onChange={(e) => handleChange('debit', parseVietnameseNumber(e.target.value))}
-                                        placeholder="Nhập số tiền..."
-                                        className={`${inputCls('debit')} font-bold text-red-600`}
-                                    />
-                                    {errorMsg('debit')}
-                                </div>
-                                {expenseUsesManualTax && (
-                                    <>
-                                        <div>
-                                            <label className={labelCls}>VAT</label>
-                                            <input
-                                                type="text"
-                                                value={(formData.vat_amount !== undefined && formData.vat_amount !== null && formData.vat_amount !== '') ? formatCurrency(formData.vat_amount) : ''}
-                                                onChange={(e) => handleChange('vat_amount', parseVietnameseNumber(e.target.value))}
-                                                placeholder="Nhập VAT..."
-                                                className={`${inputCls('vat_amount')} font-bold text-slate-600`}
-                                            />
-                                        </div>
-                                        <div>
-                                            <label className={labelCls}>Số tiền chi sau thuế</label>
-                                            <input
-                                                type="text"
-                                                value={(formData.post_tax_amount !== undefined && formData.post_tax_amount !== null && formData.post_tax_amount !== '') ? formatCurrency(formData.post_tax_amount) : ''}
-                                                onChange={(e) => handleChange('post_tax_amount', parseVietnameseNumber(e.target.value))}
-                                                placeholder="Nhập số tiền sau thuế..."
-                                                className={`${inputCls('post_tax_amount')} font-bold text-blue-600`}
-                                            />
-                                            {errorMsg('post_tax_amount')}
-                                        </div>
-                                    </>
-                                )}
                                 {/* Mã CP */}
                                 <div>
                                     <label className={labelCls}>
