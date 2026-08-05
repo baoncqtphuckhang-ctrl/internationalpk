@@ -90,6 +90,25 @@ const getDefaultCollectionDate = (invoiceDate = '') => {
     return `${yyyy}-${mm}-${dd}`;
 };
 
+const isIncomeRealRow = (income) => {
+    try {
+        const metadata = JSON.parse(income?.note || '{}');
+        if (metadata?.type_data) return metadata.type_data === 'INCOME_REAL';
+        return Object.prototype.hasOwnProperty.call(metadata, 'actual_received_amount') &&
+            Number(income?.post_tax_amount) === 0 && Number(income?.amount) === 0;
+    } catch (e) {
+        return Number(income?.post_tax_amount) === 0 && Number(income?.amount) === 0;
+    }
+};
+
+const isIncomeInvoiceRow = (income) => {
+    try {
+        const metadata = JSON.parse(income?.note || '{}');
+        if (metadata?.type_data) return metadata.type_data === 'INCOME_INVOICE';
+    } catch (e) {}
+    return Number(income?.post_tax_amount) > 0 || Number(income?.amount) > 0;
+};
+
 export default function InputForm({ transactions = [], projects, onSubmit, onAddDebt, isLoading, editData, incomes = [], onCancel, currentUser, onEditIncome, onDeleteIncome, deleteRequests = [] }) {
     const [type, setType] = useState('EXPENSE'); // EXPENSE hoặc INCOME
     const [isCustomCode, setIsCustomCode] = useState(false);
@@ -178,7 +197,17 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 debit: editData.debit || 0,
                 credit: editData.credit || 0,
                 recipient: editData.recipient || '',
-                actual_received_amount: editData.actual_received_amount || '',
+                actual_received_amount: (() => {
+                    if (editData.note) {
+                        try {
+                            const parsed = JSON.parse(editData.note);
+                            if (parsed && typeof parsed === 'object' && ('actual_received_amount' in parsed)) {
+                                return parsed.actual_received_amount !== undefined && parsed.actual_received_amount !== null ? parsed.actual_received_amount : '';
+                            }
+                        } catch(e) {}
+                    }
+                    return editData.actual_received_amount || '';
+                })(),
                 creator: editData.created_by || '',
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0,
@@ -302,7 +331,6 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
     const availablePhases = useMemo(() => {
         const phases = new Set();
-        phases.add('Tạm ứng');
         if (formData.project_name && incomes && incomes.length > 0) {
             incomes.forEach(i => {
                 if (i.project_name === formData.project_name && i.phase) {
@@ -323,8 +351,23 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         let expected = 0;
 
         if (isAdvancePhase) {
-            const proj = projects.find(p => p.name === formData.project_name);
-            expected = proj?.advance_value || 0;
+            const invoiceRecords = phaseIncs
+                .filter(isIncomeInvoiceRow)
+                .sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
+            for (const inv of invoiceRecords) {
+                try {
+                    const parsed = JSON.parse(inv.note || '{}');
+                    if (Object.prototype.hasOwnProperty.call(parsed, 'actual_received_amount')) {
+                        expected = Number(parsed.actual_received_amount) || 0;
+                        break;
+                    }
+                } catch(e) {}
+                const invVal = Number(inv.post_tax_amount || inv.amount) || 0;
+                if (invVal > 0) {
+                    expected = invVal;
+                    break;
+                }
+            }
         } else {
             if (phaseIncs.length === 0) return null;
 
@@ -350,7 +393,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             }
         }
         
-        const received = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0 && i.id !== editData?.id).reduce((sum, i) => {
+        const received = phaseIncs.filter(i => isIncomeRealRow(i) && i.id !== editData?.id).reduce((sum, i) => {
             let actual = 0;
             let deduction = 0;
             if (i.note) {
@@ -369,6 +412,10 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
         return { expected, received };
     }, [type, formData.project_name, formData.phase, incomes, projects, editData, isAdvancePhase]);
+
+    const isReceiptEntryLocked = !editData && type === 'INCOME_REAL' &&
+        selectedPhaseStats && Number(selectedPhaseStats.expected) > 0 &&
+        Number(selectedPhaseStats.received) >= Number(selectedPhaseStats.expected);
 
     useEffect(() => {
         if (editData || type !== 'INCOME_REAL') return;
@@ -579,14 +626,22 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
             const valReal = Number(formData.actual_received_amount) || 0;
             const valDed = Number(formData.deduction_amount) || 0;
             if (isAdvancePhase) {
-                if (valReal <= 0) {
+                const hasExpected = Number(selectedPhaseStats?.expected) > 0;
+                const remainingAdvance = hasExpected ? Math.max(0, Number(selectedPhaseStats.expected) - Number(selectedPhaseStats.received)) : Infinity;
+                if (isReceiptEntryLocked) {
+                    newErrors.actual_received_amount = `Đợt thu đã thu đủ theo HSTT (${formatCurrency(selectedPhaseStats.expected)}), không thể nhập thêm.`;
+                } else if (valReal <= 0) {
                     newErrors.actual_received_amount = 'Vui lòng nhập giá trị tạm ứng';
+                } else if (hasExpected && valReal > remainingAdvance) {
+                    newErrors.actual_received_amount = `Giá trị tạm ứng vượt quá số còn lại (${formatCurrency(remainingAdvance)}).`;
                 }
             } else if (valReal <= 0 && valDed <= 0) {
                 newErrors.actual_received_amount = 'Vui lòng nhập giá trị thực nhận hoặc cấn trừ';
             }
             
-            if (!isAdvancePhase && selectedPhaseStats && selectedPhaseStats.expected > 0) {
+            if (!isAdvancePhase && isReceiptEntryLocked) {
+                newErrors.actual_received_amount = `Đợt thu đã thu đủ theo HSTT (${formatCurrency(selectedPhaseStats.expected)}), không thể nhập thêm.`;
+            } else if (!isAdvancePhase && selectedPhaseStats && selectedPhaseStats.expected > 0) {
                 const maxAllowed = selectedPhaseStats.expected - selectedPhaseStats.received;
                 const newTotal = (Number(formData.actual_received_amount) || 0) + (Number(formData.deduction_amount) || 0);
                 if (newTotal > maxAllowed) {
@@ -759,6 +814,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
     const labelCls = 'block text-sm font-bold text-slate-700 mb-1';
     const expenseUsesManualTax = type === 'EXPENSE';
+    const isIncomeEdit = Boolean(editData?.phase);
     const errorMsg = (field) => errors[field] ? (
         <span className="flex items-center gap-1 text-red-500 text-xs mt-1 font-medium">
             <AlertCircle size={12} /> {errors[field]}
@@ -783,16 +839,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
 
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden">
                 <div className="flex border-b">
-                    <button
+                    {!isIncomeEdit && <button
                         type="button"
                         onClick={() => { setType('EXPENSE'); setErrors({}); }}
                         className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'EXPENSE' ? 'bg-blue-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         CHI PHÍ
-                    </button>
+                    </button>}
                     <button
                         type="button"
                         onClick={() => {
+                            if (isIncomeEdit) {
+                                setType('INCOME_INVOICE');
+                                setErrors({});
+                                return;
+                            }
                             const nextAutoPhase = getNextIncomeInvoicePhase(formData.project_name);
                             lastAutoProjectRef.current = formData.project_name;
                             lastAutoPhaseRef.current = nextAutoPhase;
@@ -823,13 +884,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                     >
                         DOANH THU (THỰC TẾ)
                     </button>
-                    <button
+                    {!isIncomeEdit && <button
                         type="button"
                         onClick={() => { setType('OFFICE_INCOME'); setErrors({}); }}
                         className={`flex-1 py-3 text-sm sm:text-base sm:py-4 font-bold text-center transition ${type === 'OFFICE_INCOME' ? 'bg-amber-600 text-white' : 'hover:bg-slate-50 text-slate-500'}`}
                     >
                         THU VĂN PHÒNG
-                    </button>
+                    </button>}
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-8 space-y-6" noValidate>
@@ -1468,7 +1529,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         ))}
                                     </select>
                                     {errorMsg('phase')}
-                                    {!isAdvancePhase && selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
+                                    {selectedPhaseStats && (selectedPhaseStats.expected > 0 || selectedPhaseStats.received > 0) && (
                                         <>
                                             <div className="mt-2 text-[13px] p-2.5 bg-blue-50/50 border border-blue-100 rounded-lg flex items-center justify-between shadow-sm">
                                                 <span className="text-slate-600 font-medium">Tiến độ thu đợt này:</span>
@@ -1494,8 +1555,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         type="text"
                                         value={formData.voucher_no || ''}
                                         onChange={(e) => handleChange('voucher_no', e.target.value)}
+                                        disabled={isReceiptEntryLocked}
                                         placeholder="Nhập số chứng từ..."
-                                        className={inputCls('voucher_no')}
+                                        className={`${inputCls('voucher_no')} ${isReceiptEntryLocked ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                                     />
                                 </div>
                                 {/* Giá trị thực nhận/nhập */}
@@ -1505,8 +1567,9 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                         type="text"
                                         value={formData.actual_received_amount ? formatCurrency(formData.actual_received_amount) : ''}
                                         onChange={(e) => handleChange('actual_received_amount', parseVietnameseNumber(e.target.value))}
+                                        disabled={isReceiptEntryLocked}
                                         placeholder={isAdvancePhase ? 'Nhập giá trị tạm ứng...' : 'Nhập giá trị thực nhận...'}
-                                        className={`${inputCls('actual_received_amount')} font-bold text-emerald-600`}
+                                        className={`${inputCls('actual_received_amount')} font-bold text-emerald-600 ${isReceiptEntryLocked ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                                     />
                                     {errorMsg('actual_received_amount')}
                                 </div>
@@ -1517,12 +1580,13 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             type="text"
                                             value={formData.deduction_amount ? formatCurrency(formData.deduction_amount) : ''}
                                             onChange={(e) => handleChange('deduction_amount', parseVietnameseNumber(e.target.value))}
+                                            disabled={isReceiptEntryLocked}
                                             placeholder="Nhập giá trị cấn trừ..."
-                                            className={`${inputCls('deduction_amount')} font-bold text-amber-600`}
+                                            className={`${inputCls('deduction_amount')} font-bold text-amber-600 ${isReceiptEntryLocked ? 'bg-slate-100 cursor-not-allowed' : ''}`}
                                         />
                                     </div>
                                 )}
-                                {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && !isAdvancePhase && (
+                                {type === 'INCOME_REAL' && formData.project_name && formData.phase && incomes && (
                                     <div className="md:col-span-2 mt-4">
                                         <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lịch sử các lần thu tiền (Thực tế) đợt này</label>
                                         <div className="bg-slate-50 border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -1541,8 +1605,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                         const historyReals = incomes.filter(i => 
                                                             i.project_name === formData.project_name && 
                                                             i.phase === formData.phase && 
-                                                            i.post_tax_amount === 0 && 
-                                                            i.amount === 0
+                                                            isIncomeRealRow(i)
                                                         ).sort((a, b) => new Date(b.date || b.created_at) - new Date(a.date || a.created_at));
 
                                                         if (historyReals.length === 0) {
@@ -1736,6 +1799,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                     <>
                                         <select
                                             value={commonNotes.includes(formData.note) ? formData.note : formData.note === '' ? '' : 'CUSTOM'}
+                                            disabled={isReceiptEntryLocked}
                                             onChange={(e) => {
                                                 const val = e.target.value;
                                                 if (val === 'CUSTOM') {
@@ -1745,7 +1809,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                                     handleChange('note', val);
                                                 }
                                             }}
-                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition"
+                                            className={`w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold text-slate-800 outline-none focus:border-blue-500 focus:bg-white transition ${isReceiptEntryLocked ? 'cursor-not-allowed opacity-60' : ''}`}
                                         >
                                             <option value="">-- Chọn diễn giải mẫu --</option>
                                             {commonNotes.map((noteOpt) => (
@@ -1758,6 +1822,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                                             <textarea
                                                 value={formData.note}
                                                 onChange={(e) => handleChange('note', e.target.value)}
+                                                disabled={isReceiptEntryLocked}
                                                 rows="3"
                                                 className={inputCls('note')}
                                                 placeholder="Nhập chi tiết nội dung diễn giải..."
@@ -1798,7 +1863,7 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                         )}
                         <button
                             type="submit"
-                            disabled={isLoading}
+                                            disabled={isLoading || isReceiptEntryLocked}
                             className={`flex-1 py-4 rounded-xl font-bold text-white shadow-lg flex items-center justify-center gap-2 transition transform active:scale-95 ${
                                 type === 'EXPENSE' ? 'bg-blue-600 hover:bg-blue-700' : 'bg-green-600 hover:bg-green-700'
                             } disabled:opacity-60 disabled:cursor-not-allowed`}

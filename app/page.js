@@ -49,6 +49,15 @@ const getIncomeType = (i) => {
     return metadata?.is_offset ? 'INCOME_INVOICE' : 'INCOME_REAL';
 };
 
+const getIncomeActualAmount = (income) => {
+    try {
+        const metadata = JSON.parse(income?.note || '{}');
+        return (Number(metadata.actual_received_amount) || 0) + (Number(metadata.deduction_amount) || 0);
+    } catch (e) {
+        return 0;
+    }
+};
+
 const getIncomeInvoiceDate = (i) => {
     if (i?.note) {
         try {
@@ -1594,6 +1603,46 @@ export default function Home() {
     const handleAddData = async (type, data, editId = null) => {
         setIsLoading(true);
         try {
+        // UI validation can be stale after the page has been open for a while.
+        // Enforce the HSTT ceiling again at the save boundary for both new and edited receipts.
+        if (type === 'INCOME_REAL') {
+            const { data: storedPhaseRows, error: phaseLookupError } = await supabase
+                .from('incomes')
+                .select('id, project_name, phase, date, created_at, amount, post_tax_amount, note')
+                .eq('project_name', data.project_name)
+                .eq('phase', data.phase);
+            if (phaseLookupError) throw phaseLookupError;
+
+            const phaseRows = storedPhaseRows || incomes.filter(i =>
+                i.project_name === data.project_name && i.phase === data.phase
+            );
+            const invoiceRows = phaseRows
+                .filter(i => getIncomeType(i) === 'INCOME_INVOICE')
+                .sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0));
+
+            let expected = 0;
+            for (const invoice of invoiceRows) {
+                try {
+                    const metadata = JSON.parse(invoice.note || '{}');
+                    if (Object.prototype.hasOwnProperty.call(metadata, 'actual_received_amount')) {
+                        expected = Number(metadata.actual_received_amount) || 0;
+                        break;
+                    }
+                } catch (e) {}
+                expected = Number(invoice.post_tax_amount || invoice.amount) || 0;
+                if (expected > 0) break;
+            }
+
+            const received = phaseRows
+                .filter(i => getIncomeType(i) === 'INCOME_REAL' && i.id !== editId)
+                .reduce((sum, income) => sum + getIncomeActualAmount(income), 0);
+            const newReceipt = (Number(data.actual_received_amount) || 0) + (Number(data.deduction_amount) || 0);
+
+            if (expected > 0 && newReceipt > expected - received) {
+                showToast(`Khoản thu vượt số còn lại theo HSTT (${formatCurrency(Math.max(0, expected - received))}).`, 'error');
+                return;
+            }
+        }
             if (type === 'EXPENSE' || type === 'OFFICE_INCOME') {
                 const getAccountCodeOnly = (value = '') => String(value || '').split('-')[0].trim();
                 const isCode131 = type === 'EXPENSE' && String(data.code || '').trim() === '131';
@@ -3303,7 +3352,7 @@ export default function Home() {
                         : 0;
                 }
 
-                const pActual = phaseIncs.filter(i => i.post_tax_amount === 0 && i.amount === 0).reduce((sum, i) => {
+                const pActual = phaseIncs.filter(i => getIncomeType(i) === 'INCOME_REAL').reduce((sum, i) => {
                     let actual = 0;
                     if (i.note) {
                         try {
@@ -3867,15 +3916,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                     const settlementVal = Number(projDetails.settlementValue || currentProjectObj.settlement_value || currentProjectObj.settlementValue) || 0;
                                                     const gtblVal = Number(projDetails.gtblValue || currentProjectObj.gtbl_value || currentProjectObj.gtblValue) || 0;
 
-                                                    const extraPhases = [];
-                                                    if (settlementVal > 0 && !allProjectIncomes.some(i => (i.phase || '').toLowerCase().includes('quyết toán'))) {
-                                                        extraPhases.push('Quyết toán');
-                                                    }
-                                                    if (gtblVal > 0 && !allProjectIncomes.some(i => (i.phase || '').toLowerCase().includes('gtbl'))) {
-                                                        extraPhases.push('GTBL');
-                                                    }
-                                                    
-                                                    const uniquePhases = sortPhases([...allProjectIncomes.map(i => i.phase), ...extraPhases]);
+                                                    const uniquePhases = sortPhases([...allProjectIncomes.map(i => i.phase)]);
 
                                                     if (uniquePhases.length === 0) {
                                                         return (
@@ -3948,29 +3989,6 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                 _allPhaseInvoices: []
                                                             }];
                                                         } else {
-                                                            // Đợt Quyết toán hoặc GTBL được tạo tự động từ Thông tin công trình
-                                                            const isQuyetToan = phase.toLowerCase().includes('quyết toán');
-                                                            const isGtbl = phase.toLowerCase().includes('gtbl');
-                                                            if (isQuyetToan || isGtbl) {
-                                                                const val = isQuyetToan ? settlementVal : gtblVal;
-                                                                if (val > 0) {
-                                                                    return [{
-                                                                        id: `virtual_${phase}_${selectedProject}`,
-                                                                        project_name: selectedProject,
-                                                                        phase: phase,
-                                                                        amount: 0,
-                                                                        vat_amount: 0,
-                                                                        post_tax_amount: isQuyetToan ? val : 0,
-                                                                        date: '',
-                                                                        _combinedInvoiceNo: '',
-                                                                        _phaseReals: [],
-                                                                        _allPhaseInvoices: [],
-                                                                        _isRealOnly: isGtbl,
-                                                                        _isVirtual: true,
-                                                                        _virtualHstt: val
-                                                                    }];
-                                                                }
-                                                            }
                                                             return [];
                                                         }
                                                     }).flat();
@@ -4051,7 +4069,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                     }, 0);
                                                     
                                                     const totalReal = uniquePhases.reduce((sum, phase) => {
-                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && getIncomeType(inc) === 'INCOME_REAL');
                                                         const realSum = realRows.reduce((s, inc) => {
                                                             let val = 0;
                                                             if (inc.note) {
@@ -4070,7 +4088,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                     }, 0);
                                                     
                                                     const totalRealCash = uniquePhases.reduce((sum, phase) => {
-                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                        const realRows = allProjectIncomes.filter(inc => inc.phase === phase && getIncomeType(inc) === 'INCOME_REAL');
                                                         const realCashSum = realRows.reduce((s, inc) => {
                                                             let val = 0;
                                                             if (inc.note) {
@@ -4179,7 +4197,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                     {incomeTableCols.canTru && <td className="p-3 text-right font-black text-amber-600">
                                                                         {(() => {
                                                                             let deduction = 0;
-                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && getIncomeType(inc) === 'INCOME_REAL');
                                                                             deduction = realRows.reduce((acc, inc) => {
                                                                                 let val = 0;
                                                                                 if (inc.note) {
@@ -4223,7 +4241,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                                                                 expected = Number(proj?.advance_value) || 0;
                                                                             }
                                                                             
-                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && inc.post_tax_amount === 0 && inc.amount === 0);
+                                                                            const realRows = i._phaseReals || allowedIncomes.filter(inc => inc.project_name === selectedProject && inc.phase === i.phase && getIncomeType(inc) === 'INCOME_REAL');
                                                                             const actualCash = realRows.reduce((sum, inc) => {
                                                                                 let val = 0;
                                                                                 if (inc.note) {

@@ -130,6 +130,10 @@ const getBankCodeForQR = (bankFullName) => {
 
 const cleanAccountFieldValue = (value) => String(value || '').trim();
 
+// `teamValue` is the "Thực chi" column: the net amount actually paid to the team
+// in this payment period. Never use accumulatedAdvance or preTaxValue for posting.
+const getActualTeamExpense = (invoice = {}) => Math.max(0, Number(invoice.teamValue) || 0);
+
 const buildMissingTeamAccountPatch = (dbRow = {}, localRow = {}) => {
     const patch = {};
 
@@ -339,7 +343,9 @@ const isIncomeInvoiceRow = (income = {}) => {
             const parsed = JSON.parse(income.note);
             if (parsed && typeof parsed === 'object') {
                 if (parsed.type_data) typeData = parsed.type_data;
-                if (parsed.invoice_no || parsed.is_offset) {
+                // A receipt may carry its invoice number as a reference. It is still a
+                // real receipt unless it is explicitly declared as an invoice row.
+                if (parsed.is_offset || parsed.is_advance || parsed.is_gtbl || parsed.is_settlement) {
                     hasInvoiceNote = true;
                 }
             }
@@ -2049,17 +2055,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             const settlementValue = Number(details.settlementValue || p.settlement_value || p.settlementValue) || 0;
             const gtblValue = Number(details.gtblValue || p.gtbl_value || p.gtblValue) || 0;
             const projIncomes = incomes.filter(i => i.project_name === name);
-            const extraSettlementPhases = [];
-            if (settlementValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('quy\u1ebft to\u00e1n'))) {
-                extraSettlementPhases.push('Quy\u1ebft to\u00e1n');
-            }
-            if (gtblValue > 0 && !projIncomes.some(i => (i.phase||'').toLowerCase().includes('gtbl'))) {
-                extraSettlementPhases.push('GTBL');
-            }
-            const allPhases = [...new Set([
-                ...projIncomes.map(i => i.phase),
-                ...extraSettlementPhases
-            ].filter(Boolean))].sort(comparePhases);
+            const allPhases = [...new Set(projIncomes.map(i => i.phase).filter(Boolean))].sort(comparePhases);
 
             allPhases.forEach(phase => {
                 const phaseIncs = projIncomes.filter(i => i.phase === phase);
@@ -2110,26 +2106,21 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 let pExpected = 0;
                 const phaseLower = (phase || '').toLowerCase();
                 const isAdvPhase = phaseLower.includes('tạm ứng') || phaseLower.includes('tam ung');
-                if (isAdvPhase) {
-                    pExpected = (phaseHstt !== undefined && phaseHstt > 0) ? phaseHstt : (Number(advanceValue) || 0);
-                } else if (phaseLower.includes('quyết toán')) {
-                    pExpected = phaseHstt !== undefined ? phaseHstt : settlementValue;
-                } else if (phaseLower.includes('gtbl')) {
-                    // A placeholder GTBL invoice can legitimately carry a zero HSTT
-                    // while the project's retained-warranty amount is still unpaid.
-                    pExpected = phaseHstt > 0 ? phaseHstt : gtblValue;
-                } else {
-                    // A phase without HSTT must not become receivable based on its post-tax amount.
-                    pExpected = phaseHstt !== undefined ? phaseHstt : 0;
-                }
+                
+                // A phase without HSTT must not become receivable based on its post-tax amount.
+                pExpected = phaseHstt !== undefined ? phaseHstt : 0;
 
-                // Normal historical receipts are stored as zero-value rows, including
-                // rows carrying an invoice reference. Only the GTBL declaration itself
-                // must be excluded from "Đã thu".
-                const pActual = phaseIncs.filter(i => (
-                    i.post_tax_amount === 0 && i.amount === 0 &&
-                    (!phaseLower.includes('gtbl') || !isIncomeInvoiceRow(i))
-                )).reduce((sum, i) => {
+                // An invoice declaration can have zero monetary columns (e.g. advance/GTBL).
+                // Count only actual-receipt entries, never the declaration itself.
+                const pActual = phaseIncs.filter(i => {
+                    if (i.note) {
+                        try {
+                            const parsed = JSON.parse(i.note);
+                            if (parsed?.type_data) return parsed.type_data === 'INCOME_REAL';
+                        } catch (e) {}
+                    }
+                    return i.post_tax_amount === 0 && i.amount === 0 && !isIncomeInvoiceRow(i);
+                }).reduce((sum, i) => {
                     let actual = 0;
                     if (i.voucher_no) voucher_nos.push(i.voucher_no);
                     if (i.note) {
@@ -2198,14 +2189,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                 const remaining = pExpected - pActual;
                 // "TN HSTT" tracks the invoice's full amount. If no HSTT was entered,
                 // its target is the post-tax invoice value, while "Cần thu" remains 0.
+                const invoicePostTaxSum = invoiceRecords.reduce((sum, invoice) => sum + (Number(invoice.post_tax_amount) || Number(invoice.amount) || 0), 0);
                 const tnHsttTarget = isOffsetInvoice
                     ? 0
                     : phaseHstt > 0
                     ? phaseHstt
-                    : phaseLower.includes('gtbl')
-                        ? gtblValue
-                    : invoiceRecords.length > 0
-                        ? invoiceRecords.reduce((sum, invoice) => sum + (Number(invoice.post_tax_amount) || Number(invoice.amount) || 0), 0)
+                    : invoicePostTaxSum > 0
+                        ? invoicePostTaxSum
                         : pExpected;
 
                 // The receivables list only contains phases whose TN HSTT has not been fully received.
@@ -3759,10 +3749,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                                                     ) : (
                                                                                         <button 
                                                                                             onClick={() => {
+                                                                                                const actualExpense = getActualTeamExpense(inv);
                                                                                                 setAdvanceData({
                                                                                                     project_name: inv.projectName,
                                                                                                     recipient: inv.teamName,
-                                                                                                    amount: parseFloat(inv.teamValue) || 0,
+                                                                                                    amount: actualExpense,
                                                                                                     payment_period: inv.payment_period,
                                                                                                     note: `Tạm ứng tổ đội - ${inv.teamName} - ${inv.payment_period}`,
                                                                                                     code: '622',
@@ -4317,7 +4308,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 <input type="text" value={advanceData.recipient} onChange={(e) => setAdvanceData({...advanceData, recipient: e.target.value})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-bold text-slate-900 outline-none focus:border-indigo-500 transition" />
                             </div>
                             <div>
-                                <label className="block text-sm font-black text-slate-900 mb-2">Số tiền Tạm ứng (CHI)</label>
+                                <label className="block text-sm font-black text-slate-900 mb-2">Số thực chi hạch toán (CHI)</label>
                                 <input type="text" value={advanceData.amount ? formatCurrency(advanceData.amount) : ''} onChange={(e) => setAdvanceData({...advanceData, amount: parseVietnameseNumber(e.target.value)})} className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-2 text-sm font-black text-orange-600 outline-none focus:border-indigo-500 transition" />
                             </div>
                             <div className="grid grid-cols-2 gap-4">

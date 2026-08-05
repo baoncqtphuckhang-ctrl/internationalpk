@@ -228,88 +228,9 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                     .replace(/[\u0300-\u036f]/g, '')
                     .toLowerCase();
 
-                const advanceKey = Object.keys(grouped).find(key =>
-                    key.startsWith(`${pName}_`) && normalizePhase(grouped[key].phase).includes('tam ung')
-                );
-                if (advanceKey) {
-                    grouped[advanceKey].hsttAmount = advanceVal;
-                } else if (advanceVal > 0) {
-                    const keyAdvance = `${pName}_Tạm ứng`;
-                    grouped[keyAdvance] = {
-                        id: keyAdvance,
-                        project_name: pName,
-                        phase: 'Tạm ứng',
-                        beforeTaxAmount: 0,
-                        vatAmount: 0,
-                        invoiceAmount: 0,
-                        hsttAmount: advanceVal,
-                        receivedAmount: 0,
-                        invoiceNo: '',
-                        voucherNo: '',
-                        invoiceDate: '',
-                        invoicePdf: null,
-                        hsttPdf: null,
-                        noteRaw: '',
-                        invoice_id: null,
-                        invoice_noteRaw: null,
-                        invoice_date_col: null
-                    };
-                }
-
-                if (setVal > 0) {
-                    const keyQuyetToan = `${pName}_Quyết toán`;
-                    if (!grouped[keyQuyetToan] && !Object.keys(grouped).some(k => k.startsWith(`${pName}_`) && k.toLowerCase().includes('quyết toán'))) {
-                        grouped[keyQuyetToan] = {
-                            id: keyQuyetToan,
-                            first_income_id: null,
-                            project_name: pName,
-                            phase: 'Quyết toán',
-                            beforeTaxAmount: 0,
-                            vatAmount: 0,
-                            invoiceAmount: setVal,
-                            hsttAmount: setVal,
-                            receivedAmount: 0,
-                            invoiceNo: '',
-                            voucherNo: '',
-                            invoiceDate: '',
-                            invoicePdf: null,
-                            hsttPdf: null,
-                            noteRaw: '',
-                            invoice_id: null,
-                            invoice_noteRaw: null,
-                            invoice_date_col: null
-                        };
-                    }
-                }
-
-                if (gtblVal > 0) {
-                    const keyGtbl = `${pName}_GTBL`;
-                    if (!grouped[keyGtbl] && !Object.keys(grouped).some(k => k.startsWith(`${pName}_`) && k.toLowerCase().includes('gtbl'))) {
-                        grouped[keyGtbl] = {
-                            id: keyGtbl,
-                            first_income_id: null,
-                            project_name: pName,
-                            phase: 'GTBL',
-                            beforeTaxAmount: 0,
-                            vatAmount: 0,
-                            invoiceAmount: 0,
-                            hsttAmount: gtblVal,
-                            receivedAmount: 0,
-                            invoiceNo: '',
-                            voucherNo: '',
-                            invoiceDate: '',
-                            invoicePdf: null,
-                            hsttPdf: null,
-                            noteRaw: '',
-                            invoice_id: null,
-                            invoice_noteRaw: null,
-                            invoice_date_col: null
-                        };
-                    }
-                }
             });
         }
-        
+
         return Object.values(grouped).map(g => ({
             ...g,
             amount: g.beforeTaxAmount, // For compatibility
