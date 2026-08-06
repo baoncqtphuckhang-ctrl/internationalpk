@@ -2,12 +2,34 @@
 
 import React, { useState, useMemo } from 'react';
 import { PieChart, Download, Copy, Search, Printer, EyeOff, Eye } from 'lucide-react';
-import { formatCurrency, EXPENSE_CATEGORIES } from '@/lib/utils';
+import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
-export default function ExpenseSummary({ projects, projectDetails = {}, transactions, dashboardData = [], handleCopyTable, exportTableToExcel, onProjectDoubleClick }) {
+export default function ExpenseSummary({ projects, projectDetails = {}, transactions = [], dashboardData = [], handleCopyTable, exportTableToExcel, onProjectDoubleClick, handleSaveTransactionValue }) {
     const [filterText, setFilterText] = useState('');
     const [hiddenProjects, setHiddenProjects] = useState([]);
     const [showHiddenList, setShowHiddenList] = useState(false);
+    const [promptModal, setPromptModal] = useState({ isOpen: false, project: '', value: '', type: '', title: '' });
+
+    const handleOpenPrompt = (project, currentValue, type, title) => {
+        setPromptModal({
+            isOpen: true,
+            project,
+            value: currentValue ? currentValue.toString() : '',
+            type,
+            title
+        });
+    };
+
+    const handleClosePrompt = () => {
+        setPromptModal({ isOpen: false, project: '', value: '', type: '', title: '' });
+    };
+
+    const handleSubmitPrompt = () => {
+        if (handleSaveTransactionValue && promptModal.type) {
+            handleSaveTransactionValue(promptModal.project, promptModal.value, promptModal.type, promptModal.title);
+        }
+        handleClosePrompt();
+    };
 
     const toggleHideProject = (projectName) => {
         setHiddenProjects(prev => {
@@ -276,11 +298,87 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 })}
                                 <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
                             </tr>
+                            <tr className="bg-black border-t border-slate-800">
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">TẠM ỨNG CHƯA THU HỒI</td>
+                                {filteredData.map(d => {
+                                    const tx = transactions?.find(t => t.project_name === d.project && t.code === 'UNRECOVERED_ADVANCE');
+                                    const savedVal = tx ? tx.debit : 0;
+                                    return (
+                                        <td 
+                                            key={d.project} 
+                                            data-excel-value={savedVal !== 0 ? savedVal : ''} 
+                                            onClick={() => handleOpenPrompt(d.project, savedVal, 'UNRECOVERED_ADVANCE', 'Tạm ứng chưa thu hồi')}
+                                            className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px] hover:bg-slate-900 cursor-pointer transition-colors"
+                                            title="Nhấp để nhập Tạm ứng chưa thu hồi"
+                                        >
+                                            {savedVal !== 0 ? (
+                                                <span className="text-amber-400 font-bold">{formatCurrency(savedVal)}</span>
+                                            ) : (
+                                                <span className="text-slate-500 font-normal italic text-xs hover:text-amber-300">Nhập số...</span>
+                                            )}
+                                        </td>
+                                    );
+                                })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
+                            </tr>
+                            <tr className="bg-black border-t border-slate-800">
+                                <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">GIÁ TRỊ BẢO LƯU</td>
+                                {filteredData.map(d => {
+                                    const tx = transactions?.find(t => t.project_name === d.project && t.code === 'RETENTION_VALUE');
+                                    const savedVal = tx ? tx.debit : 0;
+                                    return (
+                                        <td 
+                                            key={d.project} 
+                                            data-excel-value={savedVal !== 0 ? savedVal : ''} 
+                                            onClick={() => handleOpenPrompt(d.project, savedVal, 'RETENTION_VALUE', 'Giá trị bảo lưu')}
+                                            className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px] hover:bg-slate-900 cursor-pointer transition-colors"
+                                            title="Nhấp để nhập Giá trị bảo lưu"
+                                        >
+                                            {savedVal !== 0 ? (
+                                                <span className="text-emerald-400 font-bold">{formatCurrency(savedVal)}</span>
+                                            ) : (
+                                                <span className="text-slate-500 font-normal italic text-xs hover:text-emerald-300">Nhập số...</span>
+                                            )}
+                                        </td>
+                                    );
+                                })}
+                                <td className="p-1.5 px-3 border-slate-800 bg-black w-full empty-column"></td>
+                            </tr>
 
                         </tfoot>
                     </table>
                 </div>
             </div>
+            {/* Modal Prompt Nhập số */}
+            {promptModal.isOpen && (
+                <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
+                    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={handleClosePrompt}></div>
+                    <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
+                        <div className="bg-slate-50 border-b border-slate-200 px-5 py-4">
+                            <h3 className="font-bold text-slate-800 text-lg">{promptModal.title || 'Nhập số tiền'}</h3>
+                            <p className="text-slate-500 text-sm mt-1">Công trình: <span className="font-bold text-blue-600">{promptModal.project}</span></p>
+                        </div>
+                        <div className="p-5">
+                            <input 
+                                type="text"
+                                autoFocus
+                                value={promptModal.value ? formatCurrency(promptModal.value) : ''}
+                                onChange={(e) => setPromptModal({ ...promptModal, value: parseVietnameseNumber(e.target.value) })}
+                                onKeyDown={(e) => {
+                                    if(e.key === 'Enter') handleSubmitPrompt();
+                                    if(e.key === 'Escape') handleClosePrompt();
+                                }}
+                                placeholder="Ví dụ: 10.000.000"
+                                className="w-full text-center text-xl font-bold p-3 border-2 border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-blue-600 transition-all placeholder:text-slate-300 placeholder:font-normal"
+                            />
+                        </div>
+                        <div className="flex gap-2 p-4 bg-slate-50 border-t border-slate-100">
+                            <button onClick={handleClosePrompt} className="flex-1 py-2.5 bg-white border border-slate-300 rounded-xl font-bold text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition shadow-sm">Hủy</button>
+                            <button onClick={handleSubmitPrompt} className="flex-1 py-2.5 bg-blue-600 rounded-xl font-bold text-white hover:bg-blue-700 transition shadow-lg shadow-blue-600/30">Lưu lại</button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
