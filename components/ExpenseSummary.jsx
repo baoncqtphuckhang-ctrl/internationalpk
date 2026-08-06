@@ -302,20 +302,23 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">TẠM ỨNG CHƯA THU HỒI</td>
                                 {filteredData.map(d => {
                                     const tx = transactions?.find(t => t.project_name === d.project && t.code === 'UNRECOVERED_ADVANCE');
-                                    const hasValue = tx !== undefined && tx.debit !== null && tx.debit !== undefined;
-                                    const savedVal = hasValue ? tx.debit : null;
+                                    const defaultTitle = 'Tạm ứng chưa thu hồi';
+                                    const editVal = tx ? ((tx.note && tx.note !== defaultTitle) ? tx.note : (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0 ? formatCurrency(tx.debit) : '')) : '';
+                                    const excelVal = tx ? (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0 ? tx.debit : ((tx.note && tx.note !== defaultTitle) ? tx.note : '')) : '';
                                     return (
                                         <td 
                                             key={d.project} 
-                                            data-excel-value={hasValue ? savedVal : ''} 
-                                            onClick={() => handleOpenPrompt(d.project, hasValue ? savedVal : '', 'UNRECOVERED_ADVANCE', 'Tạm ứng chưa thu hồi')}
+                                            data-excel-value={excelVal} 
+                                            onClick={() => handleOpenPrompt(d.project, editVal, 'UNRECOVERED_ADVANCE', defaultTitle)}
                                             className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px] hover:bg-slate-900 cursor-pointer transition-colors"
                                             title="Nhấp để nhập Tạm ứng chưa thu hồi"
                                         >
-                                            {hasValue ? (
-                                                <span className="text-amber-400 font-bold">{formatCurrency(savedVal)}</span>
+                                            {tx && (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0) ? (
+                                                <span className="text-amber-400 font-bold">{formatCurrency(tx.debit)}</span>
+                                            ) : tx && (tx.note && tx.note !== defaultTitle) ? (
+                                                <span className="text-amber-400 font-bold">{tx.note}</span>
                                             ) : (
-                                                <span className="text-slate-500 font-normal italic text-xs hover:text-amber-300">Nhập số...</span>
+                                                <span className="text-slate-500 font-normal italic text-xs hover:text-amber-300">Nhập số/chữ...</span>
                                             )}
                                         </td>
                                     );
@@ -326,20 +329,23 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 <td className="p-1.5 px-3 border-r border-slate-800 sticky left-0 bg-black z-40 uppercase w-[180px] min-w-[180px] max-w-[180px] leading-tight">GIÁ TRỊ BẢO LƯU</td>
                                 {filteredData.map(d => {
                                     const tx = transactions?.find(t => t.project_name === d.project && t.code === 'RETENTION_VALUE');
-                                    const hasValue = tx !== undefined && tx.debit !== null && tx.debit !== undefined;
-                                    const savedVal = hasValue ? tx.debit : null;
+                                    const defaultTitle = 'Giá trị bảo lưu';
+                                    const editVal = tx ? ((tx.note && tx.note !== defaultTitle) ? tx.note : (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0 ? formatCurrency(tx.debit) : '')) : '';
+                                    const excelVal = tx ? (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0 ? tx.debit : ((tx.note && tx.note !== defaultTitle) ? tx.note : '')) : '';
                                     return (
                                         <td 
                                             key={d.project} 
-                                            data-excel-value={hasValue ? savedVal : ''} 
-                                            onClick={() => handleOpenPrompt(d.project, hasValue ? savedVal : '', 'RETENTION_VALUE', 'Giá trị bảo lưu')}
+                                            data-excel-value={excelVal} 
+                                            onClick={() => handleOpenPrompt(d.project, editVal, 'RETENTION_VALUE', defaultTitle)}
                                             className="p-1.5 px-3 border-r border-slate-800 bg-black text-right w-[150px] min-w-[150px] max-w-[200px] hover:bg-slate-900 cursor-pointer transition-colors"
                                             title="Nhấp để nhập Giá trị bảo lưu"
                                         >
-                                            {hasValue ? (
-                                                <span className="text-emerald-400 font-bold">{formatCurrency(savedVal)}</span>
+                                            {tx && (tx.debit !== null && tx.debit !== undefined && Number(tx.debit) !== 0) ? (
+                                                <span className="text-emerald-400 font-bold">{formatCurrency(tx.debit)}</span>
+                                            ) : tx && (tx.note && tx.note !== defaultTitle) ? (
+                                                <span className="text-emerald-400 font-bold">{tx.note}</span>
                                             ) : (
-                                                <span className="text-slate-500 font-normal italic text-xs hover:text-emerald-300">Nhập số...</span>
+                                                <span className="text-slate-500 font-normal italic text-xs hover:text-emerald-300">Nhập số/chữ...</span>
                                             )}
                                         </td>
                                     );
@@ -351,26 +357,26 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                     </table>
                 </div>
             </div>
-            {/* Modal Prompt Nhập số */}
+            {/* Modal Prompt Nhập số / chữ */}
             {promptModal.isOpen && (
                 <div className="fixed inset-0 z-[999] flex items-center justify-center p-4">
                     <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={handleClosePrompt}></div>
                     <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-sm overflow-hidden z-10 animate-in fade-in zoom-in-95 duration-200">
                         <div className="bg-slate-50 border-b border-slate-200 px-5 py-4">
-                            <h3 className="font-bold text-slate-800 text-lg">{promptModal.title || 'Nhập số tiền'}</h3>
+                            <h3 className="font-bold text-slate-800 text-lg">{promptModal.title || 'Nhập dữ liệu'}</h3>
                             <p className="text-slate-500 text-sm mt-1">Công trình: <span className="font-bold text-blue-600">{promptModal.project}</span></p>
                         </div>
                         <div className="p-5">
                             <input 
                                 type="text"
                                 autoFocus
-                                value={promptModal.value !== '' && promptModal.value !== null && promptModal.value !== undefined ? formatCurrency(promptModal.value) : ''}
-                                onChange={(e) => setPromptModal({ ...promptModal, value: parseVietnameseNumber(e.target.value) })}
+                                value={promptModal.value}
+                                onChange={(e) => setPromptModal({ ...promptModal, value: e.target.value })}
                                 onKeyDown={(e) => {
                                     if(e.key === 'Enter') handleSubmitPrompt();
                                     if(e.key === 'Escape') handleClosePrompt();
                                 }}
-                                placeholder="Ví dụ: 10.000.000"
+                                placeholder="Ví dụ: 10.000.000 hoặc Nhập chữ..."
                                 className="w-full text-center text-xl font-bold p-3 border-2 border-slate-200 rounded-xl outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 text-blue-600 transition-all placeholder:text-slate-300 placeholder:font-normal"
                             />
                         </div>

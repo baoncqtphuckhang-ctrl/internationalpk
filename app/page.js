@@ -2442,24 +2442,30 @@ export default function Home() {
         }
     };
 
-    const handleSaveTransactionValue = async (projectName, valueStr, code, note) => {
-        const val = Number(parseVietnameseNumber(valueStr)) || 0;
+    const handleSaveTransactionValue = async (projectName, valueStr, code, titleNote) => {
+        const rawStr = (valueStr !== null && valueStr !== undefined) ? String(valueStr).trim() : '';
+        const parsed = parseVietnameseNumber(rawStr);
+        const num = Number(parsed);
+        const isNum = rawStr !== '' && !isNaN(num) && parsed !== '';
+        const val = isNum ? num : 0;
+        const noteToSave = isNum ? (rawStr || titleNote) : rawStr;
+
         const existing = transactions.find(t => t.project_name === projectName && t.code === code);
         setIsLoading(true);
         try {
             if (existing) {
-                await supabase.from('transactions').update({ debit: val }).eq('id', existing.id);
+                await supabase.from('transactions').update({ debit: val, note: noteToSave }).eq('id', existing.id);
             } else {
                 await supabase.from('transactions').insert([{
                     project_name: projectName,
                     accounting_date: new Date().toISOString().split('T')[0],
                     code: code,
                     debit: val,
-                    note: note,
+                    note: noteToSave,
                     created_by: currentUser.username
                 }]);
             }
-            logActivity('Cập nhật', 'Giao dịch', `Cập nhật dữ liệu đặc biệt (${code}): ${val}`, projectName);
+            logActivity('Cập nhật', 'Giao dịch', `Cập nhật dữ liệu đặc biệt (${code}): ${rawStr}`, projectName);
             fetchData();
         } catch (err) {
             showToast('Lỗi khi lưu dữ liệu', 'error');
