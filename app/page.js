@@ -4614,6 +4614,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
             <UserModal
                 isOpen={userModal.isOpen}
                 user={userModal.user}
+                usersList={usersList}
                 systemConfig={systemConfig}
                 onClearIp={async (username) => {
                     if (!systemConfig.allowed_ips || !systemConfig.allowed_ips[username]) {

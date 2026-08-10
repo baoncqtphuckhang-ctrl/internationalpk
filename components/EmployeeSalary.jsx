@@ -342,13 +342,13 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             const to_date = `${period}-${String(endDay).padStart(2, '0')}`;
             
             const diffDays = endDay - startDay + 1;
-            const ratio = Math.round((diffDays / daysInMonth) * 100);
+            const defaultRatio = Math.round((diffDays / daysInMonth) * 100);
             
             return {
                 ...alloc,
                 from_date,
                 to_date,
-                ratio
+                ratio: (alloc.ratio !== undefined && alloc.ratio !== null) ? alloc.ratio : defaultRatio
             };
         });
     };
@@ -627,12 +627,15 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const y = parseInt(yStr, 10), m = parseInt(mStr, 10);
         const stdDays = calcStandardDays(y, m);
 
+        const copyFrom = createPeriodModal.copyFrom || selectedMonth;
         let sourceEmps = [];
-        if (createPeriodModal.copyFrom) {
-            if (draftRecords[createPeriodModal.copyFrom]) {
-                sourceEmps = cloneData(draftRecords[createPeriodModal.copyFrom].employees || []);
-            } else if (historyRecords[createPeriodModal.copyFrom]) {
-                sourceEmps = cloneData(historyRecords[createPeriodModal.copyFrom].employees || []);
+        let isFromHistory = false;
+        if (copyFrom) {
+            if (draftRecords[copyFrom]) {
+                sourceEmps = cloneData(draftRecords[copyFrom].employees || []);
+            } else if (historyRecords[copyFrom]) {
+                sourceEmps = cloneData(historyRecords[copyFrom].employees || []);
+                isFromHistory = true;
             }
         }
 
@@ -641,13 +644,41 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             if (emp.isDepartment || emp.is_department) {
                 return { ...emp, isDepartment: true, is_department: true };
             }
-            const copyFrom = createPeriodModal.copyFrom || selectedMonth;
-            const periodAllocations = copyFrom && emp.allocations?.[copyFrom]
+            
+            // 1. Phân bổ nhân sự: Kế thừa phân bổ từ kỳ cũ và cập nhật ngày cho kỳ mới
+            let rawAllocations = copyFrom && emp.allocations?.[copyFrom]
                 ? cloneData(emp.allocations[copyFrom])
-                : [];
+                : (emp.allocations?.[selectedMonth] ? cloneData(emp.allocations[selectedMonth]) : []);
+                
+            if ((!rawAllocations || rawAllocations.length === 0) && emp.allocations) {
+                const allocKeys = Object.keys(emp.allocations);
+                if (allocKeys.length > 0) {
+                    rawAllocations = cloneData(emp.allocations[allocKeys[allocKeys.length - 1]]);
+                }
+            }
+            const periodAllocations = applyDefaultAllocations(rawAllocations || [], p);
+
+            // 2. Ngày phép: Chỉ cộng thêm 1 phép cho những ai được tính phép từ kỳ trước
+            let newLeaveBalance = emp.leave_balance;
+            const isLeaveCalculated = emp.leave_balance !== 'N/A' && emp.leave_balance !== 'Không tính' && emp.leave_balance !== null && emp.leave_balance !== undefined;
+
+            if (isLeaveCalculated) {
+                if (isFromHistory && emp._leave_rolled_over) {
+                    // Nếu là bản lịch sử cũ đã được cộng sẵn trước đây
+                    newLeaveBalance = Number(emp.leave_balance) || 0;
+                } else {
+                    const usedLeavesInPrev = copyFrom ? getUsedLeaves(emp, copyFrom) : 0;
+                    const prevBalance = Number(emp.leave_balance) || 0;
+                    newLeaveBalance = prevBalance - usedLeavesInPrev + 1;
+                }
+            } else {
+                newLeaveBalance = 'N/A';
+            }
+
             return {
                 ...emp,
                 isDepartment: false,
+                leave_balance: newLeaveBalance,
                 attendance: { [p]: getDefaultAttendance(y, m) },
                 allocations: periodAllocations.length > 0 ? { [p]: periodAllocations } : {}
             };
@@ -1029,15 +1060,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 }
                 const newEmployeesState = employees.map(emp => {
                     if (emp.isDepartment) return emp;
-                    let usedLeaves = 0;
-                    const monthAtt = emp.attendance?.[selectedMonth] || {};
-                    Object.values(monthAtt).forEach(val => {
-                        if (val === 'P') usedLeaves += 1;
-                        else if (val === 'P/2') usedLeaves += 0.5;
-                    });
-                    const currentBalance = emp.leave_balance === 'N/A' ? 'N/A' : (Number(emp.leave_balance) || 0);
-                    const newBalance = currentBalance === 'N/A' ? 'N/A' : (currentBalance - usedLeaves + 1); // Cộng 1 ngày phép cho tháng sau
-                    return { ...emp, leave_balance: newBalance };
+                    return { ...emp };
                 });
 
                 const monthData = {

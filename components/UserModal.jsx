@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/lib/supabase';
 import { INITIAL_DATA } from './EmployeeSalary';
 
-export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, systemConfig }) {
+export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, systemConfig, usersList = [] }) {
     const [employees, setEmployees] = useState([]);
+    const [existingUsers, setExistingUsers] = useState([]);
     const [showCustomInput, setShowCustomInput] = useState(false);
     const [formData, setFormData] = useState({
         username: '',
@@ -15,18 +16,55 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
     });
 
     useEffect(() => {
-        const fetchEmployees = async () => {
-            const { data } = await supabase.from('employees').select('name');
-            if (data && data.length > 0) {
-                setEmployees(data.filter(e => e.name).map(e => e.name));
-            } else {
-                setEmployees(INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name));
+        const fetchEmployeesAndUsers = async () => {
+            let empNames = [];
+            try {
+                const { data } = await supabase.from('employees').select('name');
+                if (data && data.length > 0) {
+                    empNames = data.filter(e => e.name).map(e => e.name);
+                } else {
+                    empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name);
+                }
+            } catch (e) {
+                empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name);
+            }
+            setEmployees(empNames);
+
+            try {
+                const { data: userData } = await supabase.from('users').select('id, name, username');
+                if (userData && userData.length > 0) {
+                    setExistingUsers(userData);
+                } else {
+                    setExistingUsers(usersList);
+                }
+            } catch (e) {
+                setExistingUsers(usersList);
             }
         };
         if (isOpen) {
-            fetchEmployees();
+            fetchEmployeesAndUsers();
         }
-    }, [isOpen]);
+    }, [isOpen, usersList]);
+
+    const availableEmployees = useMemo(() => {
+        const allUsers = (existingUsers && existingUsers.length > 0) ? existingUsers : usersList;
+        const takenNames = new Set(
+            (allUsers || [])
+                .filter(u => {
+                    if (!user) return true;
+                    if (user.id && u.id) return u.id !== user.id;
+                    if (user.username && u.username) return u.username.toLowerCase() !== user.username.toLowerCase();
+                    return true;
+                })
+                .map(u => (u.name || '').trim().toLowerCase())
+                .filter(Boolean)
+        );
+
+        return employees.filter(empName => {
+            const norm = (empName || '').trim().toLowerCase();
+            return !takenNames.has(norm);
+        });
+    }, [employees, existingUsers, usersList, user]);
 
     useEffect(() => {
         if (user) {
@@ -38,7 +76,7 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
                 password: user.password || '',
                 allowed_ips: systemConfig?.allowed_ips?.[user.username] || ''
             });
-            if (user.name && employees.length > 0 && !employees.includes(user.name)) {
+            if (user.name && employees.length > 0 && !availableEmployees.includes(user.name) && !employees.includes(user.name)) {
                 setShowCustomInput(true);
             } else {
                 setShowCustomInput(false);
@@ -54,7 +92,7 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
             });
             setShowCustomInput(false);
         }
-    }, [user, isOpen, employees]);
+    }, [user, isOpen, employees, availableEmployees, systemConfig]);
 
     if (!isOpen) return null;
 
@@ -90,12 +128,12 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
                             }
                         }} className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl outline-none focus:border-blue-500 font-bold transition">
                             <option value="">-- Chọn Nhân Viên --</option>
-                            {employees.map(empName => (
+                            {availableEmployees.map(empName => (
                                 <option key={empName} value={empName}>{empName}</option>
                             ))}
                             <option value="Khác...">Khác (Tự nhập mới)...</option>
-                            {/* Cho phép giữ nguyên tên nếu user cũ không nằm trong danh sách nhân viên */}
-                            {formData.name && !employees.includes(formData.name) && !showCustomInput && (
+                            {/* Cho phép giữ nguyên tên nếu đang edit hoặc tên không nằm trong availableEmployees */}
+                            {formData.name && !availableEmployees.includes(formData.name) && !showCustomInput && (
                                 <option value={formData.name}>{formData.name}</option>
                             )}
                         </select>
