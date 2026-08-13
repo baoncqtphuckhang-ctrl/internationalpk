@@ -538,13 +538,12 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
                 if (itemsList.length > 0) {
                     const grandTotal = calculateMaterialSubtotal(formData.categories);
-                    const grandTotalAfterTax = Math.round(grandTotal * 1.08);
                     
                     const dnttPayload = {
                         doc_type: 'Đơn Vật Tư',
                         project_name: formData.project_name,
                         recipient: formData.company || formData.recipient,
-                        total_amount: grandTotalAfterTax,
+                        total_amount: grandTotal,
                         status: 'Waiting QS', 
                         reason: JSON.stringify({
                             docType: 'Đơn Vật Tư',

@@ -207,8 +207,21 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
                 phase: editData.phase || 'Đợt 1',
                 amount: editData.amount || 0,
                 vat_rate: editData.vat_rate || 8,
-                vat_amount: editData.vat_amount || 0,
-                post_tax_amount: editData.post_tax_amount || 0,
+                vat_amount: (() => {
+                    if (editData.vat_amount) return editData.vat_amount;
+                    if (type === 'EXPENSE' && ['621', '623'].includes(String(editData.code))) {
+                        return Math.round((editData.debit || 0) * 0.08);
+                    }
+                    return 0;
+                })(),
+                post_tax_amount: (() => {
+                    if (editData.post_tax_amount) return editData.post_tax_amount;
+                    if (type === 'EXPENSE' && ['621', '623'].includes(String(editData.code))) {
+                        const debit = editData.debit || 0;
+                        return debit + Math.round(debit * 0.08);
+                    }
+                    return 0;
+                })(),
                 amount6418: editData.credit || 0,
                 note: (() => {
                     if (editData.note) {
@@ -530,15 +543,22 @@ export default function InputForm({ transactions = [], projects, onSubmit, onAdd
         if (type === 'EXPENSE') {
             if (field === 'debit') {
                 const debitNum = parseFloat(value) || 0;
-                const vatNum = parseFloat(formData.vat_amount) || 0;
+                let vatNum = parseFloat(formData.vat_amount) || 0;
+                
+                // Auto-recalculate VAT for material expenses when debit changes
+                if (['621', '623'].includes(String(formData.code))) {
+                    vatNum = Math.round(debitNum * 0.08);
+                }
+                
                 const postTaxNum = debitNum + vatNum;
                 setFormData(prev => ({
                     ...prev,
                     debit: value,
+                    vat_amount: vatNum,
                     post_tax_amount: postTaxNum > 0 ? postTaxNum : value
                 }));
-                if (errors.debit || errors.post_tax_amount) {
-                    setErrors(prev => { const e = { ...prev }; delete e.debit; delete e.post_tax_amount; return e; });
+                if (errors.debit || errors.post_tax_amount || errors.vat_amount) {
+                    setErrors(prev => { const e = { ...prev }; delete e.debit; delete e.post_tax_amount; delete e.vat_amount; return e; });
                 }
                 return;
             }
