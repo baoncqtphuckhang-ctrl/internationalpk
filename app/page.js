@@ -500,10 +500,6 @@ export default function Home() {
     const [projects, setProjects] = useState([]);
     const [projectDetails, setProjectDetails] = useState({});
     const [transactions, setTransactions] = useState([]);
-    const [detailedTransactions, setDetailedTransactions] = useState([]);
-    const [isDetailsLoaded, setIsDetailsLoaded] = useState(false);
-    const [isLoadingDetails, setIsLoadingDetails] = useState(false);
-    const [detailedTransactionsScope, setDetailedTransactionsScope] = useState('');
     const [incomes, setIncomes] = useState([]);
     const [dnttList, setDnttList] = useState([]);
     const [highlightedReqId, setHighlightedReqId] = useState(null);
@@ -1119,57 +1115,6 @@ export default function Home() {
         }));
         setTransactions(normalizedTransData);
     };
-
-    const fetchDetailedTransactionsData = async (force = false, projectName = '') => {
-        if ((isDetailsLoaded || isLoadingDetails) && !force && detailedTransactionsScope === projectName) return;
-        setIsLoadingDetails(true);
-        try {
-            const fields = 'id, project_name, accounting_date, document_date, code, debit, credit, invoice_no, invoice_date, recipient, corresponding_account, supplier_customer, note, expense_category, cost_type, created_at, created_by';
-            let allTrans = [];
-
-            if (projectName) {
-                const pageSize = 1000;
-                let page = 0;
-                while (true) {
-                    const { data, error } = await supabase
-                        .from('transactions')
-                        .select(fields)
-                        .eq('project_name', projectName)
-                        .order('accounting_date', { ascending: false })
-                        .order('id', { ascending: true })
-                        .range(page * pageSize, (page + 1) * pageSize - 1);
-                    if (error) {
-                        console.error('Fetch project transactions error:', error);
-                        throw error;
-                    }
-                    allTrans = [...allTrans, ...(data || [])];
-                    if (!data || data.length < pageSize) break;
-                    page++;
-                }
-            } else {
-                allTrans = await fetchAllRows(() => supabase
-                    .from('transactions')
-                    .select(fields)
-                    .order('accounting_date', { ascending: false })
-                    .order('id', { ascending: true })
-                );
-            }
-
-            const normalizedTransData = (allTrans || []).map(t => ({
-                ...t,
-                code: t.code ? t.code.toString().trim().replace(',', '.') : t.code
-            }));
-            setDetailedTransactions(normalizedTransData);
-            setDetailedTransactionsScope(projectName);
-            setIsDetailsLoaded(true);
-        } catch (error) {
-            console.error('Error fetching detailed transactions:', error);
-            showToast('Lỗi khi tải chi tiết giao dịch!', 'error');
-        } finally {
-            setIsLoadingDetails(false);
-        }
-    };
-
     const fetchIncomesData = async () => {
         const incData = await fetchAllRows(() => supabase
             .from('incomes')
@@ -1433,13 +1378,7 @@ export default function Home() {
         if (currentUser && activeTab !== 'home') fetchData(false);
     }, [activeTab]);
 
-    useEffect(() => {
-        if (activeTab === 'project-detail' && selectedProject) {
-            fetchDetailedTransactionsData(false, selectedProject);
-        } else if (['history', 'expense-summary', 'input'].includes(activeTab)) {
-            fetchDetailedTransactionsData();
-        }
-    }, [activeTab, currentUser, selectedProject]);
+
 
     // Supabase Realtime subscription (không dùng polling để tiết kiệm egress)
     useEffect(() => {
@@ -1455,14 +1394,11 @@ export default function Home() {
                 if (eventType === 'INSERT') {
                     const norm = normalize(newRow);
                     setTransactions(prev => prev.some(x => x.id === norm.id) ? prev : [norm, ...prev]);
-                    setDetailedTransactions(prev => prev.some(x => x.id === norm.id) ? prev : [norm, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     const norm = normalize(newRow);
                     setTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
-                    setDetailedTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
                 } else if (eventType === 'DELETE') {
                     setTransactions(prev => prev.filter(item => item.id !== oldRow.id));
-                    setDetailedTransactions(prev => prev.filter(item => item.id !== oldRow.id));
                 }
             } else if (table === 'incomes') {
                 if (eventType === 'INSERT') {
@@ -3269,9 +3205,8 @@ export default function Home() {
     const allowedProjects = useMemo(() => projects.filter(p => assignedProjectNames.includes(p.name)), [projects, assignedProjectNames]);
     const allowedTransactions = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code)), [transactions, assignedProjectNames]);
     const allowedDetailedTransactions = useMemo(() => {
-        const source = isDetailsLoaded ? detailedTransactions : transactions;
-        return source.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code));
-    }, [isDetailsLoaded, detailedTransactions, transactions, assignedProjectNames]);
+        return transactions.filter(t => assignedProjectNames.includes(t.project_name) && !['EXPECTED_COST'].includes(t.code));
+    }, [transactions, assignedProjectNames]);
     const expectedCosts = useMemo(() => transactions.filter(t => assignedProjectNames.includes(t.project_name) && t.code === 'EXPECTED_COST'), [transactions, assignedProjectNames]);
     const allowedIncomes = useMemo(() => incomes.filter(i => assignedProjectNames.includes(i.project_name)), [incomes, assignedProjectNames]);
     const allowedDnttList = useMemo(() => dnttList.filter(d => assignedProjectNames.includes(d.project_name)), [dnttList, assignedProjectNames]);
@@ -3634,11 +3569,11 @@ export default function Home() {
 
                 {activeTab === 'dashboard' && <Dashboard filteredDashboardData={dashboardData} allPhases={allPhases} handleTogglePhasePaid={handleTogglePhasePaid} handleSaveRemainingCost={handleSaveRemainingCost} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} systemConfig={systemConfig} onSaveConfig={handleSaveSystemConfig} currentUser={currentUser} />}
                 
-                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} handleSaveTransactionValue={handleSaveTransactionValue} />}
+                {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={transactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} handleSaveTransactionValue={handleSaveTransactionValue} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
+                {activeTab === 'history' && <HistoryTable transactions={transactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
                 
-                {activeTab === 'input' && <InputForm transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
+                {activeTab === 'input' && <InputForm transactions={transactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
                 {activeTab === 'partner-debts' && <PartnerDebts debts={allowedPartnerDebts} projects={allowedProjects} onAddDebt={handleAddDebt} onUpdateDebtStatus={handleUpdateDebtStatus} onDeleteDebt={handleDeleteDebt} isLoading={isLoading} currentUser={currentUser} dnttList={dnttList} deleteRequests={deleteRequests} />}
                 
@@ -3655,7 +3590,7 @@ export default function Home() {
                         usersList={usersList}
                         projects={allowedProjects}
                         dnttList={allowedDnttList}
-                        transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions}
+                        transactions={transactions}
                         onAddDNTT={handleAddDNTT}
                         onUpdateDNTT={handleUpdateDNTT}
                         onUpdateStatus={handleUpdateApprovalStatus}
@@ -3731,7 +3666,7 @@ export default function Home() {
                                 projects={allowedProjects.filter(p => p.project_type === 'TỔNG THẦU MUA HỘ')}
                                 dnttList={allowedDnttList}
                                 isMuaHoManager={true}
-                                transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions}
+                                transactions={transactions}
                                 showToast={showToast}
                                 onNavigateToHistory={(searchTerm) => {
                                     setHistorySearchTerm(searchTerm);
@@ -4361,7 +4296,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={detailedTransactions && detailedTransactions.length > 0 ? detailedTransactions : transactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
+                                <HistoryTable transactions={transactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (
