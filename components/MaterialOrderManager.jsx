@@ -2043,7 +2043,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                             </td>
                                                             <td className="px-6 py-4 text-right whitespace-nowrap font-mono font-bold hidden md:table-cell">
                                                                 {status === 'Approved' || (req && req.total_amount > 0) ? (
-                                                                     <span className="text-green-600">{formatCurrency(req.total_amount)}</span>
+                                                                     <span className="text-green-600">{formatCurrency(Math.round(req.total_amount * 1.08))}</span>
                                                                 ) : (
                                                                     status === 'Draft' || status === 'Rejected' || status === 'Deleted' ? (
                                                                         <span className="text-slate-400 italic font-normal text-xs">-</span>
@@ -2452,7 +2452,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                 <span className="text-xs text-slate-400 block font-bold uppercase tracking-wider">Tổng giá trị hạch toán</span>
                                 <span className="text-xl font-black text-slate-900 mt-1 block">
                                     {matchedRequest.status === 'Accounted' || matchedRequest.total_amount > 0 ? (
-                                        <span className="text-green-600 font-mono">{formatCurrency(matchedRequest.total_amount)}</span>
+                                        <span className="text-green-600 font-mono">{formatCurrency(Math.round(matchedRequest.total_amount * 1.08))}</span>
                                     ) : (
                                         <span className="text-slate-400 italic font-normal text-sm">Chờ kế toán hạch toán đơn giá</span>
                                     )}
@@ -2559,16 +2559,9 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                                                         const qty = parseFloat(it.quantity);
                                                         if (isNaN(qty) || qty <= 0) return null;
 
-                                                        // Match with live accounting item
-                                                        let matchedAllocated = null;
-                                                        if (itemsList.length > 0) {
-                                                            matchedAllocated = itemsList.find(ai => ai?.content?.includes(it?.name || ''));
-                                                        }
-
-                                                        const allocatedAmount = matchedAllocated ? matchedAllocated.amount : 0;
-                                                        const unitPrice = matchedAllocated ? (allocatedAmount / qty) : (parseFloat(it.price) || 0);
-                                                        const finalAllocated = matchedAllocated ? allocatedAmount : (unitPrice * qty);
-                                                        const note = matchedAllocated?.note || it.note || '';
+                                                        const unitPrice = parseFloat(it.price) || 0;
+                                                        const finalAllocated = unitPrice * qty;
+                                                        const note = it.note || '';
 
                                                         return (
                                                             <tr key={it.stt || itemIdx} className="border-b border-black">
@@ -2594,7 +2587,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
 
                                     {/* Tax Total Rows */}
                                     {(() => {
-                                        const subtotal = calculateMaterialDisplaySubtotal(Array.isArray(selectedOrder?.items) ? selectedOrder.items : [], matchedRequest);
+                                        const subtotal = calculateMaterialSubtotal(Array.isArray(selectedOrder?.items) ? selectedOrder.items : []);
                                         const totals = calculateTaxTotals(subtotal);
                                         return (
                                             <>
