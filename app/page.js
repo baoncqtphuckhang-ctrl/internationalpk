@@ -1843,7 +1843,11 @@ export default function Home() {
                         supabase.from('incomes').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
                         supabase.from('approval_requests').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
                         supabase.from('partner_debts').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
-                        supabase.from('material_orders').update({ project_name: projectPayload.name }).eq('project_name', data.original_name)
+                        supabase.from('material_orders').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('material_warehouse').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('material_templates').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('expected_invoices').update({ project_name: projectPayload.name, projectName: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('delete_requests').update({ project_name: projectPayload.name }).eq('project_name', data.original_name)
                     ]);
 
                     const { error: deleteError } = await supabase.from('projects').delete().eq('name', data.original_name);
@@ -1862,12 +1866,8 @@ export default function Home() {
 
             showToast('Đã cập nhật thông tin công trình!');
             logActivity(isEdit ? 'Sửa' : 'Thêm', 'Công trình', isEdit ? `Cập nhật thông tin: ${data.name}` : `Tạo mới: ${data.name}`, data.name);
-            loadedDataSourcesRef.current.delete('công trình');
-            loadedDataSourcesRef.current.delete('thu');
-            await Promise.all([
-                fetchProjectsData(),
-                fetchIncomesData()
-            ]);
+            loadedDataSourcesRef.current.clear();
+            await fetchData(false, true);
             return true;
         } catch (error) {
             const errorInfo = {
@@ -1892,6 +1892,10 @@ export default function Home() {
             await moveToTrash('approval_requests', 'project_name', name);
             await moveToTrash('partner_debts', 'project_name', name);
             await moveToTrash('material_orders', 'project_name', name);
+            await moveToTrash('material_warehouse', 'project_name', name);
+            await moveToTrash('material_templates', 'project_name', name);
+            await moveToTrash('expected_invoices', 'project_name', name);
+            await moveToTrash('delete_requests', 'project_name', name);
             await moveToTrash('projects', 'name', name);
 
             // Xóa dữ liệu ở các bảng liên quan (nếu có)
@@ -1900,7 +1904,11 @@ export default function Home() {
                 supabase.from('incomes').delete().eq('project_name', name),
                 supabase.from('approval_requests').delete().eq('project_name', name),
                 supabase.from('partner_debts').delete().eq('project_name', name),
-                supabase.from('material_orders').delete().eq('project_name', name)
+                supabase.from('material_orders').delete().eq('project_name', name),
+                supabase.from('material_warehouse').delete().eq('project_name', name),
+                supabase.from('material_templates').delete().eq('project_name', name),
+                supabase.from('expected_invoices').delete().eq('project_name', name),
+                supabase.from('delete_requests').delete().eq('project_name', name)
             ]);
 
             // Xóa công trình chính
@@ -1910,8 +1918,8 @@ export default function Home() {
             showToast('Đã chuyển công trình vào thùng rác!');
             logActivity('Xóa', 'Công trình', `Xóa công trình: ${name}`, name);
             if (selectedProject === name) setSelectedProject('');
-            loadedDataSourcesRef.current.delete('công trình');
-            await fetchProjectsData();
+            loadedDataSourcesRef.current.clear();
+            await fetchData(false, true);
         } catch (error) {
             console.error('Delete Error:', error);
             // Nếu lỗi do khóa ngoại hoặc bảng không tồn tại, vẫn cố gắng fetch lại
