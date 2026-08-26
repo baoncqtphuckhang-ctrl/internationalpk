@@ -140,7 +140,7 @@ export default function Sidebar({
         { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: (canInputData || isThuKy) && !isKeToanThue, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
         { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && !isKeToanThue, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },
         { id: 'dntt-approvals', label: 'DNTT & Phê duyệt', icon: FileSignature, show: (canCreateDNTT || canViewApprovals) && !isKeToanThue, locked: (systemConfig?.create_dntt || systemConfig?.approve_dntt) && currentUser?.role !== 'ADMIN', badge: pendingApprovalsCount > 0 ? pendingApprovalsCount : null },
-        { id: 'expected-invoices', label: 'HĐ - TĐ Dự Kiến', icon: FileSpreadsheet, show: !['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase()) },
+        { id: 'expected-invoices', label: 'Công Nợ Đối Tác', icon: FileSpreadsheet, show: !['CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS'].includes(currentUser?.role?.toUpperCase()) },
         { id: 'customer-debts', label: 'Quản Lý Hóa Đơn', icon: ClipboardList, show: canInputData || isThuKy || isKeToanThue },
         { id: 'delete-approvals', label: 'Duyệt Xóa', icon: Trash2, show: currentUser?.role?.toUpperCase() === 'ADMIN', badge: deleteRequests.length > 0 ? deleteRequests.length : null },
         { id: 'employee-salary', label: 'Lương NV', icon: FileSpreadsheet, show: canViewSalaryTab },

@@ -2407,7 +2407,9 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     ) : '-'
                 );
             case 'invoiceNo':
-                return debt.invoice_no || <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>;
+                if (debt.invoice_no) return debt.invoice_no;
+                if (debt.due_date) return '-';
+                return <span className="font-black text-amber-700">Chưa xuất hóa đơn</span>;
             case 'invoiceDate':
                 return debt.invoice_date || '-';
             case 'contractNo': {
