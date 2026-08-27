@@ -559,6 +559,13 @@ export default function Home() {
         setTimeout(() => setToast({ show: false, msg: '', type: 'success' }), 3000);
     };
 
+    useEffect(() => {
+        if (typeof window !== 'undefined') {
+            window.showToast = showToast;
+            window.isIntern = currentUser ? normalizeRoleName(currentUser.role) === 'THUC TAP SINH' : false;
+        }
+    }, [showToast, currentUser]);
+
     const handleSaveSignature = async (base64Signature) => {
         if (!currentUser) return;
         try {
@@ -1831,6 +1838,10 @@ export default function Home() {
 
             if (isEdit) {
                 if (data.original_name && projectPayload.name !== data.original_name) {
+                    if (currentRoleName !== 'ADMIN') {
+                        showToast('Chỉ Admin mới có quyền đổi tên công trình!', 'error');
+                        return false;
+                    }
                     // Changing name requires INSERT new, UPDATE relations, DELETE old because of foreign key constraints
                     const { error: insertError } = await supabase.from('projects').insert([projectPayload]);
                     if (insertError) {
