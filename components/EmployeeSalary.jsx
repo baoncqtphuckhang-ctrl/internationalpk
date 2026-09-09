@@ -683,7 +683,6 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                 allocations: periodAllocations.length > 0 ? { [p]: periodAllocations } : {}
             };
         });
-        newEmployees.sort((a, b) => (a.order_index || 0) - (b.order_index || 0));
 
         const newEmployeesCopy = cloneData(newEmployees);
 

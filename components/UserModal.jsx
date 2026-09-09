@@ -19,14 +19,36 @@ export default function UserModal({ isOpen, user, onClose, onSave, onClearIp, sy
         const fetchEmployeesAndUsers = async () => {
             let empNames = [];
             try {
-                const { data } = await supabase.from('employees').select('name');
+                // Fetch from salary_history as the main source of truth
+                const { data } = await supabase.from('salary_history').select('employees_data').order('timestamp', { ascending: false });
                 if (data && data.length > 0) {
-                    empNames = data.filter(e => e.name).map(e => e.name);
-                } else {
-                    empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name);
+                    const nameSet = new Set();
+                    data.forEach(history => {
+                        if (history.employees_data && Array.isArray(history.employees_data)) {
+                            history.employees_data.forEach(emp => {
+                                if (emp && !emp.isDepartment && emp.name) {
+                                    nameSet.add(emp.name.trim());
+                                }
+                            });
+                        }
+                    });
+                    empNames = Array.from(nameSet);
+                }
+                
+                // Fallback to legacy employees table if needed
+                if (empNames.length === 0) {
+                    const { data: legacyData } = await supabase.from('employees').select('name');
+                    if (legacyData && legacyData.length > 0) {
+                        empNames = legacyData.filter(e => e.name).map(e => e.name.trim());
+                    }
+                }
+
+                // Final fallback to initial data
+                if (empNames.length === 0) {
+                    empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name.trim());
                 }
             } catch (e) {
-                empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name);
+                empNames = INITIAL_DATA.filter(e => !e.isDepartment && e.name).map(e => e.name.trim());
             }
             setEmployees(empNames);
 
