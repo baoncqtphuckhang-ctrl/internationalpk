@@ -274,8 +274,9 @@ const isTabAllowed = (tabId, user, systemConfig) => {
         case 'dashboard':
             return canViewDashboard && !isKeToanThue;
         case 'expense-summary':
-        case 'history':
             return canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(role);
+        case 'history':
+            return canViewReports && !['GS', 'GIÁM SÁT'].includes(role);
         case 'input':
             return canInputData && !isThuKy && !isKeToanThue;
         case 'partner-debts':
@@ -3590,7 +3591,7 @@ export default function Home() {
                 
                 {activeTab === 'expense-summary' && <ExpenseSummary projects={allowedProjects} projectDetails={projectDetails} transactions={transactions} dashboardData={dashboardData} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} onProjectDoubleClick={handleProjectDoubleClick} handleSaveTransactionValue={handleSaveTransactionValue} />}
                 
-                {activeTab === 'history' && <HistoryTable transactions={transactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} />}
+                {activeTab === 'history' && <HistoryTable transactions={transactions} selectedProject={''} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} systemConfig={systemConfig} initialSearchNote={historySearchTerm} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} deleteRequests={deleteRequests} isReadOnly={isKeToanThue} />}
                 
                 {activeTab === 'input' && <InputForm transactions={transactions} projects={allowedProjects} onSubmit={handleAddData} onAddDebt={handleAddDebt} isLoading={isLoading} editData={editTransaction} incomes={incomes} onCancel={() => { setActiveTab(previousTab || 'history'); setEditTransaction(null); }} systemConfig={systemConfig} currentUser={currentUser} onEditIncome={handleEditTransaction} onDeleteIncome={handleDeleteIncome} deleteRequests={deleteRequests} />}
                 
@@ -4315,7 +4316,7 @@ Các PLHĐ khác: ${formatCurrency(projectDetails[selectedProject]?.extraPlhdTot
                                 <div className="mb-4">
                                     <h3 className="text-xl font-bold text-slate-800 px-2 border-l-4 border-slate-800">Chi tiết Chi</h3>
                                 </div>
-                                <HistoryTable transactions={transactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} />
+                                <HistoryTable transactions={transactions} selectedProject={selectedProject} projects={allowedProjects} handleEdit={handleEditTransaction} handleDelete={handleDeleteTransaction} handleDeleteAll={handleDeleteAllTransactions} canDelete={canManageSystem} isAdmin={role === 'ADMIN'} setIsPasting={setIsPasting} handleCopyTable={handleCopyTable} exportTableToExcel={exportTableToExcel} highlightedReqId={highlightedReqId} setHighlightedReqId={setHighlightedReqId} onRequestDelete={handleRequestDeleteTransaction} deleteRequests={deleteRequests} dnttList={dnttList} isReadOnly={isKeToanThue} />
                             </>
                         )}
                         {currentUser?.canViewFinance === false && (

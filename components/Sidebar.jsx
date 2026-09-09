@@ -135,7 +135,7 @@ export default function Sidebar({
         { id: 'home', label: 'Trang Chủ', icon: Home, show: normalizeRoleName(currentUser?.role) === 'QS TRUONG' || normalizeRoleName(currentUser?.role) === 'ADMIN' },
         { id: 'dashboard', label: 'Bảng Thu - Chi', icon: LayoutDashboard, show: canViewDashboard && !isKeToanThue },
         { id: 'expense-summary', label: 'Tổng Hợp Chi Phí', icon: PieChart, show: canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(currentUser?.role?.toUpperCase()) },
-        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports && !isKeToanThue && !['GS', 'GIÁM SÁT'].includes(currentUser?.role?.toUpperCase()) },
+        { id: 'history', label: 'Lịch sử chi tiền', icon: History, show: canViewReports && !['GS', 'GIÁM SÁT'].includes(currentUser?.role?.toUpperCase()) },
         { id: 'input', label: 'Nhập Liệu Thu/Chi', icon: PlusCircle, show: canInputData && !isThuKy && !isKeToanThue, locked: systemConfig?.input_data && currentUser?.role !== 'ADMIN' },
         { id: 'partner-debts', label: 'Công Nợ', icon: ClipboardList, show: (canInputData || isThuKy) && !isKeToanThue, badge: pendingDebtsCount > 0 ? pendingDebtsCount : null },
         { id: 'materials', label: 'Vật tư', icon: Package, show: !isThuKy && !isKeToanThue, locked: systemConfig?.material_orders && currentUser?.role !== 'ADMIN' },

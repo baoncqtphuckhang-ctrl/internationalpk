@@ -1867,7 +1867,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         } else if (activeSubTab === 'team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (inv.accountant_approved) return false;
-            if ((currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN')) && !inv.qs_approved) return false;
+            if ((currentUser?.role?.toUpperCase() === 'ACCOUNTANT' || (currentUser?.role?.toUpperCase()?.startsWith('KẾ TOÁN') && currentUser?.role?.toUpperCase() !== 'KẾ TOÁN THUẾ')) && !inv.qs_approved) return false;
         } else if (activeSubTab === 'history_team') {
             if (!inv.teamValue && !inv.teamName) return false;
             if (!inv.accountant_approved) return false;
@@ -3629,7 +3629,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     {!collapsedProjects[`${period}_${projName}`] && sortedGroupInvoices.map((inv, idx) => {
                                                         const role = currentUser?.role?.toUpperCase();
                                                         const isCashier = role === 'THỦ QUỸ';
-                                                        const isAcctUser = role === 'ACCOUNTANT' || role?.startsWith('KẾ TOÁN');
+                                                        const isAcctUser = role === 'ACCOUNTANT' || (role?.startsWith('KẾ TOÁN') && role !== 'KẾ TOÁN THUẾ');
                                                         const disableEdit = isAcctUser && !inv.qs_approved;
                                                         const canDeleteTeamRow = role === 'ADMIN' || role === 'QS' || role === 'QS TRƯỞNG';
                                                          const canConfirmTransfer = isCashier || isAcctUser || role === 'ADMIN';

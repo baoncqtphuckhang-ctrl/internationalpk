@@ -23,7 +23,7 @@ const DEFAULT_CUSTOMER_INVOICE_VISIBLE_COLUMNS = {
     actions: true
 };
 
-export default function CustomerDebts({ incomes, projects, showToast, refreshData }) {
+export default function CustomerDebts({ incomes, projects, showToast, refreshData, currentUser }) {
     const [searchTerm, setSearchTerm] = useState('');
     const [projectFilter, setProjectFilter] = useState('');
     const [monthFilter, setMonthFilter] = useState('');
@@ -50,6 +50,8 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
         postTaxAmount: 0
     });
     const [isSaving, setIsSaving] = useState(false);
+
+    const isKeToanThue = currentUser?.role?.toUpperCase() === 'KẾ TOÁN THUẾ';
 
     useEffect(() => {
         try {
@@ -566,24 +568,28 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         <a href={normalizePdfUrl(debt.invoicePdf)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HĐ PDF">
                             <Eye size={15} />
                         </a>
-                        <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'invoice' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HĐ PDF">
-                            <Trash2 size={15} />
-                        </button>
+                        {debt.invoicePdf && !isKeToanThue && (
+                            <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'invoice' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HĐ PDF">
+                                <Trash2 size={15} />
+                            </button>
+                        )}
                     </div>
                 ) : (
-                    <div className="relative group/upload flex items-center justify-center">
-                        <input
-                            type="file"
-                            accept=".pdf"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            onChange={(e) => handleUpload(e, debt, 'invoice')}
-                            disabled={uploadingId === `${debt.id}_invoice`}
-                            title="Tải lên HĐ PDF"
-                        />
-                        <button className={`p-1.5 ${uploadingId === `${debt.id}_invoice` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HĐ PDF">
-                            <Upload size={15} className={uploadingId === `${debt.id}_invoice` ? 'animate-bounce' : ''} />
-                        </button>
-                    </div>
+                    !isKeToanThue && (
+                        <div className="relative group/upload flex items-center justify-center">
+                            <input
+                                type="file"
+                                accept=".pdf"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                onChange={(e) => handleUpload(e, debt, 'invoice')}
+                                disabled={uploadingId === `${debt.id}_invoice`}
+                                title="Tải lên HĐ PDF"
+                            />
+                            <button className={`p-1.5 ${uploadingId === `${debt.id}_invoice` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-blue-600 group-hover/upload:text-white group-hover/upload:border-blue-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HĐ PDF">
+                                <Upload size={15} className={uploadingId === `${debt.id}_invoice` ? 'animate-bounce' : ''} />
+                            </button>
+                        </div>
+                    )
                 );
             case 'hsttPdf':
                 return debt.hsttPdf ? (
@@ -591,34 +597,40 @@ export default function CustomerDebts({ incomes, projects, showToast, refreshDat
                         <a href={normalizePdfUrl(debt.hsttPdf)} target="_blank" rel="noopener noreferrer" className="p-1.5 bg-purple-50 text-purple-600 hover:bg-purple-600 hover:text-white rounded-lg transition-all duration-200" title="Xem HSTT PDF">
                             <Eye size={15} />
                         </a>
-                        <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'hstt' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HSTT PDF">
-                            <Trash2 size={15} />
-                        </button>
+                        {debt.hsttPdf && !isKeToanThue && (
+                            <button onClick={() => setConfirmDelete({ isOpen: true, debt, type: 'hstt' })} className="p-1.5 bg-rose-50 text-rose-600 hover:bg-rose-600 hover:text-white rounded-lg transition-all duration-200" title="Xóa HSTT PDF">
+                                <Trash2 size={15} />
+                            </button>
+                        )}
                     </div>
                 ) : (
-                    <div className="relative group/upload flex items-center justify-center">
-                        <input
-                            type="file"
-                            accept=".pdf"
-                            className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-                            onChange={(e) => handleUpload(e, debt, 'hstt')}
-                            disabled={uploadingId === `${debt.id}_hstt`}
-                            title="Tải lên HSTT PDF"
-                        />
-                        <button className={`p-1.5 ${uploadingId === `${debt.id}_hstt` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-purple-600 group-hover/upload:text-white group-hover/upload:border-purple-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HSTT PDF">
-                            <Upload size={15} className={uploadingId === `${debt.id}_hstt` ? 'animate-bounce' : ''} />
-                        </button>
-                    </div>
+                    !isKeToanThue && (
+                        <div className="relative group/upload flex items-center justify-center">
+                            <input
+                                type="file"
+                                accept=".pdf"
+                                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                                onChange={(e) => handleUpload(e, debt, 'hstt')}
+                                disabled={uploadingId === `${debt.id}_hstt`}
+                                title="Tải lên HSTT PDF"
+                            />
+                            <button className={`p-1.5 ${uploadingId === `${debt.id}_hstt` ? 'bg-slate-100 text-slate-400' : 'bg-slate-50 text-slate-600 border border-slate-200/60 group-hover/upload:bg-purple-600 group-hover/upload:text-white group-hover/upload:border-purple-600 group-hover/upload:scale-105'} rounded-lg transition-all duration-200`} title="Tải lên HSTT PDF">
+                                <Upload size={15} className={uploadingId === `${debt.id}_hstt` ? 'animate-bounce' : ''} />
+                            </button>
+                        </div>
+                    )
                 );
             case 'actions':
                 return (
-                    <button
-                        onClick={() => handleOpenEditModal(debt)}
-                        className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600 cursor-pointer"
-                        title="Sửa thông tin hóa đơn"
-                    >
-                        <Edit3 size={15} />
-                    </button>
+                    !isKeToanThue ? (
+                        <button
+                            onClick={() => handleOpenEditModal(debt)}
+                            className="p-1.5 bg-blue-50 text-blue-600 hover:bg-blue-600 hover:text-white rounded-lg transition-all duration-200 hover:scale-105 border border-blue-100 hover:border-blue-600 cursor-pointer"
+                            title="Sửa thông tin hóa đơn"
+                        >
+                            <Edit3 size={15} />
+                        </button>
+                    ) : null
                 );
             default:
                 return '-';
