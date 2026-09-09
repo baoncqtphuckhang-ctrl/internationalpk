@@ -3191,6 +3191,7 @@ export default function Home() {
     };
 
     const role = currentUser?.role?.toUpperCase();
+    const isKeToanThue = role === 'KẾ TOÁN THUẾ';
     const canManageUsers = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(role);
     const canManageSystem = canManageUsers || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(role);
     const canViewApprovals = canManageSystem || role === 'THƯ KÝ';
