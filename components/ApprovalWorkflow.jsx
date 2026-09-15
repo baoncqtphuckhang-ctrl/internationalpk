@@ -521,6 +521,7 @@ export default function ApprovalWorkflow({
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(userRole);
     const canApproveQS = isAdminOrManager || ['QS', 'QS TRƯỞNG'].includes(userRole);
     const canApproveKT = isAdminOrManager || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(userRole);
+    const isKeToan = ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ'].includes(userRole);
     const canPay = canApproveKT || userRole === 'THƯ KÝ';
     const canAccount = canApproveKT;
     const showApproveButtons = activeTab === 'approvals' || userRole === 'ADMIN' || canApproveKT;
@@ -542,11 +543,6 @@ export default function ApprovalWorkflow({
     };
 
     const filteredList = dnttList.filter(d => {
-        const isKeToan = ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ'].includes(userRole);
-        if (isKeToan && d.status === STATUSES.WAITING_QS && d.created_by !== currentUser?.username) {
-            return false;
-        }
-
         // filter by tab status
         if (filter === 'active') {
             if ([STATUSES.APPROVED, STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)) return false;
@@ -994,13 +990,18 @@ export default function ApprovalWorkflow({
                                                     <FileText size={18}/> Phân phối & Hạch toán
                                                 </button>
                                             )}
-                                            <button 
-                                                onClick={() => openPrintPreview(item)} 
-                                                className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" 
-                                                title="In phiếu"
-                                            >
-                                                <Printer size={20}/>
-                                            </button>
+                                            {(() => {
+                                                if (isKeToan && item.status === STATUSES.WAITING_QS) return null;
+                                                return (
+                                                    <button 
+                                                        onClick={() => openPrintPreview(item)} 
+                                                        className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl transition" 
+                                                        title="In phiếu"
+                                                    >
+                                                        <Printer size={20}/>
+                                                    </button>
+                                                );
+                                            })()}
                                             {(() => {
                                                 const isPendingDelete = deleteRequests.some(r => r.original_table === 'approval_requests' && r.record_id === item.id);
                                                 if (isPendingDelete) {
