@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw, Plus } from 'lucide-react';
 import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
+import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
 
 const BANK_OPTIONS = [
@@ -518,7 +519,7 @@ export default function ApprovalWorkflow({
     // Role permissions
     const userRole = currentUser?.role?.toUpperCase();
     const isAdminOrManager = ['ADMIN', 'GIÁM ĐỐC', 'PHÓ GIÁM ĐỐC', 'PHÓ GĐ'].includes(userRole);
-    const canApproveQS = isAdminOrManager || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(userRole);
+    const canApproveQS = isAdminOrManager || ['QS', 'QS TRƯỞNG'].includes(userRole);
     const canApproveKT = isAdminOrManager || ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ', 'QS', 'QS TRƯỞNG'].includes(userRole);
     const canPay = canApproveKT || userRole === 'THƯ KÝ';
     const canAccount = canApproveKT;
@@ -541,6 +542,11 @@ export default function ApprovalWorkflow({
     };
 
     const filteredList = dnttList.filter(d => {
+        const isKeToan = ['KẾ TOÁN', 'KẾ TOÁN THUẾ', 'KẾ TOÁN TỔNG HỢP', 'KẾ TOÁN VẬT TƯ', 'KẾ TOÁN CHI PHÍ'].includes(userRole);
+        if (isKeToan && d.status === STATUSES.WAITING_QS && d.created_by !== currentUser?.username) {
+            return false;
+        }
+
         // filter by tab status
         if (filter === 'active') {
             if ([STATUSES.APPROVED, STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)) return false;
@@ -917,12 +923,33 @@ export default function ApprovalWorkflow({
                                         </div>
 
                                         <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
-                                            {showApproveButtons && (item.status === STATUSES.WAITING_QS || item.status === STATUSES.WAITING_ACC) && (canApproveQS || canApproveKT) && (
+                                            {showApproveButtons && (
                                                 <>
-                                                    <button onClick={() => {
-                                                        onUpdateStatus(item.id, STATUSES.WAITING_PRINT);
-                                                    }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
-                                                    <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
+                                                    {item.status === STATUSES.WAITING_QS && canApproveQS && (
+                                                        <>
+                                                            <button onClick={async () => {
+                                                                const qsSignature = currentUser?.signature_url || '';
+                                                                const qsName = currentUser?.full_name || currentUser?.name || currentUser?.username || '';
+                                                                
+                                                                let newReasonStr = item.reason;
+                                                                try {
+                                                                    const parsed = JSON.parse(item.reason || '{}');
+                                                                    parsed.qs_signature = qsSignature;
+                                                                    parsed.qs_name = qsName;
+                                                                    newReasonStr = JSON.stringify(parsed);
+                                                                } catch(e) {}
+                                                                
+                                                                onUpdateStatus(item.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
+                                                            }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
+                                                            <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
+                                                        </>
+                                                    )}
+                                                    {item.status === STATUSES.WAITING_ACC && canApproveKT && (
+                                                        <>
+                                                            <button onClick={() => onUpdateStatus(item.id, STATUSES.WAITING_PRINT)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
+                                                            <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
+                                                        </>
+                                                    )}
                                                 </>
                                             )}
                                             {currentUser?.role?.toUpperCase() === 'ADMIN' && item.status !== STATUSES.WAITING_QS && item.status !== STATUSES.DRAFT && (
@@ -1923,9 +1950,27 @@ export default function ApprovalWorkflow({
                                                     </div>
                                                 );
                                             })()}
-                                        <div>QS</div>
-                                        <div>THỦ QUỸ</div>
-                                        <div>GIÁM ĐỐC</div>
+                                        <div className="flex flex-col items-center">
+                                            <div>QS</div>
+                                            <div className="h-24 signature-wrapper flex items-center justify-center">
+                                                {printItem.parsed.qs_signature ? (
+                                                    <img src={printItem.parsed.qs_signature} className="h-20 object-contain mix-blend-multiply" style={{ filter: 'grayscale(100%) contrast(300%) brightness(130%)' }} alt="Chữ ký QS" />
+                                                ) : printItem.parsed.qs_name ? (
+                                                    <div className="signature-text font-['Allura',_cursive] text-4xl text-blue-700 italic opacity-80" style={{ transform: 'rotate(-5deg)' }}>
+                                                        {printItem.parsed.qs_name.trim().split(' ').pop()}
+                                                    </div>
+                                                ) : null}
+                                            </div>
+                                            {printItem.parsed.qs_name && <div className="font-medium">{printItem.parsed.qs_name}</div>}
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                            <div>THỦ QUỸ</div>
+                                            <div className="h-24"></div>
+                                        </div>
+                                        <div className="flex flex-col items-center">
+                                            <div>GIÁM ĐỐC</div>
+                                            <div className="h-24"></div>
+                                        </div>
                                     </div>
                                     {printItem.parsed.docType !== 'TTL' && printItem.parsed.docType !== 'DNTUCH' && <div className="h-24"></div>}
                                 </div>

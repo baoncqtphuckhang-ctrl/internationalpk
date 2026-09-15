@@ -2599,7 +2599,7 @@ export default function Home() {
         });
     };
 
-    const handleUpdateApprovalStatus = async (id, newStatus) => {
+    const handleUpdateApprovalStatus = async (id, newStatus, extraData = {}) => {
         setIsLoading(true);
         try {
             let requestDetails = null;
@@ -2614,7 +2614,7 @@ export default function Home() {
                 }
             }
 
-            const { error } = await supabase.from('approval_requests').update({ status: newStatus }).eq('id', id);
+            const { error } = await supabase.from('approval_requests').update({ status: newStatus, ...extraData }).eq('id', id);
             if (error) throw error;
             showToast('Đã cập nhật trạng thái!');
             logActivity('Duyệt', 'Đề nghị thanh toán', `Cập nhật trạng thái phiếu (ID: ${id}) thành: ${newStatus}`);
