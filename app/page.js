@@ -418,29 +418,12 @@ export default function Home() {
     }, []);
 
     useEffect(() => {
-        if (!isClient || typeof document === 'undefined' || typeof MutationObserver === 'undefined') return;
-
-        repairMojibakeInElement(document.body);
-        const observer = new MutationObserver((mutations) => {
-            mutations.forEach(mutation => {
-                if (mutation.type === 'characterData') {
-                    const repaired = repairMojibakeText(mutation.target.nodeValue);
-                    if (repaired !== mutation.target.nodeValue) mutation.target.nodeValue = repaired;
-                    return;
-                }
-                mutation.addedNodes.forEach(node => {
-                    if (node.nodeType === Node.TEXT_NODE) {
-                        const repaired = repairMojibakeText(node.nodeValue);
-                        if (repaired !== node.nodeValue) node.nodeValue = repaired;
-                    } else if (node.nodeType === Node.ELEMENT_NODE) {
-                        repairMojibakeInElement(node);
-                    }
-                });
-            });
-        });
-
-        observer.observe(document.body, { childList: true, subtree: true, characterData: true });
-        return () => observer.disconnect();
+        if (!isClient || typeof document === 'undefined') return;
+        
+        // NOTE: Global MutationObserver for mojibake repair was removed here 
+        // because it causes MS Edge to crash (Out of Memory / Timeout) during 
+        // large React mounts like logging in and rendering the Dashboard.
+        // Mojibake should be handled at the data parsing level if needed.
     }, [isClient]);
 
 
