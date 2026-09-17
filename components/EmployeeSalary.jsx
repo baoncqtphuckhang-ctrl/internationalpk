@@ -1596,7 +1596,9 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         else if (currentAtt === 'P/2') nextAtt = 0;
                         else nextAtt = 1;
                     } else {
-                        if (currentAtt === 1) nextAtt = 0.5;
+                        if (currentAtt === 1) nextAtt = 1.5;
+                        else if (currentAtt === 1.5) nextAtt = 2;
+                        else if (currentAtt === 2) nextAtt = 0.5;
                         else if (currentAtt === 0.5) nextAtt = 'P';
                         else if (currentAtt === 'P') nextAtt = 'P/2';
                         else if (currentAtt === 'P/2') nextAtt = 0;
@@ -3072,8 +3074,8 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             {activeTab === 'attendance' && (
                 <div className="mt-4 flex flex-wrap gap-4 text-sm text-slate-600 font-medium">
                     <div className="flex items-center gap-1"><span className="text-emerald-600 font-bold">X</span> : Đủ công (1 ngày)</div>
-                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-purple-500 text-white flex items-center justify-center rounded text-[10px] font-bold">1.5</span> : x1.5 (Lễ)</div>
-                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-indigo-600 text-white flex items-center justify-center rounded text-[10px] font-bold">2</span> : x2 (Lễ)</div>
+                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-purple-500 text-white flex items-center justify-center rounded text-[10px] font-bold">1.5</span> : x1.5</div>
+                    <div className="flex items-center gap-1"><span className="w-4 h-4 bg-indigo-600 text-white flex items-center justify-center rounded text-[10px] font-bold">2</span> : x2</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-orange-500 text-white flex items-center justify-center rounded text-xs font-bold">/</span> : Nửa ngày (0.5 ngày)</div>
                     <div className="flex items-center gap-1"><span className="w-4 h-4 bg-blue-500 text-white flex items-center justify-center rounded text-xs font-bold">P</span> : Nghỉ có phép (1 ngày)</div>
                     <div className="flex items-center gap-1"><span className="w-8 h-4 bg-sky-400 text-white flex items-center justify-center rounded text-[10px] font-bold">P/2</span> : Nghỉ nửa ngày phép</div>
