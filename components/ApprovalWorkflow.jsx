@@ -329,7 +329,7 @@ export default function ApprovalWorkflow({
 
     const handleEditItem = (item) => {
         try {
-            const parsed = JSON.parse(item.reason);
+            const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
             setDnttData({
                 docType: parsed.docType || (item.doc_type === 'Đơn Vật Tư' ? 'DNTT' : 'DNTT'),
                 project: parsed.project || item.project_name || '',
@@ -364,7 +364,7 @@ export default function ApprovalWorkflow({
     const openPrintPreview = (item) => {
         let parsed = null;
         try {
-            parsed = JSON.parse(item.reason);
+            parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
         } catch(e) {
             parsed = {
                 docType: item.doc_type === 'DNTU' ? 'DNTU' : 'DNTT',
@@ -387,7 +387,7 @@ export default function ApprovalWorkflow({
         let paymentMethod = 'tien_mat';
         let orderPhase = null;
         try {
-            const parsed = JSON.parse(item.reason);
+            const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
             items = parsed.items || [];
             paymentMethod = parsed.paymentMethod || 'tien_mat';
             orderPhase = parsed.orderPhase || (parsed.items && parsed.items[0] && parsed.items[0].note ? parsed.items[0].note.split(' | ')[1] : null) || parsed.phase || null;
@@ -431,7 +431,7 @@ export default function ApprovalWorkflow({
         setDistributeOption(option);
         if (option === 'auto' && distributeItem) {
             try {
-                const parsed = JSON.parse(distributeItem.reason);
+                const parsed = typeof distributeItem.reason === 'string' ? JSON.parse(distributeItem.reason) : distributeItem.reason;
                 let originalItems = parsed.items || [];
                 if (distributeItem.doc_type === 'Đơn Vật Tư') {
                     originalItems = [{ amount: distributeItem.total_amount }];
@@ -532,7 +532,7 @@ export default function ApprovalWorkflow({
         }
         let displayTitle = 'Đề nghị thanh toán';
         try {
-            const parsed = JSON.parse(item.reason);
+            const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
             if (item.doc_type === 'Đơn Vật Tư') {
                 displayTitle = parsed.orderPhase || (parsed.items?.[0]?.note?.split(' | ')[1]) || parsed.items?.[0]?.content || 'Đơn Vật Tư';
             } else if (parsed.items && parsed.items.length > 0) {
@@ -929,11 +929,13 @@ export default function ApprovalWorkflow({
                                                                 
                                                                 let newReasonStr = item.reason;
                                                                 try {
-                                                                    const parsed = JSON.parse(item.reason || '{}');
+                                                                    const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason || '{}') : { ...item.reason };
                                                                     parsed.qs_signature = qsSignature;
                                                                     parsed.qs_name = qsName;
                                                                     newReasonStr = JSON.stringify(parsed);
-                                                                } catch(e) {}
+                                                                } catch(e) {
+                                                                    console.error("Error parsing reason for QS approval:", e);
+                                                                }
                                                                 
                                                                 onUpdateStatus(item.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
                                                             }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
@@ -1056,7 +1058,7 @@ export default function ApprovalWorkflow({
                             {(() => {
                                 let itemData = {};
                                 try {
-                                    itemData = JSON.parse(qrPaymentModal.reason || '{}');
+                                    itemData = typeof qrPaymentModal.reason === 'string' ? JSON.parse(qrPaymentModal.reason || '{}') : (qrPaymentModal.reason || {});
                                 } catch(e) {}
                                 
                                 const isBank = itemData.paymentMethod === 'chuyen_khoan';
