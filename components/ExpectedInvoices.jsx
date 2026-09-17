@@ -476,6 +476,14 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             return DEFAULT_CUSTOMER_DEBT_VISIBLE_COLUMNS;
         }
     });
+    const [hideZeroVolumeTeamsView, setHideZeroVolumeTeamsView] = useState(() => {
+        if (typeof window === 'undefined') return false;
+        try {
+            return localStorage.getItem('cbpro_hide_zero_volume_teams') === 'true';
+        } catch(e) {
+            return false;
+        }
+    });
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -2653,11 +2661,26 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     <div className="contents">
                     <button
                         type="button"
+                        onClick={() => {
+                            setHideZeroVolumeTeamsView(prev => {
+                                const next = !prev;
+                                try { localStorage.setItem('cbpro_hide_zero_volume_teams', String(next)); } catch(e) {}
+                                return next;
+                            });
+                        }}
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideZeroVolumeTeamsView ? 'bg-rose-50 text-rose-700 border-rose-200 hover:bg-rose-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        title={hideZeroVolumeTeamsView ? 'Đang ẩn tổ đội không có khối lượng kỳ này' : 'Hiển thị tất cả tổ đội'}
+                    >
+                        {hideZeroVolumeTeamsView ? <EyeOff size={18} /> : <Eye size={18} />}
+                        <span className="hidden xl:inline">{hideZeroVolumeTeamsView ? 'Đang ẩn đội 0 KL' : 'Ẩn đội 0 KL'}</span>
+                    </button>
+                    <button
+                        type="button"
                         onClick={() => setHideZeroRowsOnPrint(prev => !prev)}
                         className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${hideZeroRowsOnPrint ? 'bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
                         title={hideZeroRowsOnPrint ? 'Khi in sẽ ẩn tổ đội có giá trị kỳ này bằng 0' : 'Khi in sẽ hiện cả tổ đội có giá trị kỳ này bằng 0'}
                     >
-                        <EyeOff size={18} />
+                        <Printer size={18} />
                         <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
                     </button>
                     </div>
@@ -3637,6 +3660,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                         const isZero = !parseFloat(inv.teamValue);
                                                         const hideZeroInPrint = hideZeroRowsOnPrint && isZero;
                                                         const teamPdfUrl = inv.team_pdf_url || inv.pdf_url;
+
+                                                        if (hideZeroVolumeTeamsView && isZero) return null;
 
                                                         return (
                                                         <tr id={"row-" + inv.id} key={inv.id} className={`hover:bg-slate-50 transition group border-l-4 ${hideZeroInPrint ? 'print:hidden' : ''} ${isZero ? 'border-l-slate-200 bg-slate-50/50 opacity-40' : `${color.rowBorder} bg-white`}`}>
