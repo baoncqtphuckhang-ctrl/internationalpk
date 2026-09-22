@@ -28,7 +28,10 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
             }
 
             try {
-                const res = await fetch('https://api.ipify.org?format=json');
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 3000);
+                const res = await fetch('https://api.ipify.org?format=json', { signal: controller.signal });
+                clearTimeout(timeoutId);
                 const data = await res.json();
                 const currentIp = data.ip;
                 
