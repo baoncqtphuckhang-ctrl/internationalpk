@@ -1,14 +1,31 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
-import { PieChart, Download, Copy, Search, Printer, EyeOff, Eye } from 'lucide-react';
+import React, { useState, useMemo, useEffect } from 'react';
+import { PieChart, Download, Copy, Search, Printer, EyeOff, Eye, Filter, ChevronDown } from 'lucide-react';
 import { formatCurrency, parseVietnameseNumber, EXPENSE_CATEGORIES } from '@/lib/utils';
 
 export default function ExpenseSummary({ projects, projectDetails = {}, transactions = [], dashboardData = [], handleCopyTable, exportTableToExcel, onProjectDoubleClick, handleSaveTransactionValue }) {
     const [filterText, setFilterText] = useState('');
     const [hiddenProjects, setHiddenProjects] = useState([]);
     const [showHiddenList, setShowHiddenList] = useState(false);
+    const [isFilterDropdownOpen, setIsFilterDropdownOpen] = useState(false);
+    const [selectedFilterProjects, setSelectedFilterProjects] = useState([]);
     const [promptModal, setPromptModal] = useState({ isOpen: false, project: '', value: '', type: '', title: '' });
+
+    useEffect(() => {
+        const storedHidden = localStorage.getItem('expense_hidden_projects');
+        if (storedHidden) {
+            try {
+                const parsed = JSON.parse(storedHidden);
+                if (Array.isArray(parsed) && parsed.length > 0) {
+                    setHiddenProjects(parsed);
+                    setShowHiddenList(true);
+                }
+            } catch (e) {
+                console.error("Error parsing hidden projects from local storage");
+            }
+        }
+    }, []);
 
     const handleOpenPrompt = (project, currentValue, type, title) => {
         setPromptModal({
@@ -34,16 +51,18 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
     const toggleHideProject = (projectName) => {
         setHiddenProjects(prev => {
             const isHidden = prev.includes(projectName);
+            let next;
             if (!isHidden) {
                 setShowHiddenList(true);
-                return [...prev, projectName];
+                next = [...prev, projectName];
             } else {
-                const next = prev.filter(p => p !== projectName);
+                next = prev.filter(p => p !== projectName);
                 if (next.length === 0) {
                     setShowHiddenList(false);
                 }
-                return next;
             }
+            localStorage.setItem('expense_hidden_projects', JSON.stringify(next));
+            return next;
         });
     };
 
@@ -70,11 +89,19 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
     }, [transactions, projects]);
 
     const filteredData = useMemo(() => {
-        return expenseMatrixData.filter(d => 
-            d.project.toLowerCase().includes(filterText.toLowerCase()) && 
-            !hiddenProjects.includes(d.project)
-        );
-    }, [expenseMatrixData, filterText, hiddenProjects]);
+        let result = expenseMatrixData;
+        
+        if (selectedFilterProjects.length > 0) {
+            result = result.filter(d => selectedFilterProjects.includes(d.project));
+        }
+
+        if (filterText.trim()) {
+            const searchTerms = filterText.toLowerCase().split(',').map(t => t.trim()).filter(t => t);
+            result = result.filter(d => searchTerms.some(term => d.project.toLowerCase().includes(term)));
+        }
+
+        return result.filter(d => !hiddenProjects.includes(d.project));
+    }, [expenseMatrixData, filterText, hiddenProjects, selectedFilterProjects]);
 
     const transposedRows = useMemo(() => {
         return EXPENSE_CATEGORIES.map(cat => {
@@ -105,7 +132,57 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                     </h2>
                     <p className="text-slate-500 text-sm mt-1">Phân tích chi tiết các khoản chi theo từng mã chi phí cho các công trình. (Nhấp đúp vào dòng để xem chi tiết)</p>
                 </div>
-                <div className="flex gap-2 w-full lg:w-auto">
+                <div className="flex gap-2 w-full lg:w-auto relative">
+                    <div className="relative flex-1 lg:flex-none">
+                        <button 
+                            onClick={() => setIsFilterDropdownOpen(!isFilterDropdownOpen)} 
+                            className={`w-full justify-center px-4 py-2 rounded-lg font-bold transition flex items-center gap-2 ${selectedFilterProjects.length > 0 ? 'bg-blue-600 text-white hover:bg-blue-700 shadow-md' : 'bg-white border border-slate-300 text-slate-700 hover:bg-slate-50'}`}
+                        >
+                            <Filter size={16} className={selectedFilterProjects.length > 0 ? 'text-white' : 'text-slate-400'} /> 
+                            {selectedFilterProjects.length > 0 ? `Đã lọc (${selectedFilterProjects.length})` : 'Lọc công trình'} 
+                            <ChevronDown size={14} className={selectedFilterProjects.length > 0 ? 'text-white' : 'text-slate-400'} />
+                        </button>
+                        {isFilterDropdownOpen && (
+                            <>
+                                <div className="fixed inset-0 z-40" onClick={() => setIsFilterDropdownOpen(false)}></div>
+                                <div className="absolute right-0 top-full mt-2 w-72 bg-white rounded-xl shadow-2xl border border-slate-200 z-50 overflow-hidden flex flex-col max-h-[400px] animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50 flex-shrink-0">
+                                        <span className="font-bold text-slate-700 text-sm">Lọc theo công trình</span>
+                                        {selectedFilterProjects.length > 0 && (
+                                            <button 
+                                                onClick={() => setSelectedFilterProjects([])}
+                                                className="text-xs text-blue-600 hover:text-blue-800 font-bold"
+                                            >
+                                                Bỏ lọc tất cả
+                                            </button>
+                                        )}
+                                    </div>
+                                    <div className="overflow-y-auto p-2 flex flex-col gap-1 custom-scrollbar">
+                                        {projects.map(p => (
+                                            <label 
+                                                key={p.name}
+                                                className="flex items-center gap-3 p-2 hover:bg-slate-100 rounded-lg cursor-pointer transition-colors"
+                                            >
+                                                <input 
+                                                    type="checkbox"
+                                                    checked={selectedFilterProjects.includes(p.name)}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setSelectedFilterProjects([...selectedFilterProjects, p.name]);
+                                                        } else {
+                                                            setSelectedFilterProjects(selectedFilterProjects.filter(name => name !== p.name));
+                                                        }
+                                                    }}
+                                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 cursor-pointer w-4 h-4"
+                                                />
+                                                <span className="text-sm font-medium text-slate-700 truncate">{p.name}</span>
+                                            </label>
+                                        ))}
+                                    </div>
+                                </div>
+                            </>
+                        )}
+                    </div>
                     <button onClick={() => handleCopyTable('expense-table')} className="flex-1 lg:flex-none justify-center bg-slate-800 text-white px-4 py-2 rounded-lg font-bold hover:bg-slate-700 transition flex items-center gap-2">
                         <Copy size={16} /> Copy Bảng
                     </button>
@@ -152,7 +229,7 @@ export default function ExpenseSummary({ projects, projectDetails = {}, transact
                                 type="text" 
                                 value={filterText}
                                 onChange={(e) => setFilterText(e.target.value)}
-                                placeholder="Tìm kiếm công trình..."
+                                placeholder="Tìm kiếm công trình (nhập nhiều dự án cách nhau bằng dấu phẩy ,)..."
                                 className="bg-transparent outline-none font-bold text-slate-700 w-full"
                             />
                         </div>
