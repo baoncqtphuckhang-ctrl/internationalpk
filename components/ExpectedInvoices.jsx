@@ -102,6 +102,9 @@ const getExpectedInvoiceKey = (inv = {}) => {
 const dedupeExpectedInvoices = (rows = []) => {
     const seen = new Map();
     rows.forEach(row => {
+        if (row.teamName && row.periodAdvance === undefined) {
+            row.periodAdvance = row.vatAmount || 0;
+        }
         const key = getExpectedInvoiceKey(row);
         if (!seen.has(key)) {
             seen.set(key, row);
@@ -931,12 +934,19 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
     };
 
     const availableTeamNames = useMemo(() => {
-        if (!formData.projectName || !transactions || transactions.length === 0) return [];
-        const recipients = transactions
-            .filter(t => t.project_name === formData.projectName && t.recipient)
-            .map(t => t.recipient);
-        return [...new Set(recipients)].sort();
-    }, [formData.projectName, transactions]);
+        if (!formData.projectName) return [];
+        const recipients = new Set();
+        if (transactions && transactions.length > 0) {
+            transactions.filter(t => t.project_name === formData.projectName && t.recipient).forEach(t => recipients.add(t.recipient));
+        }
+        if (invoices && invoices.length > 0) {
+            invoices.filter(i => i.projectName === formData.projectName && i.teamName).forEach(i => recipients.add(i.teamName));
+        }
+        if (teamInfoList && teamInfoList.length > 0) {
+            teamInfoList.filter(t => t.team_name).forEach(t => recipients.add(t.team_name));
+        }
+        return [...recipients].sort();
+    }, [formData.projectName, transactions, invoices, teamInfoList]);
 
     const availableFormPhases = useMemo(() => {
         if (!formData.projectName || !incomes || incomes.length === 0) return [];
@@ -1090,7 +1100,11 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             }
 
             saveExpectedInvoiceBackup(previousInvoices, 'before_local_save');
-            localStorage.setItem(EXPECTED_INVOICES_STORAGE_KEY, JSON.stringify(normalizedInvoices));
+            try {
+                localStorage.setItem(EXPECTED_INVOICES_STORAGE_KEY, JSON.stringify(normalizedInvoices));
+            } catch (error) {
+                console.warn('Không thể lưu expected_invoices vào localStorage (có thể do vượt quá quota):', error);
+            }
         }
     }, [invoices, isLoaded]);
 
@@ -1125,12 +1139,13 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         const postTax = parseFloat(parseVietnameseNumber(formData.postTaxValue)) || 0;
         const teamVal = parseFloat(parseVietnameseNumber(formData.teamValue)) || 0;
         const accAdv = parseFloat(parseVietnameseNumber(formData.accumulatedAdvance)) || 0;
+        const periodAdv = parseFloat(parseVietnameseNumber(formData.periodAdvance)) || 0;
         const normalizedInvoiceMonth = normalizeMonthValue(formData.invoice_month) || getCurrentMonthValue();
 
         const buildRecord = () => ({
             projectName: formData.projectName,
             preTaxValue: preTax,
-            vatAmount: vat,
+            vatAmount: (activeSubTab === 'team' || activeSubTab === 'history_team') ? periodAdv : vat,
             postTaxValue: postTax,
             teamValue: teamVal,
             accumulatedAdvance: accAdv,
@@ -1374,6 +1389,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     deductionAmount: 0,
                     accumulatedAdvance: 0,
                     teamValue: 0,
+                    vatAmount: 0,
                     account_name: inv.account_name,
                     account_number: inv.account_number,
                     bank_name: inv.bank_name,
@@ -1406,6 +1422,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     deductionAmount: d.deductionAmount,
                     accumulatedAdvance: d.accumulatedAdvance,
                     teamValue: d.teamValue,
+                    periodAdvance: d.teamName ? d.vatAmount : 0,
                     account_name: d.account_name,
                     account_number: d.account_number,
                     bank_name: d.bank_name,
@@ -2954,7 +2971,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 const val = e.target.value;
                                                 if (val === 'Khác') {
                                                     setIsCustomTeamName(true);
-                                                    setFormData(prev => ({ ...prev, teamName: '', accumulatedAdvance: '', account_name: '', account_number: '', bank_name: '' }));
+                                                    setFormData(prev => ({ ...prev, teamName: '', accumulatedAdvance: '', account_name: '', account_number: '', bank_name: '', periodAdvance: '' }));
                                                 } else {
                                                     setIsCustomTeamName(false);
                                                     const teamInvoices = invoices.filter(i => i.projectName === formData.projectName && i.teamName === val && !i.is_completed);
@@ -3035,7 +3052,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         </div>
                                     </div>
                                 </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                                     <div>
                                         <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Lũy kế kỳ trước</label>
                                         <input 
@@ -3048,6 +3065,20 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                             }}
                                             className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-blue-600 outline-none focus:border-indigo-500 focus:bg-white transition"
                                             placeholder="Ví dụ: 50,000,000"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-black text-slate-900 mb-2 uppercase tracking-tight">Tạm ứng trong kì</label>
+                                        <input 
+                                            type="text" 
+                                            name="periodAdvance" 
+                                            value={formData.periodAdvance || ''}
+                                            onChange={(e) => {
+                                                const value = e.target.value.replace(/\D/g, '');
+                                                setFormData(prev => ({ ...prev, periodAdvance: value ? parseInt(value).toLocaleString('en-US') : '' }));
+                                            }}
+                                            className="w-full bg-slate-50 border-2 border-slate-200 rounded-xl px-4 py-3 text-sm font-black text-purple-600 outline-none focus:border-indigo-500 focus:bg-white transition"
+                                            placeholder="Ví dụ: 10,000,000"
                                         />
                                     </div>
                                     <div>
@@ -3345,6 +3376,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     <>
                                         <th className="p-3 font-black uppercase text-sm text-center">Thực chi</th>
+                                        <th className="p-3 font-black uppercase text-sm text-center">Tạm ứng trong kì</th>
                                         <th className="p-3 font-black uppercase text-sm text-center">Thu</th>
                                         <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block text-center">Lũy kế</span><span className="block text-center">kì trước</span></th>
                                         <th className="p-3 font-black uppercase text-sm text-center whitespace-normal"><span className="block text-center">Lũy kế</span><span className="block text-center">kỳ này</span></th>
@@ -3468,7 +3500,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                             ) : (
                                 filteredInvoices.length === 0 ? (
                                     <tr>
-                                        <td colSpan={activeSubTab === 'invoice' ? 9 : 14} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
+                                        <td colSpan={activeSubTab === 'invoice' ? 10 : 15} className="p-8 text-center text-slate-500">Chưa có dữ liệu phù hợp.</td>
                                     </tr>
                                 ) : activeSubTab === 'team' || activeSubTab === 'history_team' ? (
                                     Object.entries(
@@ -3495,7 +3527,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                         return (
                                         <React.Fragment key={period}>
                                             <tr className={`bg-slate-900 cursor-pointer hover:bg-slate-800 transition sticky top-[52px] z-10 ${!hasPrintablePeriodRows ? 'print:hidden' : ''}`} onClick={() => setCollapsedPhases(prev => ({ ...prev, [period]: !prev[period] }))}>
-                                                <td colSpan={14} className="p-4 py-5">
+                                                <td colSpan={15} className="p-4 py-5">
                                                     <div className="flex items-center justify-between">
                                                         <div className="flex items-center gap-2">
                                                             <div className="p-1 bg-slate-800 rounded-md">
@@ -3627,7 +3659,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 return (
                                                 <React.Fragment key={projName}>
                                                     <tr 
-                                                        className={`expected-project-summary-row ${color.bg} border-y ${color.border} cursor-pointer hover:opacity-90 select-none ${!hasPrintableGroupRows ? 'print:hidden' : ''}`}
+                                                        className={`expected-project-summary-row ${color.bg} border-y ${color.border} cursor-pointer hover:opacity-90 select-none ${!hasPrintableGroupRows ? 'print:hidden' : ''} ${printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0) === 0 ? 'opacity-40' : ''}`}
                                                         onClick={() => setCollapsedProjects(prev => ({ ...prev, [`${period}_${projName}`]: !prev[`${period}_${projName}`] }))}
                                                     >
                                                         <td className="text-center p-3">
@@ -3643,6 +3675,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             {projName}:
                                                         </td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-emerald-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                        <td className="p-3 text-sm text-center tabular-nums font-black text-purple-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.periodAdvance) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-red-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-blue-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-amber-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>
@@ -3668,6 +3701,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             <td className={`p-4 text-sm text-center font-medium ${isZero ? 'text-slate-400' : 'text-slate-500'}`}>{idx + 1}</td>
                                                             <td className={`p-4 text-sm font-bold whitespace-nowrap overflow-hidden text-ellipsis ${isZero ? 'text-slate-400' : 'text-slate-800'}`}>{inv.teamName || '-'}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-emerald-600'}`}>{formatCurrency(parseFloat(inv.teamValue) || 0)}</td>
+                                                            <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-purple-600'}`}>{formatCurrency(parseFloat(inv.periodAdvance) || 0)}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-red-600'}`}>{formatCurrency(parseFloat(inv.deductionAmount) || 0)}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-medium ${isZero ? 'text-slate-400' : 'text-blue-600'}`}>{formatCurrency(parseFloat(inv.accumulatedAdvance) || 0)}</td>
                                                             <td className={`p-4 text-sm text-center tabular-nums font-bold ${isZero ? 'text-slate-400' : 'text-amber-600'}`}>{formatCurrency(parseFloat(inv.preTaxValue) || 0)}</td>
@@ -3817,6 +3851,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                     <td></td>
                                                     <td className="p-4 font-black text-indigo-950 text-base uppercase text-left">TỔNG:</td>
                                                     <td className="p-4 text-base text-center tabular-nums font-black text-emerald-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
+                                                    <td className="p-4 text-base text-center tabular-nums font-black text-purple-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.periodAdvance) || 0), 0))}</td>
                                                     <td className="p-4 text-base text-center tabular-nums font-black text-red-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.deductionAmount) || 0), 0))}</td>
                                                     <td className="p-4 text-base text-center tabular-nums font-black text-blue-700">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.accumulatedAdvance) || 0), 0))}</td>
                                                     <td className="p-4 text-base text-center tabular-nums font-black text-amber-600">{formatCurrency(printablePeriodInvoices.reduce((sum, inv) => sum + (parseFloat(inv.preTaxValue) || 0), 0))}</td>

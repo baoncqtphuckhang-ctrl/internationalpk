@@ -640,7 +640,29 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         }
 
         const baseEmps = sourceEmps.length > 0 ? sourceEmps : cloneData(employees);
-        const newEmployees = baseEmps.map(emp => {
+        const globalEmpsMap = employees.reduce((acc, e) => { acc[e.id] = e; return acc; }, {});
+        const newEmployees = baseEmps.map(originalEmp => {
+            let emp = originalEmp;
+            if (sourceEmps.length > 0 && globalEmpsMap[emp.id]) {
+                const globalEmp = globalEmpsMap[emp.id];
+                emp = {
+                    ...emp,
+                    name: globalEmp.name,
+                    department: globalEmp.department,
+                    basic_salary: globalEmp.basic_salary,
+                    phone_allowance: globalEmp.phone_allowance,
+                    parking_allowance: globalEmp.parking_allowance,
+                    makeup_allowance: globalEmp.makeup_allowance,
+                    gondola_allowance: globalEmp.gondola_allowance,
+                    laptop_allowance: globalEmp.laptop_allowance,
+                    insurance_salary: globalEmp.insurance_salary,
+                    bank_account: globalEmp.bank_account,
+                    bank_account_name: globalEmp.bank_account_name,
+                    bank_name: globalEmp.bank_name,
+                    notes: globalEmp.notes
+                };
+            }
+
             if (emp.isDepartment || emp.is_department) {
                 return { ...emp, isDepartment: true, is_department: true };
             }
@@ -1863,7 +1885,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                         <tr>
                             <th>GIỮ XE (3)</th>
                             <th>SON PHẤN (4)</th>
-                            <th>GONDOLA</th>
+                            <th>TRỌ (5)</th>
                             <th>LAPTOP</th>
                             <th>BHXH 17%</th>
                             <th>BHYT 3%</th>
@@ -2052,7 +2074,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
             <tr>
                 <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GIỮ XE (3)</th>
                 <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">SON PHẤN (4)</th>
-                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">GONDOLA</th>
+                <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">TRỌ (5)</th>
                 <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">LAPTOP</th>
                 
                 <th className="border border-slate-300 p-1 text-center text-[10px] font-bold text-slate-600 w-16">BHXH 17%</th>
@@ -2787,7 +2809,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
                                             { id: 'phone_allowance', label: 'PHỤ CẤP ĐIỆN THOẠI', icon: '📱' },
                                             { id: 'parking_allowance', label: 'PHỤ CẤP GỬI XE', icon: '🛵' },
                                             { id: 'makeup_allowance', label: 'PHỤ CẤP SON PHẤN', icon: '💄' },
-                                            { id: 'gondola_allowance', label: 'PHỤ CẤP GONDOLA', icon: '🏗️' },
+                                            { id: 'gondola_allowance', label: 'PHỤ CẤP TRỌ', icon: '🏠' },
                                             { id: 'laptop_allowance', label: 'PHỤ CẤP LAPTOP', icon: '💻' },
                                         ].map(item => (
                                             <div key={item.id} className="flex items-center justify-between gap-4 p-2 hover:bg-slate-50 rounded-xl transition">
