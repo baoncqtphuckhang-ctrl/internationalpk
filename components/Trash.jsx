@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { formatCurrency, formatDateVN } from '@/lib/utils';
 import ConfirmModal from '@/components/ConfirmModal';
 
-const TRASH_RETENTION_DAYS = 90;
+// Bỏ giới hạn số ngày, lưu trữ vĩnh viễn
 
 export default function Trash({ onRestore, isLoading, setIsLoading, showToast, adminPassword = '0000' }) {
     const [trashItems, setTrashItems] = useState([]);
@@ -46,11 +46,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
         }
     };
 
-    const pruneExpiredTrash = (items) => {
-        const cutoffDate = new Date();
-        cutoffDate.setDate(cutoffDate.getDate() - TRASH_RETENTION_DAYS);
-        return (items || []).filter(item => !item.deleted_at || new Date(item.deleted_at) >= cutoffDate);
-    };
+    const pruneExpiredTrash = (items) => { return items || []; };
 
     const mergeTrashItems = (serverItems = [], localItems = []) => {
         const byKey = new Map();
@@ -67,14 +63,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
         return Array.from(byKey.values()).sort((a, b) => new Date(b.deleted_at || 0) - new Date(a.deleted_at || 0));
     };
 
-    const getDaysRemaining = (deletedAt) => {
-        if (!deletedAt) return TRASH_RETENTION_DAYS;
-        const deletedDate = new Date(deletedAt);
-        if (Number.isNaN(deletedDate.getTime())) return TRASH_RETENTION_DAYS;
-        const expiresAt = new Date(deletedDate);
-        expiresAt.setDate(expiresAt.getDate() + TRASH_RETENTION_DAYS);
-        return Math.max(0, Math.ceil((expiresAt.getTime() - Date.now()) / (1000 * 60 * 60 * 24)));
-    };
+    const getDaysRemaining = (deletedAt) => { return 'Vĩnh viễn'; };
 
     const getTrashItemKey = (item) => String(item?.id || '');
 
@@ -199,17 +188,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
             if (error) throw error;
             let fetchedData = data || [];
             
-            // Auto-delete after the configured retention window.
-            const cutoffDate = new Date();
-            cutoffDate.setDate(cutoffDate.getDate() - TRASH_RETENTION_DAYS);
-            
-            const toDelete = fetchedData.filter(item => new Date(item.deleted_at) < cutoffDate);
-            if (toDelete.length > 0) {
-                for (let d of toDelete) {
-                    try { await supabase.from('trash_bin').delete().eq('id', d.id); } catch(e) {}
-                }
-                fetchedData = fetchedData.filter(item => new Date(item.deleted_at) >= cutoffDate);
-            }
+            // �� b? t�nh nang t? d?ng x�a
 
             const localData = pruneExpiredTrash(getLocalTrash());
             localStorage.setItem('system_trash_bin', JSON.stringify(localData));
@@ -509,7 +488,7 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
                                                         ? 'bg-amber-50 text-amber-700 border-amber-100'
                                                         : 'bg-emerald-50 text-emerald-700 border-emerald-100'
                                                 }`}>
-                                                    {daysRemaining} ngày
+                                                    {daysRemaining}
                                                 </span>
                                             </td>
                                             <td className="p-4 text-sm font-bold text-slate-800">{item.deleted_by}</td>

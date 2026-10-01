@@ -22,6 +22,8 @@ export default function MaterialCatalog({ projects, showToast }) {
     const [editingName, setEditingName] = useState('');
 
     const [copyModal, setCopyModal] = useState({ isOpen: false, targetVersionId: null });
+    const [showCreateModal, setShowCreateModal] = useState(false);
+    const [newProjectName, setNewProjectName] = useState('');
     const [copyFromProject, setCopyFromProject] = useState('');
     const [copyFromVersion, setCopyFromVersion] = useState('');
     const [copyAvailableVersions, setCopyAvailableVersions] = useState([]);
@@ -78,7 +80,8 @@ export default function MaterialCatalog({ projects, showToast }) {
             setAllTemplates(templatesMap);
             
             if (projects && projects.length > 0) {
-                const projName = configProjectName || projects[0].name;
+                const configuredProjects = projects.filter(p => templatesMap[p.name]);
+                const projName = configProjectName || (configuredProjects[0]?.name) || '';
                 // Only change project context if not actively editing to prevent losing progress
                 if (!editingVersionId || projName !== configProjectName) {
                     handleProjectChange(projName, templatesMap);
@@ -252,36 +255,38 @@ export default function MaterialCatalog({ projects, showToast }) {
         }
     };
 
-    const handleGlobalSave = async (updatedVersions, newActiveId) => {
-        if (!configProjectName) return;
+    const handleGlobalSave = async (updatedVersions, newActiveId, projectOverride = null) => {
+        const targetProject = projectOverride || configProjectName;
+        if (!targetProject) return;
+        
         const newData = {
             versions: updatedVersions,
             activeVersionId: newActiveId
         };
         
         try {
-            if (allTemplates[configProjectName]) {
+            if (allTemplates[targetProject]) {
                 const { error } = await supabase.from('material_templates')
                     .update({ data: newData })
-                    .eq('project_name', configProjectName);
+                    .eq('project_name', targetProject);
                 if (error) throw error;
             } else {
                 const { error } = await supabase.from('material_templates')
-                    .insert({ project_name: configProjectName, data: newData });
+                    .insert({ project_name: targetProject, data: newData });
                 if (error) throw error;
             }
             
-            setAllTemplates(prev => ({ ...prev, [configProjectName]: newData }));
+            setAllTemplates(prev => ({ ...prev, [targetProject]: newData }));
             setConfigVersions(updatedVersions);
             setConfigActiveVersionId(newActiveId);
             
             // Chạy cascade update (cập nhật đồng bộ các Đơn hàng và DNTT)
-            updateOrdersAndDNTTOnPriceChange(configProjectName, newData);
+            updateOrdersAndDNTTOnPriceChange(targetProject, newData);
 
             // Backup to localstorage just in case
             try {
                 const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-                projectTemplates[configProjectName] = newData;
+                projectTemplates[targetProject] = newData;
                 localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
             } catch(e) {}
             
@@ -290,12 +295,12 @@ export default function MaterialCatalog({ projects, showToast }) {
             showToast('Lỗi khi lưu cấu hình lên Server. Có thể bảng material_templates chưa được tạo!', 'error');
             
             // Fallback to localstorage
-            setAllTemplates(prev => ({ ...prev, [configProjectName]: newData }));
+            setAllTemplates(prev => ({ ...prev, [targetProject]: newData }));
             setConfigVersions(updatedVersions);
             setConfigActiveVersionId(newActiveId);
             try {
                 const projectTemplates = JSON.parse(localStorage.getItem('misa_project_material_templates') || '{}');
-                projectTemplates[configProjectName] = newData;
+                projectTemplates[targetProject] = newData;
                 localStorage.setItem('misa_project_material_templates', JSON.stringify(projectTemplates));
             } catch(e) {}
         }
@@ -392,7 +397,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                 onChange={(e) => handleProjectChange(e.target.value)}
                                 className="w-full p-3 bg-white border-2 border-slate-200 rounded-xl font-bold outline-none focus:border-blue-500 transition"
                             >
-                                {projects.map(p => (
+                                {projects.filter(p => allTemplates[p.name]).map(p => (
                                     <option key={p.name} value={p.name}>{p.name}</option>
                                 ))}
                             </select>
@@ -556,17 +561,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                                 placeholder="ĐVT"
                                                                 className={`w-24 p-2 bg-slate-50 border rounded-lg text-sm text-center font-medium outline-none ${!isEditing ? 'border-transparent text-slate-600 bg-transparent' : 'border-slate-200 focus:border-blue-500 bg-white'}`}
                                                             />
-                                                            <CurrencyInput 
-                                                                disabled={!isEditing}
-                                                                value={item.price || 0}
-                                                                onChange={(val) => {
-                                                                    const updated = [...categories];
-                                                                    updated[catIdx].items[itemIdx].price = val;
-                                                                    setEditingCategories(updated);
-                                                                }}
-                                                                placeholder="Đơn giá"
-                                                                className={`w-32 p-2 bg-slate-50 border rounded-lg text-sm text-right font-medium outline-none ${!isEditing ? 'border-transparent text-slate-600 bg-transparent' : 'border-slate-200 focus:border-blue-500 bg-white'}`}
-                                                            />
+                                                            {/* Đơn giá đã được gỡ bỏ theo yêu cầu */}
                                                             {isEditing && (
                                                                 <button 
                                                                     type="button" 

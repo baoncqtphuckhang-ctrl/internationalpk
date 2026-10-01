@@ -889,7 +889,8 @@ export default function ApprovalWorkflow({
                                     <div 
                                         id={"row-" + item.id}
                                         key={item.id} 
-                                        className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group ${(item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') ? 'cursor-pointer hover:border-indigo-300' : ''} select-none`}
+                                        className={`bg-white rounded-2xl shadow-sm border border-slate-200 p-6 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6 hover:shadow-md transition-all duration-300 group cursor-pointer hover:border-indigo-300 select-none`}
+                                        onClick={() => openPrintPreview(item)}
                                         onDoubleClick={() => {
                                             if (item.status === 'ĐÃ XONG' || item.status?.toUpperCase() === 'ACCOUNTED') {
                                                 if (onNavigateToHistoryWithId) {
@@ -918,7 +919,7 @@ export default function ApprovalWorkflow({
                                             </div>
                                         </div>
 
-                                        <div className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
+                                        <div onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
                                             {showApproveButtons && (
                                                 <>
                                                     {item.status === STATUSES.WAITING_QS && canApproveQS && (
@@ -1487,15 +1488,65 @@ export default function ApprovalWorkflow({
                                 <h3 className="text-lg sm:text-xl font-bold">Xem Trước & In Phiếu</h3>
                             </div>
                             <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                                <label className="flex items-center gap-2 cursor-pointer bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-2 rounded-xl text-xs font-bold transition border border-slate-700">
-                                    <input 
-                                        type="checkbox" 
-                                        checked={hidePrices} 
-                                        onChange={(e) => setHidePrices(e.target.checked)} 
-                                        className="w-4 h-4 accent-blue-500 rounded cursor-pointer"
-                                    />
-                                    <span>Ẩn Đơn giá & Thành tiền</span>
-                                </label>
+
+                                {showApproveButtons && printItem.status === STATUSES.WAITING_QS && canApproveQS && (
+                                    <>
+                                        <button onClick={async () => {
+                                            const qsSignature = currentUser?.signature_url || '';
+                                            const qsName = currentUser?.full_name || currentUser?.name || currentUser?.username || '';
+                                            
+                                            let newReasonStr = printItem.reason;
+                                            try {
+                                                const parsed = typeof printItem.reason === 'string' ? JSON.parse(printItem.reason || '{}') : { ...printItem.reason };
+                                                parsed.qs_signature = qsSignature;
+                                                parsed.qs_name = qsName;
+                                                newReasonStr = JSON.stringify(parsed);
+                                            } catch(e) {}
+                                            
+                                            onUpdateStatus(printItem.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
+                                            setPrintItem(null);
+                                        }} className="bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-lg"><Check size={16}/> Duyệt</button>
+                                        <button onClick={() => {
+                                            onUpdateStatus(printItem.id, STATUSES.REJECTED);
+                                            setPrintItem(null);
+                                        }} className="bg-red-50 text-red-600 px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-2 text-sm border border-red-100"><X size={16}/> Từ chối</button>
+                                    </>
+                                )}
+                                {showApproveButtons && printItem.status === STATUSES.WAITING_ACC && canApproveKT && (
+                                    <>
+                                        <button onClick={() => {
+                                            onUpdateStatus(printItem.id, STATUSES.WAITING_PRINT);
+                                            setPrintItem(null);
+                                        }} className="bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-lg"><Check size={16}/> Duyệt</button>
+                                        <button onClick={() => {
+                                            onUpdateStatus(printItem.id, STATUSES.REJECTED);
+                                            setPrintItem(null);
+                                        }} className="bg-red-50 text-red-600 px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-2 text-sm border border-red-100"><X size={16}/> Từ chối</button>
+                                    </>
+                                )}
+                                {showApproveButtons && printItem.status === STATUSES.APPROVED && canPay && (
+                                    <button 
+                                        onClick={() => { 
+                                            let c = '';
+                                            try {
+                                                const p = typeof printItem.reason === 'string' ? JSON.parse(printItem.reason || '{}') : (printItem.reason || {});
+                                                p.project = printItem.project_name || p.project;
+                                                c = typeof getTransferContent === 'function' ? getTransferContent(p) : (printItem.project_name || '');
+                                            } catch(e) { c = printItem.project_name || ''; }
+                                            
+                                            const unaccented = c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+                                            setQrTransferContent(unaccented);
+                                            setPrintItem(null);
+                                            setTimeout(() => {
+                                                setQrPaymentModal(printItem); 
+                                                setActiveQrIndex(null); 
+                                            }, 100);
+                                        }} 
+                                        className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/20"
+                                    >
+                                        <Coins size={16}/> Tiến hành thanh toán
+                                    </button>
+                                )}
                                 <button 
                                     onClick={() => window.print()}
                                     className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm"

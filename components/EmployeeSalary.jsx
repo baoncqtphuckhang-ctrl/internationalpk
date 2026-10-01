@@ -1722,8 +1722,7 @@ export default function EmployeeSalary({ currentUser, usersList = [], projects =
         const add = Number(emp.other_additions) || 0;
         const ovr = Number(emp.overtime_pay) || 0;
         
-        const actual_receive_raw = total_actual_salary_8 - nld_total_9 - adv - ded + add + ovr;
-        const actual_receive = Math.ceil(actual_receive_raw / 1000) * 1000;
+        const actual_receive = Math.round(total_actual_salary_8 - nld_total_9 - adv - ded + add + ovr);
         
         const cash = Number(emp.cash) || 0;
         const remaining = actual_receive - cash;

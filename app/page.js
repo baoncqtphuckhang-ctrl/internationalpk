@@ -1841,7 +1841,7 @@ export default function Home() {
                         supabase.from('material_orders').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
                         supabase.from('material_warehouse').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
                         supabase.from('material_templates').update({ project_name: projectPayload.name }).eq('project_name', data.original_name),
-                        supabase.from('expected_invoices').update({ project_name: projectPayload.name, projectName: projectPayload.name }).eq('project_name', data.original_name),
+                        supabase.from('expected_invoices').update({ project_name: projectPayload.name, projectName: projectPayload.name }).or(`projectName.eq.${data.original_name},project_name.eq.${data.original_name}`),
                         supabase.from('delete_requests').update({ project_name: projectPayload.name }).eq('project_name', data.original_name)
                     ]);
 
@@ -1889,7 +1889,7 @@ export default function Home() {
             await moveToTrash('material_orders', 'project_name', name);
             await moveToTrash('material_warehouse', 'project_name', name);
             await moveToTrash('material_templates', 'project_name', name);
-            await moveToTrash('expected_invoices', 'project_name', name);
+            await moveToTrash('expected_invoices', 'projectName', name);
             await moveToTrash('delete_requests', 'project_name', name);
             await moveToTrash('projects', 'name', name);
 
@@ -1902,7 +1902,7 @@ export default function Home() {
                 supabase.from('material_orders').delete().eq('project_name', name),
                 supabase.from('material_warehouse').delete().eq('project_name', name),
                 supabase.from('material_templates').delete().eq('project_name', name),
-                supabase.from('expected_invoices').delete().eq('project_name', name),
+                supabase.from('expected_invoices').delete().or(`projectName.eq.${name},project_name.eq.${name}`),
                 supabase.from('delete_requests').delete().eq('project_name', name)
             ]);
 
