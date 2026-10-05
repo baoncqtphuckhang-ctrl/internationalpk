@@ -1,0 +1,37 @@
+﻿
+          );
+      };
+  
+>     const handleSave = async (e) => {
+          e.preventDefault();
+          
+          if (!formData.project_name) {
+              showToast('Vui lòng chọn công trình!', 'error');
+              return;
+          }
+  
+          const selectedProjForSave = projects.find(p => p.name === formData.project_name);
+          const isMainContractorSave = selectedProjForSave?.project_type === 'TỔNG THẦU MUA HỘ';
+  
+          if (!isMainContractorSave) {
+              if (!formData.address || !formData.address.trim()) {
+                  showToast('Vui lòng nhập địa chỉ dự án!', 'error');
+                  return;
+              }
+              if (!formData.company || !formData.company.trim()) {
+                  showToast('Vui lòng chọn/nhập nhà cung cấp!', 'error');
+                  return;
+              }
+              if (!formData.recipient || !formData.recipient.trim()) {
+                  showToast('Vui lòng nhập người nhận hàng!', 'error');
+                  return;
+              }
+          }
+  
+          const existingPhaseOrder = getMaterialOrderPhaseSources(formData.project_name, orders, dnttList).find(o => 
+              normalizeText(o.project_name) === normalizeText(formData.project_name) && 
+              normalizeText(o.order_phase) === normalizeText(formData.order_phase) && 
+              o.id !== formData.id
+          );
+
+

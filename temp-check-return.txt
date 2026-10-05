@@ -1,0 +1,87 @@
+﻿
+      lastWord = lastWord.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+      return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
+  };
+  
+  const calculateMaterialSubtotal = (categories = []) => {
+>     return (Array.isArray(categories) ? categories : []).reduce((total, cat) => {
+          const items = Array.isArray(cat?.items) ? cat.items : [];
+          return total + items.reduce((sum, item) => {
+              return sum + ((parseFloat(item.quantity) || 0) * (parseFloat(item.price) || 0));
+          }, 0);
+      }, 0);
+          const categoriesToRender = (Array.isArray(data.items) ? data.items : DEFAULT_CATEGORIES).map(cat => ({
+              ...cat,
+              items: (data.isCreate ? cat.items : cat.items.filter(item => (parseFloat(item.quantity) || 0) > 0))
+          })).filter(cat => cat.items.length > 0);
+  
+>         return (
+              <div className="print-area bg-white font-['Times_New_Roman',_serif] text-[16px] text-black w-full 
+max-w-[800px] flex flex-col mx-auto py-10 print:py-0 print:m-0">
+                  <div className="text-center mb-8 mt-4">
+                      <h1 className="font-bold text-xl uppercase tracking-wider leading-normal">
+                          ĐƠN ĐẶT HÀNG VẬT TƯ - {data.order_phase?.toUpperCase() || ''}
+                      </h1>
+                          {(() => {
+                              const creatorUsername = data.created_by || currentUser?.username;
+                              const creatorUser = usersList?.find(u => u.username === creatorUsername);
+                              const signatureUrl = creatorUser?.signature_url;
+                              
+>                             return (
+                                  <>
+                                      <div className="h-24 flex items-center justify-center">
+                                          {data.show_signature !== false && signatureUrl ? (
+                                              <img src={signatureUrl} className="max-h-20 object-contain opacity-90" 
+style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                          ) : (
+          const isPlaced = status !== 'Rejected' && status !== 'Bị từ chối' && status !== 'Draft';
+  
+          return matchesProject && matchesSearch && !isPlaced;
+      });
+  
+>     return (
+          <div className="w-full animate-in fade-in duration-500 pb-16">
+              
+              {/* SQL Banner for Local Storage */}
+              {!isDbStorage && !isLoading && (
+                  <div className="bg-amber-500/10 border-2 border-amber-500/20 text-amber-800 rounded-3xl p-5 mb-8 
+flex flex-col md:flex-row items-center justify-between gap-4 shadow-sm animate-pulse">
+                                  const itemCount = Array.isArray(order.items) 
+                                      ? order.items.reduce((sum, cat) => sum + (cat.items?.length || 0), 0)
+                                      : 0;
+                                  const req = getMatchedRequest(order);
+                                  const isRejected = req && (req.status === 'Rejected' || req.status === 'Bị từ chối');
+>                                 return (
+                                      <div 
+                                          key={order.id} 
+                                          className={`bg-white rounded-3xl shadow-sm border ${isRejected ? 
+'border-red-300 bg-red-50/30' : 'border-slate-200'} p-6 flex flex-col justify-between hover:shadow-md 
+hover:border-blue-300 transition-all duration-300 group`}
+                                      >
+                                          <div className="space-y-4">
+                                      required
+                                  >
+                                      {projects.map(p => {
+                                          const isCompleted = p.status === 'Finish';
+                                          const isCurrentProject = formData.project_name === p.name;
+>                                         return (
+                                              <option key={p.name} value={p.name} disabled={isCompleted && 
+!isCurrentProject}>
+                                                  {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                              </option>
+                                          );
+                                      })}
+                                                  ))}
+                                              </React.Fragment>
+                                          ))}
+                                          {(() => {
+                                              const totals = calculateMaterialTotals(formData.categories);
+>                                             return (
+                                                  <>
+                                                      <tr>
+                                                          <td colSpan="6" className="border border-black p-3 
+text-right font-extrabold uppercase text-slate-900 bg-slate-100">
+                                                              Tổng trước thuế:
+                                                          </td>
+
+

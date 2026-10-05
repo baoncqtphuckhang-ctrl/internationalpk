@@ -48,7 +48,7 @@ export default function LoginForm({ onLogin, usersList, systemConfig }) {
                 }
                 user.login_ip = currentIp;
             } catch (e) {
-                console.error("Lỗi lấy IP:", e);
+                console.warn("Lỗi lấy IP (Bỏ qua nếu bị block):", e.message);
                 const allowedIps = systemConfig?.allowed_ips || {};
                 const userAllowedIp = allowedIps[user.username];
                 if (userAllowedIp && user.username !== 'admin' && user.role !== 'ADMIN') {

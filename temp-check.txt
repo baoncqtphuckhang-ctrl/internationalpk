@@ -1,0 +1,71 @@
+﻿
+          const req = getMatchedRequest(order);
+          setSelectedOrder(order);
+          setMatchedRequest(req);
+      };
+  
+>     const handleDeleteOrder = (orderId, e, reqId) => {
+          if (e) e.stopPropagation();
+          
+          const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
+          if (!isAuthorizer) {
+              const order = orders.find(o => o.id === orderId);
+              const recordName = `Đơn hàng vật tư ${order?.order_code || ''} công trình ${order?.project_name || ''}`;
+              
+              setConfirmModal({
+                  isOpen: true,
+                  title: 'Đề nghị xóa đơn đặt hàng',
+                  message: `Gửi đề nghị admin/QS trưởng xóa đơn đặt hàng ${order?.order_code || ''} của công trình 
+${order?.project_name || ''}.`,
+                  type: 'info',
+                  requireReason: true,
+                  reasonLabel: 'Lý do đề nghị xóa',
+                  reasonPlaceholder: 'Ví dụ: Nhập sai thông tin, thay đổi nhà cung cấp...',
+                  confirmText: 'Gửi đề nghị',
+                  onConfirm: (reason) => {
+                      setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                      if (!reason || !reason.trim()) {
+                          showToast('Vui lòng nhập lý do!', 'error');
+                          return;
+                      }
+                      setIsLoading(true);
+                      supabase.from('delete_requests').insert([{
+                          original_table: 'material_orders',
+                          record_id: orderId,
+                          record_name: recordName,
+                          requested_by: currentUser?.username || 'unknown',
+                          reason: reason.trim(),
+                          status: 'pending'
+                      }]).then(({ error }) => {
+                          setIsLoading(false);
+                          if (error) {
+                              showToast('Lỗi khi gửi đề nghị xóa: ' + error.message, 'error');
+                          } else {
+                              showToast('Đã gửi đề nghị xóa đơn đặt hàng tới Admin/QS Trưởng!');
+                              if (refreshData) refreshData();
+                              fetchOrders();
+                          }
+                      });
+                  }
+              });
+              return;
+          }
+          
+          setConfirmModal({
+              isOpen: true,
+              title: 'Xác nhận xóa',
+              type: 'danger',
+              requirePassword: true,
+              message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Dữ liệu này, cùng với Lịch sử chi tiền (nếu 
+có) sẽ được chuyển vào thùng rác.',
+              onConfirm: async (pwd) => {
+                  if (pwd !== adminPassword) {
+                      showToast('Mật khẩu không đúng!', 'error');
+                      return;
+                  }
+                  setConfirmModal({ isOpen: false, requirePassword: false, message: '', onConfirm: null });
+                  setIsLoading(true);
+                  try {
+                      const moveToTrashLocal = async (tableName, matchColumn, matchValue, isIlike = false) => {
+
+

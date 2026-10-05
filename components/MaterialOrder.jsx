@@ -70,6 +70,19 @@ const getNextOrderPhaseForProject = (projectName, ordersList = [], dnttList = []
     return `ĐỢT ${maxPhase + 1}`;
 };
 
+const getLastOrderDetailsForProject = (projectName, ordersList = []) => {
+    const projectOrders = ordersList.filter(o => o.project_name === projectName && !o.is_deleted);
+    if (projectOrders.length > 0) {
+        const sorted = [...projectOrders].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        return {
+            recipient: sorted[0].recipient || null,
+            company: sorted[0].company || '',
+            items: sorted[0].items || []
+        };
+    }
+    return { recipient: null, company: '', items: [] };
+};
+
 const getProjectMaterialTemplateData = (projectName, allTemplates = {}) => {
     if (!projectName) return { versions: [] };
     const projData = allTemplates[projectName];
@@ -85,20 +98,45 @@ const getProjectMaterialTemplateData = (projectName, allTemplates = {}) => {
     return { versions: [] };
 };
 
-const getProjectMaterialTemplate = (projectName, allTemplates = {}, versionId = null) => {
+const getProjectMaterialTemplate = (projectName, allTemplates = {}, versionId = null, lastItems = null) => {
     const data = getProjectMaterialTemplateData(projectName, allTemplates);
-    if (!data || !data.versions || data.versions.length === 0) return JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
-    if (versionId) {
-        const ver = data.versions.find(v => v.id === versionId);
-        if (ver) return JSON.parse(JSON.stringify(ver.categories));
+    let result = JSON.parse(JSON.stringify(DEFAULT_CATEGORIES));
+    
+    if (data && data.versions && data.versions.length > 0) {
+        if (versionId) {
+            const ver = data.versions.find(v => v.id === versionId);
+            if (ver) result = JSON.parse(JSON.stringify(ver.categories));
+        } else {
+            const activeVerId = data.activeVersionId;
+            if (activeVerId) {
+                const ver = data.versions.find(v => v.id === activeVerId);
+                if (ver) result = JSON.parse(JSON.stringify(ver.categories));
+            } else {
+                result = JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories));
+            }
+        }
     }
-    const activeVerId = data.activeVersionId;
-    if (activeVerId) {
-        const ver = data.versions.find(v => v.id === activeVerId);
-        if (ver) return JSON.parse(JSON.stringify(ver.categories));
-    }
-    return JSON.parse(JSON.stringify(data.versions[data.versions.length - 1].categories));
+    
+    // Clear quantities for new orders and apply prices from last order
+    result.forEach(cat => {
+        if (cat.items) {
+            const lastCat = (lastItems && Array.isArray(lastItems)) ? lastItems.find(lc => lc.name === cat.name) : null;
+            cat.items.forEach(item => {
+                item.quantity = '';
+                
+                if (lastCat && lastCat.items) {
+                    const lastItem = lastCat.items.find(li => li.name === item.name && li.colorCode === item.colorCode);
+                    if (lastItem && lastItem.price !== undefined && lastItem.price !== '') {
+                        item.price = lastItem.price;
+                    }
+                }
+            });
+        }
+    });
+    
+    return result;
 };
+
 
 const getCommanderName = (recipient) => {
     if (!recipient) return '';
@@ -132,8 +170,22 @@ const calculateMaterialTotals = (categories = []) => {
     };
 };
 
-export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion }) {
+export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion, actionOrder, onActionComplete, asModal, onCloseModal }) {
     const [view, setView] = useState('list'); // 'list', 'create', 'detail'
+
+    useEffect(() => {
+        if (actionOrder) {
+            if (actionOrder.action === 'edit') {
+                setView('create');
+                setSelectedOrder(actionOrder.order);
+            } else if (actionOrder.action === 'detail') {
+                setView('detail');
+                setSelectedOrder(actionOrder.order);
+            }
+            if (onActionComplete) onActionComplete();
+        }
+    }, [actionOrder]);
+
     const [orders, setOrders] = useState([]);
     const [selectedOrder, setSelectedOrder] = useState(null);
     const [isDbStorage, setIsDbStorage] = useState(false);
@@ -216,14 +268,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         const nextPhase = getNextOrderPhaseForProject(proj.name, orders, dnttList);
         const templateData = getProjectMaterialTemplateData(proj.name, templatesMap);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-        const template = getProjectMaterialTemplate(proj.name, templatesMap, activeVerId);
+        
+        const lastDetails = getLastOrderDetailsForProject(projectName, orders);
+        const template = getProjectMaterialTemplate(proj.name, templatesMap, activeVerId, lastDetails.items);
+        const recipient = lastDetails.recipient || (proj.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '');
         
         setFormData(prev => ({
             ...prev,
             project_name: projectName,
             order_phase: nextPhase,
             address: proj.address || '',
-            recipient: proj.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '',
+            recipient: recipient,
+            company: lastDetails.company,
             categories: template,
             configVersionId: activeVerId
         }));
@@ -319,7 +375,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(firstProj.name, templatesMap, activeVerId);
+                        const lastDetails = getLastOrderDetailsForProject(firstProj.name, data);
+                        const template = getProjectMaterialTemplate(firstProj.name, templatesMap, activeVerId, lastDetails.items);
                         return {
                             ...prev,
                             project_name: firstProj.name,
@@ -327,16 +384,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             categories: template,
                             configVersionId: activeVerId,
                             address: firstProj.address || '',
-                            recipient: firstProj.cht_name 
+                            company: lastDetails.company,
+                            recipient: lastDetails.recipient || (firstProj.cht_name 
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
-                                : ''
+                                : '')
                         };
                     } else if (!prev.id) {
                         // Project name already set by state default, let's update phase and template
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(prev.project_name, templatesMap, activeVerId);
+                        const lastDetails = getLastOrderDetailsForProject(prev.project_name, data);
+                        const template = getProjectMaterialTemplate(prev.project_name, templatesMap, activeVerId, lastDetails.items);
                         return {
                             ...prev,
                             order_phase: nextPhase,
@@ -367,7 +426,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
+                        const lastDetails = getLastOrderDetailsForProject(firstProj.name, loadedOrders);
+                        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId, lastDetails.items);
                         return {
                             ...prev,
                             project_name: firstProj.name,
@@ -375,15 +435,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             categories: template,
                             configVersionId: activeVerId,
                             address: firstProj.address || '',
-                            recipient: firstProj.cht_name 
+                            company: lastDetails.company,
+                            recipient: lastDetails.recipient || (firstProj.cht_name 
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
-                                : ''
+                                : '')
                         };
                     } else if (!prev.id) {
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                        const template = getProjectMaterialTemplate(prev.project_name, allTemplates, activeVerId);
+                        const lastDetails = getLastOrderDetailsForProject(prev.project_name, loadedOrders);
+                        const template = getProjectMaterialTemplate(prev.project_name, allTemplates, activeVerId, lastDetails.items);
                         return {
                             ...prev,
                             order_phase: nextPhase,
@@ -408,6 +470,112 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             fetchOrders();
         }
     }, [realtimeVersion]);
+
+    
+    const renderPrintLayout = (data) => {
+        const categoriesToRender = (Array.isArray(data.items) ? data.items : DEFAULT_CATEGORIES).map(cat => ({
+            ...cat,
+            items: (data.isCreate ? cat.items : cat.items.filter(item => (parseFloat(item.quantity) || 0) > 0))
+        })).filter(cat => cat.items.length > 0);
+
+        return (
+            <div className="print-area bg-white font-['Times_New_Roman',_serif] text-[16px] text-black w-full max-w-[800px] flex flex-col mx-auto py-10 print:py-0 print:m-0">
+                <div className="text-center mb-8 mt-4">
+                    <h1 className="font-bold text-xl uppercase tracking-wider leading-normal">
+                        ĐƠN ĐẶT HÀNG VẬT TƯ - {data.order_phase?.toUpperCase() || ''}
+                    </h1>
+                </div>
+
+                <div className="mb-8 space-y-3 text-[16px] pl-10 pr-10">
+                    <div className="flex gap-2">
+                        <span className="uppercase w-40 shrink-0">DỰ ÁN :</span>
+                        <span className="uppercase break-words">{data.project_name}</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <span className="uppercase w-40 shrink-0">ĐỊA CHỈ :</span>
+                        <span className="uppercase break-words">{data.address}</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <span className="uppercase w-40 shrink-0">HẠNG MỤC :</span>
+                        <span className="uppercase break-words">{data.category}</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <span className="uppercase w-40 shrink-0">CÔNG TY :</span>
+                        <span className="uppercase break-words">{data.company || 'CÔNG TY CỔ PHẦN ĐẦU TƯ XÂY DỰNG BCONS'}</span>
+                    </div>
+                    <div className="flex gap-2">
+                        <span className="uppercase w-40 shrink-0">NGƯỜI NHẬN HÀNG :</span>
+                        <span className="uppercase break-words">{data.recipient}</span>
+                    </div>
+                </div>
+
+                <div className="overflow-x-auto print:overflow-visible px-10">
+                    <table className="w-full border-collapse border border-black min-w-0">
+                        <thead>
+                            <tr className="text-black bg-transparent">
+                                <th className="border border-black p-2 text-center w-16 font-bold text-[16px]">STT</th>
+                                <th className="border border-black p-2 text-center font-bold text-[16px]">Chủng loại vật tư</th>
+                                <th className="border border-black p-2 text-center w-32 font-bold text-[16px]">ĐVT</th>
+                                <th className="border border-black p-2 text-center w-32 font-bold text-[16px]">Số lượng</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {categoriesToRender.map((cat, catIdx) => (
+                                <React.Fragment key={catIdx}>
+                                    <tr>
+                                        <td colSpan="4" className="border border-black p-2 text-center font-bold text-[16px] text-black bg-transparent">
+                                            {cat.name}
+                                        </td>
+                                    </tr>
+                                    {cat.items.map((item, itemIdx) => (
+                                        <tr key={itemIdx}>
+                                            <td className="border border-black p-2 text-center text-[16px] font-medium">{item.stt}</td>
+                                            <td className="border border-black p-2 pl-4 text-[16px]">
+                                                {item.name} {item.colorCode ? `(${item.colorCode})` : ''}
+                                            </td>
+                                            <td className="border border-black p-2 text-center text-[16px]">{item.unit}</td>
+                                            <td className="border border-black p-2 text-right pr-4 text-[16px]">
+                                                {item.quantity || ''}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </React.Fragment>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+
+                <div className="mt-8 flex justify-end font-['Times_New_Roman',_serif] pr-10">
+                    <div className="text-center w-80 space-y-2">
+                        <p className="text-[16px] text-black">
+                            NGÀY {getVietnameseDateComponents(data.order_date || new Date().toISOString()).day} THÁNG {getVietnameseDateComponents(data.order_date || new Date().toISOString()).month} NĂM {getVietnameseDateComponents(data.order_date || new Date().toISOString()).year}
+                        </p>
+                        <p className="font-bold text-[16px] text-black">NGƯỜI LẬP</p>
+                        {(() => {
+                            const creatorUsername = data.created_by || currentUser?.username;
+                            const creatorUser = usersList?.find(u => u.username === creatorUsername);
+                            const signatureUrl = creatorUser?.signature_url;
+                            
+                            return (
+                                <>
+                                    <div className="h-24 flex items-center justify-center">
+                                        {data.show_signature !== false && signatureUrl ? (
+                                            <img src={signatureUrl} className="max-h-20 object-contain opacity-90" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                        ) : (
+                                            <div className="text-slate-300 italic text-sm"></div>
+                                        )}
+                                    </div>
+                                    <p className="font-bold text-[16px] text-black uppercase mt-2">
+                                        {creatorUser?.full_name || creatorUsername || 'QUẢN TRỊ HỆ THỐNG'}
+                                    </p>
+                                </>
+                            );
+                        })()}
+                    </div>
+                </div>
+            </div>
+        );
+    };
 
     const handleSave = async (e) => {
         e.preventDefault();
@@ -570,9 +738,9 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             if (isMainContractorSave) {
                 showToast('Đã lưu đơn mua hộ. Xem tại tab "Quản Lý Đơn Order Hộ".', 'success');
             }
-            setView('list');
+            if (onCloseModal) onCloseModal(); else setView('list');
         } catch (err) {
-            console.error(err);
+            console.warn("Lỗi lưu đơn hàng (Bỏ qua overlay của Next.js):", err.message || err);
             showToast(`Lỗi khi lưu đơn hàng: ${err?.message || err}. Đang chuyển sang lưu cục bộ!`, 'error');
             setIsDbStorage(false);
             const localOrders = [...orders];
@@ -584,7 +752,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             localOrders.unshift(newOrder);
             localStorage.setItem('misa_material_orders', JSON.stringify(localOrders));
             setOrders(localOrders);
-            setView('list');
+            if (onCloseModal) onCloseModal(); else setView('list');
         } finally {
             setIsLoading(false);
         }
@@ -654,10 +822,11 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         const nextPhase = getNextOrderPhaseForProject(projName, orders, dnttList);
         const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId);
-        const recipient = firstProj?.cht_name 
+        const lastDetails = getLastOrderDetailsForProject(firstProj.name, orders);
+        const template = getProjectMaterialTemplate(firstProj.name, allTemplates, activeVerId, lastDetails.items);
+        const recipient = lastDetails.recipient || (firstProj?.cht_name 
             ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
-            : '';
+            : '');
 
         setFormData({
             id: null,
@@ -666,7 +835,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             order_date: new Date().toISOString().split('T')[0],
             address: firstProj.address || '',
             category: 'SƠN NƯỚC',
-            company: '',
+            company: lastDetails.company,
             order_company: 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG',
             recipient: recipient,
             categories: template,
@@ -832,10 +1001,10 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         </td>
                     </tr>
                     <tr style="height: 35px;">
-                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                        <td colspan="2" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
                             HẠNG MỤC :
                         </td>
-                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; background-color: #ffff00; border: 1px solid #eab308; vertical-align: middle;">
+                        <td colspan="${showPriceCols ? 5 : 3}" style="font-family: 'Times New Roman'; font-size: 12pt; font-weight: bold; vertical-align: middle;">
                             ${(orderData.category || '').toUpperCase()}
                         </td>
                     </tr>
@@ -1163,7 +1332,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             <p className="text-slate-500 text-sm mt-0.5">Nhập các thông tin vật tư sơn nước cần cung cấp.</p>
                         </div>
                         <button 
-                            onClick={() => setView('list')}
+                            onClick={() => { if (onCloseModal) onCloseModal(); else setView('list'); }}
                             className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition"
                         >
                             <X size={20} />
@@ -1171,7 +1340,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                     </header>
 
                     {/* FORM CONTAINER */}
-                    <form onSubmit={handleSave} className="space-y-6">
+                    <form onSubmit={handleSave} className="space-y-6 print:hidden">
                         
                         {/* ALERT FOR TỔNG THẦU MUA HỘ */}
                         {projects.find(p => p.name === formData.project_name)?.project_type === 'TỔNG THẦU MUA HỘ' && (
@@ -1194,16 +1363,18 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                         const selectedName = e.target.value;
                                         const proj = projects.find(p => p.name === selectedName);
                                         const address = proj?.address || '';
-                                        const recipient = proj?.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '';
+                                        const lastDetails = getLastOrderDetailsForProject(selectedName, orders);
+                                        const recipient = lastDetails.recipient || (proj?.cht_name ? (proj.cht_phone ? `${proj.cht_name} (SĐT: ${proj.cht_phone})` : proj.cht_name) : '');
                                         const nextPhase = getNextOrderPhaseForProject(selectedName, orders, dnttList);
                                         const templateData = getProjectMaterialTemplateData(selectedName, allTemplates);
                                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
-                                        const template = getProjectMaterialTemplate(selectedName, allTemplates, activeVerId);
+                                        const template = getProjectMaterialTemplate(selectedName, allTemplates, activeVerId, lastDetails.items);
                                         setFormData({ 
                                             ...formData, 
                                             project_name: selectedName, 
                                             address: address || '',
                                             recipient: recipient,
+                                            company: lastDetails.company,
                                             order_phase: nextPhase,
                                             categories: template,
                                             configVersionId: activeVerId
@@ -1237,7 +1408,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             </div>
 
                             {projects.find(p => p.name === formData.project_name)?.project_type !== 'TỔNG THẦU MUA HỘ' && (
-                                <div className="space-y-2">
+                                <div className="hidden space-y-2">
                                     <label className="block text-xs font-black text-slate-900 uppercase">Địa chỉ dự án</label>
                                     <input 
                                         type="text"
@@ -1249,44 +1420,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 </div>
                             )}
 
-                            <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Đợt giá áp dụng (Thay đổi đơn giá)</label>
-                                <select 
-                                    value={formData.price_batch || ''}
-                                    onChange={(e) => {
-                                        const selectedVerId = e.target.value;
-                                        setFormData(prev => {
-                                            const newData = { ...prev, price_batch: selectedVerId };
-                                            if (selectedVerId) {
-                                                const projData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
-                                                const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === selectedVerId);
-                                                if (selectedVer && selectedVer.categories) {
-                                                    const newCats = JSON.parse(JSON.stringify(prev.categories));
-                                                    newCats.forEach(cat => {
-                                                        cat.items.forEach(item => {
-                                                            const verCat = selectedVer.categories.find(c => c.name === cat.name);
-                                                            if (verCat) {
-                                                                const verItem = verCat.items.find(i => i.name === item.name && (i.colorCode || '') === (item.colorCode || ''));
-                                                                if (verItem) {
-                                                                    item.price = verItem.price;
-                                                                }
-                                                            }
-                                                        });
-                                                    });
-                                                    newData.categories = newCats;
-                                                }
-                                            }
-                                            return newData;
-                                        });
-                                    }}
-                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
-                                >
-                                    <option value="">-- Giữ nguyên đơn giá hiện tại --</option>
-                                    {(getProjectMaterialTemplateData(formData.project_name, allTemplates)?.versions || []).map((v, vIdx) => (
-                                        <option key={v.id} value={`Đợt giá: ${v.id}`}>{v.name || `Đơn giá lần ${vIdx + 1}`} (Áp dụng từ {formatDateVN(v.date)})</option>
-                                    ))}
-                                </select>
-                            </div>
+
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Hạng mục thi công</label>
@@ -1323,7 +1457,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 )}
                             </div>
 
-                            <div className="space-y-2">
+                            <div className="hidden space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Công ty đặt hàng</label>
                                 <select
                                     value={
@@ -1468,18 +1602,20 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 </select>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="block text-xs font-black text-slate-900 uppercase">Người nhận hàng & SĐT thực tế</label>
-                                <input 
-                                    ref={recipientInputRef}
-                                    type="text"
-                                    value={formData.recipient}
-                                    onChange={(e) => setFormData({ ...formData, recipient: e.target.value })}
-                                    placeholder="Nhập tên người nhận và SĐT..."
-                                    className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
-                                    required
-                                />
-                            </div>
+                            {(!projectPersonnel.some(p => (p.phone ? `${p.name} (SĐT: ${p.phone})` : p.name) === formData.recipient)) && (
+                                <div className="space-y-2">
+                                    <label className="block text-xs font-black text-slate-900 uppercase">Người nhận hàng & SĐT thực tế</label>
+                                    <input 
+                                        ref={recipientInputRef}
+                                        type="text"
+                                        value={formData.recipient}
+                                        onChange={(e) => setFormData({ ...formData, recipient: e.target.value })}
+                                        placeholder="Nhập tên người nhận và SĐT..."
+                                        className="w-full p-3.5 border-2 border-slate-100 rounded-2xl outline-none focus:border-blue-500 bg-slate-50 font-bold text-slate-800 transition"
+                                        required
+                                    />
+                                </div>
+                            )}
 
                             <div className="space-y-2">
                                 <label className="block text-xs font-black text-slate-900 uppercase">Ngày lập đơn</label>
@@ -1492,17 +1628,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 />
                             </div>
 
-                            <div className="flex items-center gap-3 pt-6">
-                                <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700 text-sm select-none">
-                                    <input 
-                                        type="checkbox"
-                                        checked={formData.show_signature}
-                                        onChange={(e) => setFormData({ ...formData, show_signature: e.target.checked })}
-                                        className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500"
-                                    />
-                                    Hiển thị chữ ký người lập tự động
-                                </label>
-                            </div>
+
                         </div>
 
                         {/* EXCEL SHEET INTERACTIVE GRID */}
@@ -1526,8 +1652,8 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     <span className="break-words">{formData.address.toUpperCase()}</span>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
-                                    <span className="font-bold bg-yellow-300 px-1 border border-yellow-400 break-words">{formData.category.toUpperCase()}</span>
+                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
+                                    <span className="font-bold break-words">{formData.category.toUpperCase()}</span>
                                 </div>
                                 <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2 text-slate-700">
                                     <span className="font-bold text-slate-700 break-words">{formData.company.toUpperCase()}</span>
@@ -1602,8 +1728,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                                 placeholder="Nhập SL..."
                                                             />
                                                         </td>
-                                                        <td className="border border-black p-2 text-right text-sm font-medium text-slate-500">
-                                                            {formatCurrency(item.price)}
+                                                        <td className="border border-black p-1 bg-white">
+                                                            <CurrencyInput 
+                                                                value={item.price || ''}
+                                                                onChange={(val) => handleItemChange(catIdx, itemIdx, 'price', val || '')}
+                                                                className="w-full px-2 py-2 outline-none text-right font-medium bg-transparent text-slate-700 placeholder:text-slate-300 focus:bg-yellow-100/60 rounded transition-colors"
+                                                                placeholder="Nhập giá..."
+                                                            />
                                                         </td>
                                                         <td className="border border-black p-2 text-right font-bold text-red-600">
                                                             {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : ''}
@@ -1647,6 +1778,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                                 </>
                                             );
                                         })()}
+
                                     </tbody>
                                 </table>
                             </div>
@@ -1663,21 +1795,17 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     
                                     {/* SIGNATURE BOX */}
                                     <div className="h-20 flex items-center justify-center">
-                                        {formData.show_signature && (
-                                            <>
-                                                {currentUser?.signature_url ? (
-                                                    <img src={currentUser.signature_url} className="max-h-16 object-contain opacity-90 animate-in fade-in duration-300" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
-                                                ) : (
-                                                    <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none animate-in fade-in duration-300">
-                                                        {getSignatureName(getCommanderName(formData.recipient))}
-                                                    </div>
-                                                )}
-                                            </>
+                                        {currentUser?.signature_url ? (
+                                            <img src={currentUser.signature_url} className="max-h-16 object-contain opacity-90 animate-in fade-in duration-300" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                        ) : (
+                                            <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none animate-in fade-in duration-300">
+                                                {getSignatureName(currentUser?.full_name || currentUser?.username || '')}
+                                            </div>
                                         )}
                                     </div>
                                     
                                     <p className="font-extrabold text-slate-900 border-t border-slate-100 pt-2 text-sm uppercase">
-                                        {getCommanderName(formData.recipient)}
+                                        {currentUser?.full_name || currentUser?.username || ''}
                                     </p>
                                 </div>
                             </div>
@@ -1687,7 +1815,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         <div className="flex gap-4">
                             <button 
                                 type="button" 
-                                onClick={() => setView('list')} 
+                                onClick={() => { if (onCloseModal) onCloseModal(); else setView('list'); }} 
                                 className="bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold py-3.5 px-6 rounded-2xl flex-1 transition"
                             >
                                 Hủy bỏ
@@ -1769,7 +1897,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                     <Edit3 size={18} /> Sửa Đơn
                                 </button>
                                 <button 
-                                    onClick={() => { setView('list'); setSelectedOrder(null); setShowNonEmptyOnly(false); }}
+                                    onClick={() => { if (onCloseModal) onCloseModal(); else setView('list'); setSelectedOrder(null); setShowNonEmptyOnly(false); }}
                                     className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition ml-2"
                                 >
                                     <X size={20} />
@@ -1777,172 +1905,14 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             </div>
                         </header>
 
-                        {/* DỰ ÁN PREVIEW SIMULATOR */}
-                        <div className="print-area bg-white shadow-2xl rounded-sm p-8 md:p-12 font-['Times_New_Roman',_serif] text-[16px] text-black w-full max-w-[950px] min-h-[1340px] flex flex-col justify-between mx-auto">
                         
-                        <div>
-                            {/* SHEET TITLE */}
-                            <div className="text-center mb-8">
-                                <h1 className="font-extrabold text-2xl uppercase tracking-wider leading-normal">
-                                    ĐƠN ĐẶT HÀNG VẬT TƯ SƠN NƯỚC {selectedOrder.order_phase.toUpperCase()}
-                                </h1>
-                            </div>
-
-                            {/* GRID SUMMARY INFO */}
-                            <div className="mb-8 space-y-2 text-[15px] pl-2">
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">DỰ ÁN :</span>
-                                    <span className="font-bold text-black text-lg break-words">{selectedOrder.project_name.toUpperCase()}</span>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">ĐỊA CHỈ :</span>
-                                    <span className="break-words">{selectedOrder.address.toUpperCase()}</span>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">HẠNG MỤC :</span>
-                                    <span className="font-bold break-words">{selectedOrder.category.toUpperCase()}</span>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">CÔNG TY ĐẶT HÀNG :</span>
-                                    <span className="font-bold text-black break-words">{(selectedOrder.items?.[0]?._order_company || selectedOrder.order_company || 'CÔNG TY CỔ PHẦN TRANG TRÍ NỘI THẤT INTERNATIONAL PK').toUpperCase()}</span>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NHÀ CUNG CẤP :</span>
-                                    <span className="font-bold text-black break-words">{selectedOrder.company.toUpperCase()}</span>
-                                </div>
-                                <div className="flex flex-col sm:flex-row gap-0.5 sm:gap-2">
-                                    <span className="font-bold whitespace-nowrap min-w-[165px] shrink-0">NGƯỜI NHẬN HÀNG :</span>
-                                    <span className="font-bold text-black break-words">{selectedOrder.recipient.toUpperCase()}</span>
-                                </div>
-                            </div>
-
-                            {/* EXCEL GRID TABLE */}
-                            <div className="overflow-x-auto print:overflow-visible">
-                                <table className="w-full border-collapse border border-black min-w-[600px] print:min-w-0">
-                                    <thead>
-                                        <tr className="text-black bg-slate-100">
-                                            <th className="border border-black p-2.5 text-center w-16 font-bold text-[15px]">STT</th>
-                                            <th className="border border-black p-2.5 text-left font-bold text-[15px]">Chủng loại vật tư</th>
-                                            <th className="border border-black p-2.5 text-center w-28 font-bold text-[15px]">Mã màu</th>
-                                            <th className="border border-black p-2.5 text-center w-20 font-bold text-[15px]">DVT</th>
-                                            <th className="border border-black p-2.5 text-center w-24 font-bold text-[15px]">Số lượng</th>
-                                            {showPriceCols && <th className="border border-black p-2.5 text-center w-32 font-bold text-[15px] relative group">
-                                                Đơn giá
-                                                <button onClick={() => setShowPriceCols(false)} className="absolute top-1 left-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-all p-1 bg-slate-200/50 rounded print:hidden" title="Ẩn cột này"><EyeOff size={14} /></button>
-                                            </th>}
-                                            {showPriceCols && <th className="border border-black p-2.5 text-right w-36 font-bold text-[15px]">Thành tiền</th>}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {(() => {
-                                            const categoriesToRender = (Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES).map(cat => ({
-                                                ...cat,
-                                                items: showNonEmptyOnly 
-                                                    ? cat.items.filter(item => (parseFloat(item.quantity) || 0) > 0) 
-                                                    : cat.items
-                                            })).filter(cat => cat.items.length > 0);
-
-                                            return categoriesToRender.map((cat, catIdx) => (
-                                                <React.Fragment key={catIdx}>
-                                                    {/* CATEGORY HEADER ROW */}
-                                                    <tr>
-                                                        <td colSpan={showPriceCols ? "7" : "5"} className="border border-black p-2 text-center font-bold text-[15px] uppercase text-black bg-slate-50">
-                                                            {cat.name}
-                                                        </td>
-                                                    </tr>
-
-                                                    {/* CATEGORY ITEMS */}
-                                                    {cat.items.map((item, itemIdx) => (
-                                                        <tr key={itemIdx}>
-                                                            <td className="border border-black p-2 text-center font-medium">{item.stt}</td>
-                                                            <td className="border border-black p-2 pl-4">{item.name}</td>
-                                                            <td className="border border-black p-2 text-center">{item.colorCode || ''}</td>
-                                                            <td className="border border-black p-2 text-center">{item.unit}</td>
-                                                            <td className="border border-black p-2 text-center font-bold">
-                                                                {item.quantity || '-'}
-                                                            </td>
-                                                            {showPriceCols && <td className="border border-black p-2 text-right pr-4">
-                                                                {item.price ? formatCurrency(item.price) : '-'}
-                                                            </td>}
-                                                            {showPriceCols && <td className="border border-black p-2 text-right pr-4 font-bold text-blue-800">
-                                                                {(parseFloat(item.quantity) || 0) > 0 && (parseFloat(item.price) || 0) > 0 ? formatCurrency(parseFloat(item.quantity) * parseFloat(item.price)) : '-'}
-                                                            </td>}
-                                                        </tr>
-                                                    ))}
-                                                </React.Fragment>
-                                            ));
-                                        })()}
-                                        {showPriceCols && (() => {
-                                            const orderItems = Array.isArray(selectedOrder.items) ? selectedOrder.items : DEFAULT_CATEGORIES;
-                                            const totals = calculateMaterialTotals(orderItems);
-                                            return (
-                                                <>
-                                                    <tr>
-                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
-                                                            Tổng trước thuế:
-                                                        </td>
-                                                        <td className="border border-black p-3 text-right font-bold text-blue-800 text-[17px] bg-slate-100">
-                                                            {formatCurrency(totals.subtotal)} VNĐ
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
-                                                            Thuế VAT (8%):
-                                                        </td>
-                                                        <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
-                                                            {formatCurrency(totals.vat)} VNĐ
-                                                        </td>
-                                                    </tr>
-                                                    <tr>
-                                                        <td colSpan="6" className="border border-black p-3 text-right font-bold uppercase text-black bg-slate-100">
-                                                            Tổng sau thuế:
-                                                        </td>
-                                                        <td className="border border-black p-3 text-right font-bold text-red-600 text-[17px] bg-slate-100">
-                                                            {formatCurrency(totals.totalAfterTax)} VNĐ
-                                                        </td>
-                                                    </tr>
-                                                </>
-                                            );
-                                        })()}
-                                    </tbody>
-                                </table>
-                            </div>
+                        {/* DỰ ÁN PREVIEW SIMULATOR */}
+                        <div className="shadow-2xl rounded-sm w-full max-w-[950px] mx-auto border border-slate-200 print:border-none print:shadow-none bg-white">
+                            {renderPrintLayout({ ...selectedOrder, items: selectedOrder.items, isCreate: false })}
                         </div>
 
-                        {/* SIGNATURE BLOCK */}
-                        <div className="mt-12 flex justify-end font-sans">
-                            <div className="text-center w-80 space-y-1">
-                                <p className="text-xs uppercase font-extrabold tracking-widest text-slate-400">
-                                    NGÀY {getVietnameseDateComponents(selectedOrder.order_date).day} THÁNG {getVietnameseDateComponents(selectedOrder.order_date).month} NĂM {getVietnameseDateComponents(selectedOrder.order_date).year}
-                                </p>
-                                <p className="font-extrabold text-sm text-slate-800">NGƯỜI LẬP</p>
-                                
-                                <div className="h-20 flex items-center justify-center">
-                                    {selectedOrder.show_signature && (() => {
-                                        const creatorUsername = selectedOrder.created_by || currentUser?.username;
-                                        const signatureUrl = usersList?.find(u => u.username === creatorUsername)?.signature_url;
-                                        return (
-                                            <>
-                                                {signatureUrl ? (
-                                                    <img src={signatureUrl} className="max-h-16 object-contain opacity-90" style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
-                                                ) : (
-                                                    <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-700 select-none">
-                                                        {getSignatureName(getCommanderName(selectedOrder.recipient))}
-                                                    </div>
-                                                )}
-                                            </>
-                                        );
-                                    })()}
-                                </div>
-                                
-                                <p className="font-bold text-black border-t border-black pt-2 text-sm uppercase">
-                                    {getCommanderName(selectedOrder.recipient)}
-                                </p>
-                            </div>
-                        </div>
                     </div>
                 </div>
-            </div>
             )}
 
             {/* SQL CODE POPUP MODAL */}

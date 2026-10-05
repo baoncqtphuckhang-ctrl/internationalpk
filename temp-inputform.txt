@@ -1,0 +1,56 @@
+﻿
+          return Object.keys(newErrors).length === 0;
+      };
+  
+>     const handleSubmit = (e) => {
+          e.preventDefault();
+          if (!validate()) return;
+  
+          if (type === 'EXPENSE') {
+              const isBothCode = ['6413', '6418'].includes(formData.code);
+              const isAdvanceOrReceivable = ['131', '141'].some(acc => 
+formData.corresponding_account?.startsWith(acc));
+              const isPayable = ['331', '334', '338'].some(acc => formData.corresponding_account?.startsWith(acc));
+              const isMaterialOrEquipment = ['621', '623'].includes(formData.code);
+              const isRecoveryViaReceivable = isBothCode && formData.corresponding_account?.startsWith('131');
+              const isBothCodeWithDebtAccount = isBothCode && ['131', '331'].some(acc => 
+formData.corresponding_account?.startsWith(acc));
+              const isHoSoRecovery = formData.code === '6413' && !isRecoveryViaReceivable && 
+!formData.corresponding_account?.startsWith('331');
+              
+              const isPayOnly = isMaterialOrEquipment || (isPayable && !isBothCodeWithDebtAccount);
+              const isReceiveOnly = isRecoveryViaReceivable && !isBothCodeWithDebtAccount;
+              const isBoth = !isPayOnly && !isReceiveOnly && !isHoSoRecovery && (isBothCode || isAdvanceOrReceivable 
+|| formData.code === '131');
+  
+              if ((isBoth || isPayOnly || isReceiveOnly) && parseFloat(formData.debit) > 0 && !editData) {
+                  setDebtConfirmModal({
+                      isOpen: true,
+                      data: formData,
+                      </button>}
+                  </div>
+  
+>                 <form onSubmit={handleSubmit} className="p-8 space-y-6" noValidate>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                          {/* Công trình */}
+                          <div>
+                              <label className={labelCls}>
+                                  Công trình <span className="text-red-500">*</span>
+                              </label>
+                              <select
+                                  value={formData.project_name}
+                                  onChange={(e) => handleChange('project_name', e.target.value)}
+                                  className={inputCls('project_name')}
+                              >
+                                  {projects.map(p => {
+                                      const isCompleted = p.status === 'Finish';
+                                      const isCurrentProject = formData.project_name === p.name;
+                                      return (
+                                          <option key={p.id} value={p.name} disabled={isCompleted && 
+!isCurrentProject}>
+                                              {p.name} {isCompleted ? ' (FINISH - ĐÃ KHÓA)' : ''}
+                                          </option>
+                                      );
+                                  })}
+
+

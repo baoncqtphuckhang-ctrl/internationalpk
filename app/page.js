@@ -17,7 +17,10 @@ import EmployeeSalary from '@/components/EmployeeSalary';
 import ExcelImportModal from '@/components/ExcelImportModal';
 import MaterialOrder from '@/components/MaterialOrder';
 import MaterialWarehouse from '@/components/MaterialWarehouse';
+import SupplierDebt from '@/components/SupplierDebt';
+import PurchaseInvoices from '@/components/PurchaseInvoices';
 import MaterialOrderManager from '@/components/MaterialOrderManager';
+import MaterialProcessing from '@/components/MaterialProcessing';
 import MaterialCatalog from '@/components/MaterialCatalog';
 import ExpectedInvoices from '@/components/ExpectedInvoices';
 import ConfirmModal from '@/components/ConfirmModal';
@@ -517,7 +520,8 @@ export default function Home() {
     const [expectedInvoices, setExpectedInvoices] = useState([]);
     const [selectedProject, setSelectedProject] = useState('');
     const [previousTab, setPreviousTab] = useState(null);
-    const [materialSubTab, setMaterialSubTab] = useState('catalog');
+    const [materialSubTab, setMaterialSubTab] = useState('order');
+    const [materialActionOrder, setMaterialActionOrder] = useState(null);
     const [historySearchTerm, setHistorySearchTerm] = useState('');
 
     
@@ -3631,12 +3635,16 @@ export default function Home() {
                 {activeTab === 'materials' && (
                     <div className="flex flex-col space-y-4 animate-in fade-in duration-500">
                         <div className="flex gap-4 border-b sticky top-[56px] md:top-0 bg-slate-50/90 backdrop-blur-md z-10 pt-2 pb-2 px-2 rounded-t-xl mb-4 shadow-sm overflow-x-auto whitespace-nowrap custom-scrollbar">
-                            <button onClick={() => setMaterialSubTab('catalog')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Danh Mục Vật Tư</button>
+                            <button onClick={() => setMaterialSubTab('catalog')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'catalog' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Vật tư order</button>
                             <button onClick={() => setMaterialSubTab('order')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'order' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đặt Vật Tư</button>
-                            <button onClick={() => setMaterialSubTab('manage')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Vật Tư</button>
-                            <button onClick={() => setMaterialSubTab('manage-ho')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'manage-ho' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Quản Lý Đơn Order Hộ</button>
+                            <button onClick={() => setMaterialSubTab('processing')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'processing' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Đang xử lý</button>
+
                             {['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) && (
-                                <button onClick={() => setMaterialSubTab('warehouse')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
+                                <>
+                                    <button onClick={() => setMaterialSubTab('warehouse')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'warehouse' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Kho Vật Tư</button>
+                                    <button onClick={() => setMaterialSubTab('purchase_invoices')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'purchase_invoices' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>HĐ mua vào</button>
+                                    <button onClick={() => setMaterialSubTab('supplier_debt')} className={`shrink-0 px-4 py-2 font-bold transition ${materialSubTab === 'supplier_debt' ? 'border-b-2 border-blue-600 text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}>Công nợ NCC</button>
+                                </>
                             )}
                         </div>
                         {materialSubTab === 'warehouse' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
@@ -3645,6 +3653,33 @@ export default function Home() {
                                 projects={allowedProjects} 
                                 showToast={showToast} 
                                 realtimeVersion={realtimeVersion}
+                                setMaterialSubTab={setMaterialSubTab}
+                            />
+                        ) : materialSubTab === 'supplier_debt' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
+                            <SupplierDebt 
+                                currentUser={currentUser} 
+                                projects={allowedProjects} 
+                                showToast={showToast} 
+                            />
+                        ) : materialSubTab === 'purchase_invoices' && ['ADMIN', 'CHỈ HUY TRƯỞNG', 'CHT', 'GIÁM SÁT', 'GS', 'KẾ TOÁN VẬT TƯ'].includes(currentUser?.role?.toUpperCase()) ? (
+                            <PurchaseInvoices 
+                                currentUser={currentUser} 
+                                projects={allowedProjects} 
+                                showToast={showToast} 
+                            />
+                        ) : materialSubTab === 'processing' ? (
+                            <MaterialProcessing 
+                                currentUser={currentUser} 
+                                projects={allowedProjects} 
+                                showToast={showToast} 
+                                onNavigateToEdit={(order) => {
+                                    setMaterialActionOrder({ order, action: 'edit' });
+                                    setMaterialSubTab('order');
+                                }}
+                                onNavigateToDetail={(order) => {
+                                    setMaterialActionOrder({ order, action: 'detail' });
+                                    setMaterialSubTab('order');
+                                }}
                             />
                         ) : materialSubTab === 'order' ? (
                                 <MaterialOrder 

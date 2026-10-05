@@ -1,0 +1,18 @@
+﻿
+              )}
+  
+              {/* HEADER AREA */}
+>             {!asModal && (
+              {view === 'list' && (
+                  <header className="mb-8 flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
+                      <div>
+                          <h2 className="text-2xl font-bold text-slate-800 flex items-center gap-3">
+                              <div className="bg-blue-600 p-2.5 rounded-2xl text-white shadow-lg shadow-blue-600/25">
+                                  <ClipboardList size={22} />
+                              </div>
+                              <span>Đặt Hàng Vật Tư</span>
+                          </h2>
+                          <p className="text-slate-500 text-sm mt-1">Hàng chờ đơn đặt hàng trực tiếp (nháp hoặc bị từ 
+chối). Đơn mua hộ xem tại tab Quản Lý Đơn Order Hộ.</p>
+
+

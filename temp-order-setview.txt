@@ -1,0 +1,21 @@
+﻿
+              }
+>             setView('list');
+          } catch (err) {
+              setOrders(localOrders);
+>             setView('list');
+          } finally {
+                          <button 
+>                             onClick={() => setView('list')}
+                              className="p-2 bg-slate-100 hover:bg-slate-200 rounded-xl text-slate-500 transition"
+                                  type="button" 
+>                                 onClick={() => setView('list')} 
+                                  className="bg-slate-100 text-slate-600 hover:bg-slate-200 font-bold py-3.5 px-6 
+rounded-2xl flex-1 transition"
+                                  <button 
+>                                     onClick={() => { setView('list'); setSelectedOrder(null); 
+setShowNonEmptyOnly(false); }}
+                                      className="p-2 bg-red-50 hover:bg-red-100 text-red-600 rounded-xl transition 
+ml-2"
+
+

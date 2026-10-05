@@ -1,0 +1,108 @@
+﻿
+          );
+      };
+  
+>     const handleSave = async (e) => {
+          e.preventDefault();
+          
+          if (!formData.project_name) {
+              showToast('Vui lòng chọn công trình!', 'error');
+              return;
+          }
+  
+          const selectedProjForSave = projects.find(p => p.name === formData.project_name);
+          const isMainContractorSave = selectedProjForSave?.project_type === 'TỔNG THẦU MUA HỘ';
+  
+          if (!isMainContractorSave) {
+              if (!formData.address || !formData.address.trim()) {
+                  showToast('Vui lòng nhập địa chỉ dự án!', 'error');
+                  return;
+              }
+              if (!formData.company || !formData.company.trim()) {
+                  showToast('Vui lòng chọn/nhập nhà cung cấp!', 'error');
+                  return;
+              }
+              if (!formData.recipient || !formData.recipient.trim()) {
+                  showToast('Vui lòng nhập người nhận hàng!', 'error');
+                  return;
+              }
+          }
+  
+          const existingPhaseOrder = getMaterialOrderPhaseSources(formData.project_name, orders, dnttList).find(o => 
+              normalizeText(o.project_name) === normalizeText(formData.project_name) && 
+              normalizeText(o.order_phase) === normalizeText(formData.order_phase) && 
+              o.id !== formData.id
+          );
+  
+          if (existingPhaseOrder) {
+              showToast(`Dự án này đã có Đơn đặt hàng cho ${formData.order_phase}! Vui lòng chọn đợt khác.`, 'error');
+              return;
+          }
+  
+          setIsLoading(true);
+  
+          const payload = {
+              project_name: formData.project_name,
+              order_phase: formData.order_phase,
+              order_date: formData.order_date,
+              address: isMainContractorSave ? '' : formData.address,
+              category: formData.category,
+              company: isMainContractorSave ? '' : formData.company,
+              recipient: formData.recipient,
+              items: formData.categories,
+              show_signature: formData.show_signature,
+              created_by: currentUser.username
+          };
+  
+          if (payload.items && payload.items.length > 0) {
+              let pbName = '';
+              if (formData.price_batch) {
+                  // formData.price_batch is "Đợt giá: {date || id}"
+                  // We need to store the actual version ID. 
+                  const projData = getProjectMaterialTemplateData(formData.project_name, allTemplates);
+                  const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === formData.price_batch);
+                  if (selectedVer) {
+                      pbName = selectedVer.id;
+                  } else {
+                      pbName = formData.price_batch.replace('Đợt giá: ', '').trim();
+                  }
+              }
+              payload.items[0]._price_batch = pbName;
+              payload.items[0]._order_company = formData.order_company || '';
+          }
+  
+          try {
+              let savedOrderId = formData.id;
+              if (isDbStorage) {
+                  if (formData.id) {
+                      const { error } = await supabase
+                          .from('material_orders')
+                          .update(payload)
+                          .eq('id', formData.id);
+                      if (error) throw error;
+                      showToast('Cập nhật đơn đặt hàng thành công!');
+                  } else {
+                      const { data: insertedOrder, error } = await supabase
+                          .from('material_orders')
+                          .insert([payload])
+                          .select('id')
+                          .single();
+                      if (error) throw error;
+                      savedOrderId = insertedOrder?.id || null;
+                      showToast('Lưu đơn đặt hàng thành công!');
+                  }
+              } else {
+                  const localOrders = [...orders];
+                  if (formData.id) {
+                      const idx = localOrders.findIndex(o => o.id === formData.id);
+                      if (idx !== -1) {
+                          localOrders[idx] = { ...payload, id: formData.id, created_at: localOrders[idx].created_at || 
+new Date().toISOString() };
+                      }
+                  } else {
+                      const newOrder = {
+                          ...payload,
+                          id: 'local_' + Date.now(),
+                          created_at: new Date().toISOString()
+
+

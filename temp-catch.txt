@@ -1,0 +1,181 @@
+﻿
+              });
+              setEditingId(item.id);
+              setView('create');
+>         } catch (e) {
+              console.error("Error parsing item for edit", e);
+          }
+      };
+  
+      const getPrintDateComponents = (dateStr) => {
+          if (!dateStr) return { day: '...', month: '...', year: '...' };
+          const d = new Date(dateStr);
+          if (isNaN(d.getTime())) return { day: '...', month: '...', year: '...' };
+          return {
+              day: d.getDate().toString().padStart(2, '0'),
+          let parsed = null;
+          try {
+              parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
+>         } catch(e) {
+              parsed = {
+                  docType: item.doc_type === 'DNTU' ? 'DNTU' : 'DNTT',
+                  date: item.created_at ? item.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
+                  recipient: item.recipient,
+                  project: item.project_name,
+                  items: [{ id: 1, maChi: '', content: item.reason || 'Chi phí', amount: item.total_amount, note: '' 
+}],
+                  paymentMethod: 'tien_mat',
+                  bankAccountName: '',
+                  bankAccountNumber: '',
+                  bankName: '',
+                  amount: item.total_amount,
+                  note: orderPhase || ''
+              }];
+>         } catch(e) {
+              items = [{ content: item.reason, amount: item.total_amount }];
+          }
+          
+          setDistributeItem({ ...item, paymentMethod, orderPhase });
+          setDistributionData(items.map(it => ({
+              content: it.content,
+              amount: parseFloat(it.amount),
+              code: '621', // Mặc định vật tư
+              note: it.note || '',
+              invoiceDate: new Date().toISOString().split('T')[0],
+                      ...d,
+                      amount: originalItems[i] ? parseFloat(originalItems[i].amount) : 0
+                  })));
+>             } catch(e) {
+                  setDistributionData(prev => [{...prev[0], amount: distributeItem.total_amount}]);
+              }
+          }
+      };
+  
+      const handleSaveDistribution = () => {
+          const totalSum = distributionData.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
+          if (Math.abs(totalSum - distributeItem.total_amount) > 10) {
+              setConfirmModal({
+                  isOpen: true,
+              } else if (parsed.items && parsed.items.length > 0) {
+                  displayTitle = parsed.items[0].content || 'Đề nghị thanh toán';
+              }
+>         } catch(e) {}
+          return displayTitle;
+      };
+  
+      const filteredList = dnttList.filter(d => {
+          // filter by tab status
+          if (filter === 'active') {
+              if ([STATUSES.APPROVED, STATUSES.PAID, STATUSES.ACCOUNTED, STATUSES.REJECTED].includes(d.status)) return 
+false;
+          } else if (filter === 'approved') {
+              if (d.status !== STATUSES.APPROVED) return false;
+          } else if (filter === 'paid') {
+                                                                      parsed.qs_signature = qsSignature;
+                                                                      parsed.qs_name = qsName;
+                                                                      newReasonStr = JSON.stringify(parsed);
+>                                                                 } catch(e) {
+                                                                      console.error("Error parsing reason for QS 
+approval:", e);
+                                                                  }
+                                                                  
+                                                                  onUpdateStatus(item.id, STATUSES.WAITING_PRINT, { 
+reason: newReasonStr });
+                                                              }} className="flex-1 lg:flex-none whitespace-nowrap 
+bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 
+sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
+                                                              <button onClick={() => onUpdateStatus(item.id, 
+STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 
+rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center 
+border border-red-100"><X size={18}/> Từ chối</button>
+                                                          </>
+                                                      )}
+                                                      {item.status === STATUSES.WAITING_ACC && canApproveKT && (
+                                                          <>
+                                                              const p = JSON.parse(item.reason || '{}');
+                                                              p.project = item.project_name || p.project;
+                                                              c = getTransferContent(p);
+>                                                         } catch(e) { c = item.project_name || ''; }
+                                                          
+                                                          const unaccented = 
+c.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+                                                          setQrTransferContent(unaccented);
+                                                          setQrPaymentModal(item); 
+                                                          setActiveQrIndex(null); 
+                                                      }} 
+                                                      className="flex-1 lg:flex-none whitespace-nowrap bg-indigo-600 
+text-white px-4 sm:px-8 py-2.5 rounded-xl font-bold hover:bg-indigo-700 transition flex items-center gap-2 
+justify-center shadow-lg shadow-indigo-600/20"
+                                                  >
+                                                      <Coins size={18}/> Tiến hành thanh toán
+                                                  </button>
+                                  let itemData = {};
+                                  try {
+                                      itemData = typeof qrPaymentModal.reason === 'string' ? 
+JSON.parse(qrPaymentModal.reason || '{}') : (qrPaymentModal.reason || {});
+>                                 } catch(e) {}
+                                  
+                                  const isBank = itemData.paymentMethod === 'chuyen_khoan';
+                                  
+                                  if (!isBank) {
+                                      return (
+                                          <div className="text-center">
+                                              <div className="w-16 h-16 bg-amber-100 text-amber-500 rounded-full flex 
+items-center justify-center mx-auto mb-4">
+                                                  <AlertCircle size={32} />
+                                              </div>
+                                              <p className="font-bold text-slate-700 mb-2">Không có thông tin chuyển 
+khoản</p>
+                                                                          invoiceFiles: [...existingFiles, 
+...uniqueFiles]
+                                                                      };
+                                                                  }));
+>                                                             } catch (error) {
+                                                                  console.error('Read invoice files error:', error);
+                                                              }
+                                                          }}
+                                                      />
+                                                  </label>
+                                              </div>
+                                              
+                                              {/* File List */}
+                                              {Array.isArray(d.invoiceFiles) && d.invoiceFiles.length > 0 ? (
+                                                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+                                                  parsed.qs_signature = qsSignature;
+                                                  parsed.qs_name = qsName;
+                                                  newReasonStr = JSON.stringify(parsed);
+>                                             } catch(e) {}
+                                              
+                                              onUpdateStatus(printItem.id, STATUSES.WAITING_PRINT, { reason: 
+newReasonStr });
+                                              setPrintItem(null);
+                                          }} className="bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl 
+font-bold hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-lg"><Check size={16}/> Duyệt</button>
+                                          <button onClick={() => {
+                                              onUpdateStatus(printItem.id, STATUSES.REJECTED);
+                                              setPrintItem(null);
+                                          }} className="bg-red-50 text-red-600 px-4 py-2 sm:py-2.5 rounded-xl 
+font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-2 text-sm border border-red-100"><X 
+size={16}/> Từ chối</button>
+                                      </>
+                                  )}
+                                                  const p = typeof printItem.reason === 'string' ? 
+JSON.parse(printItem.reason || '{}') : (printItem.reason || {});
+                                                  p.project = printItem.project_name || p.project;
+                                                  c = typeof getTransferContent === 'function' ? getTransferContent(p) 
+: (printItem.project_name || '');
+>                                             } catch(e) { c = printItem.project_name || ''; }
+                                              
+                                              const unaccented = c.normalize("NFD").replace(/[\u0300-\u036f]/g, 
+"").replace(/đ/g, "d").replace(/Đ/g, "D");
+                                              setQrTransferContent(unaccented);
+                                              setPrintItem(null);
+                                              setTimeout(() => {
+                                                  setQrPaymentModal(printItem); 
+                                                  setActiveQrIndex(null); 
+                                              }, 100);
+                                          }} 
+                                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-4 sm:px-5 py-2 
+sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm shadow-lg shadow-indigo-600/20"
+
+

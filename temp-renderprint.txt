@@ -1,0 +1,268 @@
+﻿
+>     const renderPrintLayout = (data) => {
+          const categoriesToRender = (Array.isArray(data.items) ? data.items : DEFAULT_CATEGORIES).map(cat => ({
+              ...cat,
+              items: (data.isCreate ? cat.items : cat.items.filter(item => (parseFloat(item.quantity) || 0) > 0))
+          })).filter(cat => cat.items.length > 0);
+  
+          return (
+              <div className="print-area bg-white font-['Times_New_Roman',_serif] text-[16px] text-black w-full 
+max-w-[800px] flex flex-col mx-auto py-10 print:py-0 print:m-0">
+                  <div className="text-center mb-8 mt-4">
+                      <h1 className="font-bold text-xl uppercase tracking-wider leading-normal">
+                          ĐƠN ĐẶT HÀNG VẬT TƯ - {data.order_phase?.toUpperCase() || ''}
+                      </h1>
+                  </div>
+  
+                  <div className="mb-8 space-y-3 text-[16px] pl-10 pr-10">
+                      <div className="flex gap-2">
+                          <span className="uppercase w-40 shrink-0">DỰ ÁN :</span>
+                          <span className="uppercase break-words">{data.project_name}</span>
+                      </div>
+                      <div className="flex gap-2">
+                          <span className="uppercase w-40 shrink-0">ĐỊA CHỈ :</span>
+                          <span className="uppercase break-words">{data.address}</span>
+                      </div>
+                      <div className="flex gap-2">
+                          <span className="uppercase w-40 shrink-0">HẠNG MỤC :</span>
+                          <span className="uppercase break-words">{data.category}</span>
+                      </div>
+                      <div className="flex gap-2">
+                          <span className="uppercase w-40 shrink-0">CÔNG TY :</span>
+                          <span className="uppercase break-words">{data.company || 'CÔNG TY CỔ PHẦN ĐẦU TƯ XÂY DỰNG 
+BCONS'}</span>
+                      </div>
+                      <div className="flex gap-2">
+                          <span className="uppercase w-40 shrink-0">NGƯỜI NHẬN HÀNG :</span>
+                          <span className="uppercase break-words">{data.recipient}</span>
+                      </div>
+                  </div>
+  
+                  <div className="overflow-x-auto print:overflow-visible px-10">
+                      <table className="w-full border-collapse border border-black min-w-0">
+                          <thead>
+                              <tr className="text-black bg-transparent">
+                                  <th className="border border-black p-2 text-center w-16 font-bold 
+text-[16px]">STT</th>
+                                  <th className="border border-black p-2 text-center font-bold text-[16px]">Chủng loại 
+vật tư</th>
+                                  <th className="border border-black p-2 text-center w-32 font-bold 
+text-[16px]">ĐVT</th>
+                                  <th className="border border-black p-2 text-center w-32 font-bold text-[16px]">Số 
+lượng</th>
+                              </tr>
+                          </thead>
+                          <tbody>
+                              {categoriesToRender.map((cat, catIdx) => (
+                                  <React.Fragment key={catIdx}>
+                                      <tr>
+                                          <td colSpan="4" className="border border-black p-2 text-center font-bold 
+text-[16px] text-black bg-transparent">
+                                              {cat.name}
+                                          </td>
+                                      </tr>
+                                      {cat.items.map((item, itemIdx) => (
+                                          <tr key={itemIdx}>
+                                              <td className="border border-black p-2 text-center text-[16px] 
+font-medium">{item.stt}</td>
+                                              <td className="border border-black p-2 pl-4 text-[16px]">
+                                                  {item.name} {item.colorCode ? `(${item.colorCode})` : ''}
+                                              </td>
+                                              <td className="border border-black p-2 text-center 
+text-[16px]">{item.unit}</td>
+                                              <td className="border border-black p-2 text-right pr-4 text-[16px]">
+                                                  {item.quantity || ''}
+                                              </td>
+                                          </tr>
+                                      ))}
+                                  </React.Fragment>
+                              ))}
+                          </tbody>
+                      </table>
+                  </div>
+  
+                  <div className="mt-8 flex justify-end font-['Times_New_Roman',_serif] pr-10">
+                      <div className="text-center w-80 space-y-2">
+                          <p className="text-[16px] text-black">
+                              NGÀY {getVietnameseDateComponents(data.order_date || new Date().toISOString()).day} 
+THÁNG {getVietnameseDateComponents(data.order_date || new Date().toISOString()).month} NĂM 
+{getVietnameseDateComponents(data.order_date || new Date().toISOString()).year}
+                          </p>
+                          <p className="font-bold text-[16px] text-black">NGƯỜI LẬP</p>
+                          {(() => {
+                              const creatorUsername = data.created_by || currentUser?.username;
+                              const creatorUser = usersList?.find(u => u.username === creatorUsername);
+                              const signatureUrl = creatorUser?.signature_url;
+                              
+                              return (
+                                  <>
+                                      <div className="h-24 flex items-center justify-center">
+                                          {data.show_signature !== false && signatureUrl ? (
+                                              <img src={signatureUrl} className="max-h-20 object-contain opacity-90" 
+style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} alt="Chữ ký" />
+                                          ) : (
+                                              <div className="text-slate-300 italic text-sm"></div>
+                                          )}
+                                      </div>
+                                      <p className="font-bold text-[16px] text-black uppercase mt-2">
+                                          {creatorUser?.full_name || creatorUsername || 'QUẢN TRỊ HỆ THỐNG'}
+                                      </p>
+                                  </>
+                              );
+                          })()}
+                      </div>
+                  </div>
+              </div>
+          );
+      };
+  
+      const handleSave = async (e) => {
+          e.preventDefault();
+          
+          if (!formData.project_name) {
+              showToast('Vui lòng chọn công trình!', 'error');
+              return;
+          }
+  
+          const selectedProjForSave = projects.find(p => p.name === formData.project_name);
+          const isMainContractorSave = selectedProjForSave?.project_type === 'TỔNG THẦU MUA HỘ';
+  
+          if (!isMainContractorSave) {
+              if (!formData.address || !formData.address.trim()) {
+                  showToast('Vui lòng nhập địa chỉ dự án!', 'error');
+                  return;
+              }
+              if (!formData.company || !formData.company.trim()) {
+                  showToast('Vui lòng chọn/nhập nhà cung cấp!', 'error');
+                  return;
+              }
+              if (!formData.recipient || !formData.recipient.trim()) {
+                  showToast('Vui lòng nhập người nhận hàng!', 'error');
+                  return;
+              }
+          }
+  
+          const existingPhaseOrder = getMaterialOrderPhaseSources(formData.project_name, orders, dnttList).find(o => 
+              normalizeText(o.project_name) === normalizeText(formData.project_name) && 
+              normalizeText(o.order_phase) === normalizeText(formData.order_phase) && 
+              o.id !== formData.id
+          );
+  
+          if (existingPhaseOrder) {
+              showToast(`Dự án này đã có Đơn đặt hàng cho ${formData.order_phase}! Vui lòng chọn đợt khác.`, 'error');
+              return;
+          }
+  
+          setIsLoading(true);
+  
+          const payload = {
+              project_name: formData.project_name,
+              order_phase: formData.order_phase,
+              order_date: formData.order_date,
+              address: isMainContractorSave ? '' : formData.address,
+              category: formData.category,
+              company: isMainContractorSave ? '' : formData.company,
+              recipient: formData.recipient,
+              items: formData.categories,
+              show_signature: formData.show_signature,
+              created_by: currentUser.username
+          };
+  
+          if (payload.items && payload.items.length > 0) {
+              let pbName = '';
+              if (formData.price_batch) {
+                  // formData.price_batch is "Đợt giá: {date || id}"
+                  // We need to store the actual version ID. 
+                  const projData = getProjectMaterialTemplateData(formData.project_name, allTemplates);
+                  const selectedVer = projData?.versions?.find(v => `Đợt giá: ${v.id}` === formData.price_batch);
+                  if (selectedVer) {
+                      pbName = selectedVer.id;
+                  } else {
+                      pbName = formData.price_batch.replace('Đợt giá: ', '').trim();
+                  }
+              }
+              payload.items[0]._price_batch = pbName;
+              payload.items[0]._order_company = formData.order_company || '';
+          }
+  
+          try {
+              let savedOrderId = formData.id;
+              if (isDbStorage) {
+                  if (formData.id) {
+                      const { error } = await supabase
+                          .from('material_orders')
+                          .update(payload)
+                          .eq('id', formData.id);
+                      if (error) throw error;
+                      showToast('Cập nhật đơn đặt hàng thành công!');
+                  } else {
+                      const { data: insertedOrder, error } = await supabase
+                          .from('material_orders')
+                          .insert([payload])
+                          .select('id')
+                          .single();
+                      if (error) throw error;
+                      savedOrderId = insertedOrder?.id || null;
+                      showToast('Lưu đơn đặt hàng thành công!');
+                  }
+              } else {
+                  const localOrders = [...orders];
+                  if (formData.id) {
+                      const idx = localOrders.findIndex(o => o.id === formData.id);
+                      if (idx !== -1) {
+                          localOrders[idx] = { ...payload, id: formData.id, created_at: localOrders[idx].created_at || 
+new Date().toISOString() };
+                      }
+                  } else {
+                      const newOrder = {
+                          ...payload,
+                          id: 'local_' + Date.now(),
+                          created_at: new Date().toISOString()
+                      };
+                      localOrders.unshift(newOrder);
+                  }
+                  localStorage.setItem('misa_material_orders', JSON.stringify(localOrders));
+                  setOrders(localOrders);
+                  showToast('Đã lưu đơn hàng cục bộ trên thiết bị!');
+              }
+  
+              const selectedProj = projects.find(p => p.name === formData.project_name);
+              const isMainContractor = selectedProj?.project_type === 'TỔNG THẦU MUA HỘ';
+  
+              if ((onCreateAccountingRequest || onUpdateAccountingRequest) && !isMainContractor && isDbStorage) {
+                  const itemsList = [];
+                  formData.categories.forEach(cat => {
+                      cat.items.forEach(it => {
+                          if (it.quantity && parseFloat(it.quantity) > 0) {
+                              itemsList.push({
+                                  id: it.stt + '_' + Math.random(),
+                                  content: `- Tên vật tư: ${it.name}${it.colorCode ? `\n- Mã màu: ${it.colorCode}` : 
+''}\n- Đơn vị: ${it.unit}\n- SL: ${it.quantity}\n- Đơn giá: ${formatCurrency(it.price || 0)}`,
+                                  amount: ((parseFloat(it.quantity) || 0) * (parseFloat(it.price) || 0)),
+                                  note: `${cat.name} | ${formData.order_phase}`
+                              });
+                          }
+                      });
+                  });
+  
+                  if (itemsList.length > 0) {
+                      const grandTotal = calculateMaterialSubtotal(formData.categories);
+                      
+                      const dnttPayload = {
+                          doc_type: 'Đơn Vật Tư',
+                          project_name: formData.project_name,
+                          recipient: formData.company || formData.recipient,
+                          total_amount: grandTotal,
+                          status: 'Waiting QS', 
+                          reason: JSON.stringify({
+                              docType: 'Đơn Vật Tư',
+                              date: formData.order_date,
+                              recipient: formData.company || formData.recipient,
+                              project: formData.project_name,
+                              paymentMethod: 'chuyen_khoan',
+                              orderPhase: formData.order_phase,
+                              priceBatch: formData.configVersionId,
+                              material_order_id: savedOrderId,
+                              items: itemsList
+
+

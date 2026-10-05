@@ -1,0 +1,37 @@
+﻿
+          saveData({ ...matrixData, [selectedProject]: updatedRows });
+      };
+  
+>     const handleDeleteRow = (rowId) => {
+          const isAuthorizer = currentUser?.role?.toUpperCase() === 'ADMIN';
+          
+          if (!isAuthorizer) {
+              setConfirmModal({
+                  isOpen: true,
+                  title: 'Đề nghị xóa dòng dữ liệu kho',
+                  message: 'Gửi đề nghị admin xóa dòng dữ liệu này.',
+                  type: 'info',
+                  requireReason: true,
+                  reasonLabel: 'Lý do đề nghị xóa',
+                  reasonPlaceholder: 'Ví dụ: Nhập sai dòng, dư thừa...',
+                  confirmText: 'Gửi đề nghị',
+                  onConfirm: async (reason) => {
+                      setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                      if (!reason || !reason.trim()) {
+                          showToast('Vui lòng nhập lý do!', 'error');
+                          return;
+                      }
+                      setIsLoading(true);
+                      const recordName = `Dòng dữ liệu kho (${rowId}) - Công trình ${selectedProject}`;
+                      const payload = {
+                          original_table: 'material_warehouse_matrix',
+                          record_id: rowId,
+                          record_name: recordName,
+                          requested_by: currentUser?.username || 'unknown',
+                          reason: reason.trim(),
+                          status: 'pending'
+                      };
+                      const { error } = await supabase.from('delete_requests').insert([payload]);
+                      setIsLoading(false);
+
+

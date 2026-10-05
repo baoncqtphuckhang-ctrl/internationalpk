@@ -487,6 +487,28 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             return false;
         }
     });
+    const [hiddenProjects, setHiddenProjects] = useState(() => {
+        if (typeof window === 'undefined') return [];
+        try {
+            return JSON.parse(localStorage.getItem('cbpro_hidden_projects') || '[]');
+        } catch(e) {
+            return [];
+        }
+    });
+    const [showHiddenProjectsView, setShowHiddenProjectsView] = useState(false);
+
+    const toggleProjectVisibility = (projectName) => {
+        setHiddenProjects(prev => {
+            let next;
+            if (prev.includes(projectName)) {
+                next = prev.filter(p => p !== projectName);
+            } else {
+                next = [...prev, projectName];
+            }
+            try { localStorage.setItem('cbpro_hidden_projects', JSON.stringify(next)); } catch(e) {}
+            return next;
+        });
+    };
     const [formData, setFormData] = useState({
         projectName: '',
         preTaxValue: '',
@@ -2700,6 +2722,15 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                         <Printer size={18} />
                         <span className="hidden xl:inline">{hideZeroRowsOnPrint ? 'Ẩn dòng 0 khi in' : 'In cả dòng 0'}</span>
                     </button>
+                    <button
+                        type="button"
+                        onClick={() => setShowHiddenProjectsView(prev => !prev)}
+                        className={`flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border text-xs font-black transition md:w-auto ${showHiddenProjectsView ? 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100' : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'}`}
+                        title={showHiddenProjectsView ? 'Đang hiển thị cả các công trình đã ẩn' : 'Hiển thị các công trình đã ẩn'}
+                    >
+                        {showHiddenProjectsView ? <Eye size={18} /> : <EyeOff size={18} />}
+                        <span className="hidden xl:inline">{showHiddenProjectsView ? 'Đang hiện CT ẩn' : 'Hiện CT đã ẩn'}</span>
+                    </button>
                     </div>
                 )}
                 <div className="flex items-center justify-end gap-2 md:w-40">
@@ -3617,6 +3648,8 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 </td>
                                             </tr>
                                             {!collapsedPhases[period] && Object.entries(projectGroups).sort((a, b) => a[0].localeCompare(b[0])).map(([projName, groupInvoices], projIdx) => {
+                                                const isProjectHidden = hiddenProjects.includes(projName);
+                                                if (isProjectHidden && !showHiddenProjectsView) return null;
                                                 const projectColors = [
                                                     { bg: 'bg-orange-50', text: 'text-orange-800', border: 'border-orange-200', rowBorder: 'border-l-orange-400' },
                                                     { bg: 'bg-blue-50', text: 'text-blue-800', border: 'border-blue-200', rowBorder: 'border-l-blue-400' },
@@ -3659,7 +3692,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                 return (
                                                 <React.Fragment key={projName}>
                                                     <tr 
-                                                        className={`expected-project-summary-row ${color.bg} border-y ${color.border} cursor-pointer hover:opacity-90 select-none ${!hasPrintableGroupRows ? 'print:hidden' : ''} ${printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0) === 0 ? 'opacity-40' : ''}`}
+                                                        className={`expected-project-summary-row group/project ${color.bg} border-y ${color.border} cursor-pointer hover:opacity-90 select-none ${!hasPrintableGroupRows ? 'print:hidden' : ''} ${printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0) === 0 ? 'opacity-40' : ''}`}
                                                         onClick={() => setCollapsedProjects(prev => ({ ...prev, [`${period}_${projName}`]: !prev[`${period}_${projName}`] }))}
                                                     >
                                                         <td className="text-center p-3">
@@ -3668,11 +3701,23 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                                                             </div>
                                                         </td>
                                                         <td 
-                                                            className={`p-3 font-black ${color.text} text-sm uppercase text-left hover:underline`}
+                                                            className={`p-3 font-black ${color.text} text-sm uppercase text-left group-hover/project:opacity-100`}
                                                             onDoubleClick={(e) => { e.stopPropagation(); onNavigateToProject && onNavigateToProject(projName); }}
                                                             title="Click đúp để xem chi tiết công trình"
                                                         >
-                                                            {projName}:
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="hover:underline">{projName}:</span>
+                                                                <button
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        toggleProjectVisibility(projName);
+                                                                    }}
+                                                                    className={`p-1 rounded-md opacity-0 group-hover/project:opacity-100 transition-opacity ${isProjectHidden ? 'bg-slate-200 text-slate-700' : 'bg-rose-100 text-rose-600 hover:bg-rose-200'} print:hidden`}
+                                                                    title={isProjectHidden ? "Bỏ ẩn công trình này" : "Ẩn công trình này"}
+                                                                >
+                                                                    {isProjectHidden ? <Eye size={14} /> : <EyeOff size={14} />}
+                                                                </button>
+                                                            </div>
                                                         </td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-emerald-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.teamValue) || 0), 0))}</td>
                                                         <td className="p-3 text-sm text-center tabular-nums font-black text-purple-600">{formatCurrency(printableGroupInvoices.reduce((sum, inv) => sum + (parseFloat(inv.periodAdvance) || 0), 0))}</td>
