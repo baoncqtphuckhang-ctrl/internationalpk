@@ -1267,7 +1267,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
         setIsCustomPhase(false);
         setIsCustomTeamName(false);
         setIsCustomPeriod(false);
-        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue(), invoice_no: '', invoice_date: '', display_invoice_date: '' });
+        setFormData({ projectName: '', preTaxValue: '', vatAmount: '', postTaxValue: '', teamValue: '', accumulatedAdvance: '', periodAdvance: '', teamName: '', phase: '', note: '', payment_period: '', account_name: '', account_number: '', bank_name: '', deductionAmount: '', invoice_month: getCurrentMonthValue(), invoice_no: '', invoice_date: '', display_invoice_date: '' });
     };
 
     const handleEdit = (inv) => {
@@ -1282,6 +1282,7 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
             postTaxValue: inv.postTaxValue || '',
             teamValue: inv.teamValue ? inv.teamValue.toLocaleString('en-US') : '',
             accumulatedAdvance: inv.accumulatedAdvance ? inv.accumulatedAdvance.toLocaleString('en-US') : '',
+            periodAdvance: inv.periodAdvance ? inv.periodAdvance.toLocaleString('en-US') : '',
             teamName: inv.teamName || '',
             phase: inv.phase || '',
             note: inv.note || '',
