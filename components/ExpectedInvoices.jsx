@@ -1217,7 +1217,10 @@ export default function ExpectedInvoices({ projects, projectDetails, currentUser
                     return;
                 }
 
-                const updatedItem = (data && data.length > 0) ? data[0] : { id: editingId, ...updatedRecord };
+                const updatedItem = (data && data.length > 0) ? { ...data[0] } : { id: editingId, ...updatedRecord };
+                if (updatedItem.teamName || activeSubTab === 'team' || activeSubTab === 'history_team') {
+                    updatedItem.periodAdvance = updatedItem.vatAmount;
+                }
                 setInvoices(prev => prev.map(inv => 
                     String(inv.id) === String(editingId) ? { ...inv, ...updatedItem } : inv
                 ));
