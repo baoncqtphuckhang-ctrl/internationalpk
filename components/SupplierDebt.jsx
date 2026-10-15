@@ -137,6 +137,11 @@ export default function SupplierDebt({ currentUser, projects, showToast }) {
                     ngayTra: p.ngayTra || '',
                     trangThai: p.trangThai || 'Chưa trả'
                 };
+            }).sort((a, b) => {
+                if (!a.ngayHD && !b.ngayHD) return 0;
+                if (!a.ngayHD) return 1;
+                if (!b.ngayHD) return -1;
+                return new Date(b.ngayHD) - new Date(a.ngayHD);
             });
 
             setRows(computedRows);

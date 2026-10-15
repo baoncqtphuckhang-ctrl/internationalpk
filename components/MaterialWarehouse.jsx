@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { Plus, Download, Printer, Save, Trash2, Filter } from 'lucide-react';
 import ConfirmModal from './ConfirmModal';
 
-export default function MaterialWarehouse({ currentUser, projects, showToast, setMaterialSubTab }) {
+export default function MaterialWarehouse({ currentUser, projects, showToast, realtimeVersion, setMaterialSubTab }) {
     const [selectedProject, setSelectedProject] = useState(projects[0]?.name || '');
     const [allTemplates, setAllTemplates] = useState({});
     const [matrixData, setMatrixData] = useState({});
@@ -16,6 +16,20 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
 
     useEffect(() => {
         loadData();
+    }, [realtimeVersion, selectedProject]);
+
+    useEffect(() => {
+        const handleSync = () => {
+            loadData();
+        };
+        if (typeof window !== 'undefined') {
+            window.addEventListener('material_warehouse_sync', handleSync);
+            window.addEventListener('storage', handleSync);
+            return () => {
+                window.removeEventListener('material_warehouse_sync', handleSync);
+                window.removeEventListener('storage', handleSync);
+            };
+        }
     }, []);
 
     const loadData = async () => {
@@ -37,8 +51,14 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
             let ordersData = [];
             try {
                 const res = await supabase.from('material_orders').select('*').order('created_at', { ascending: true });
-                if (!res.error) {
-                    ordersData = res.data.filter(o => o.items?.[0]?._status !== 'Từ chối');
+                if (!res.error && res.data) {
+                    ordersData = res.data.filter(o => {
+                        const isDeleted = o.is_deleted === true || o.status === 'Đã xóa' || o.status === 'Thùng rác';
+                        if (isDeleted) return false;
+                        const status = o.items?.[0]?._status || o.status || 'Chờ xử lý';
+                        // Kho chỉ hiển thị những đơn hàng đã được đặt ("Đã đặt")
+                        return status === 'Đã đặt';
+                    });
                 }
             } catch (err) {
                 console.warn("Could not load material_orders", err);
@@ -47,7 +67,52 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
 
             const localMatrix = localStorage.getItem('material_warehouse_matrix');
             if (localMatrix) {
-                setMatrixData(JSON.parse(localMatrix));
+                try {
+                    const parsed = JSON.parse(localMatrix);
+                    // Dọn dẹp các dòng con hoặc dữ liệu lưu liên quan đến đơn đã bị xóa hoặc không còn là 'Đã đặt'
+                    const validOrderIds = new Set(ordersData.map(o => `order_${o.id}`));
+                    const rawOrderIds = new Set(ordersData.map(o => String(o.id)));
+                    let matrixChanged = false;
+                    Object.keys(parsed).forEach(proj => {
+                        if (Array.isArray(parsed[proj])) {
+                            const cleaned = parsed[proj].filter(r => {
+                                const rIdStr = String(r.id || '');
+                                const parentIdStr = String(r.parentOrderId || '');
+
+                                // Nếu là dòng liên quan tới order
+                                if (rIdStr.startsWith('order_')) {
+                                    return validOrderIds.has(rIdStr);
+                                }
+                                if (rawOrderIds.has(rIdStr)) {
+                                    return true;
+                                }
+                                if (parentIdStr) {
+                                    return validOrderIds.has(parentIdStr) || rawOrderIds.has(parentIdStr);
+                                }
+
+                                // Nếu là dòng thêm thủ công (manual)
+                                // Loại bỏ dòng rác/ghost hoàn toàn trống dữ liệu
+                                const hasPo = r.poBatch && String(r.poBatch).trim() !== '' && r.poBatch !== 'Đợt PO';
+                                const hasReceiveDate = r.receiveDate && String(r.receiveDate).trim() !== '';
+                                const hasValues = Object.values(r.data || {}).some(c => 
+                                    (c?.yeuCau && String(c.yeuCau).trim() !== '' && c.yeuCau !== '-' && c.yeuCau !== '0') ||
+                                    (c?.nhan && String(c.nhan).trim() !== '' && c.nhan !== '-' && c.nhan !== '0')
+                                );
+                                return hasPo || hasReceiveDate || hasValues;
+                            });
+                            if (cleaned.length !== parsed[proj].length) {
+                                parsed[proj] = cleaned;
+                                matrixChanged = true;
+                            }
+                        }
+                    });
+                    if (matrixChanged) {
+                        localStorage.setItem('material_warehouse_matrix', JSON.stringify(parsed));
+                    }
+                    setMatrixData(parsed);
+                } catch(e) {
+                    setMatrixData({});
+                }
             } else {
                 setMatrixData({});
             }
@@ -96,11 +161,12 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
     
     const orderRows = projectOrders.map(order => {
         const orderId = `order_${order.id}`;
-        const savedDataObj = (matrixData[selectedProject] || []).find(r => r.id === orderId);
+        const savedDataObj = (matrixData[selectedProject] || []).find(r => String(r.id) === orderId || String(r.id) === String(order.id));
         if (savedDataObj?.isDeleted) return null;
         const savedData = savedDataObj?.data || {};
         
         const rowData = { ...savedData };
+        let hasAnyItem = false;
         const orderItems = order.items || order.categories;
         if (orderItems) {
             orderItems.forEach(cat => {
@@ -109,12 +175,18 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
                     if (item.name) {
                         const colId = `${item.name}_${item.colorCode||''}`;
                         if (!rowData[colId]) rowData[colId] = {};
-                        if (item.quantity) {
+                        if (item.quantity && String(item.quantity).trim() !== '' && item.quantity !== '0') {
                             rowData[colId].yeuCau = item.quantity;
+                            hasAnyItem = true;
                         }
                     }
                 });
             });
+        }
+
+        const hasSavedReceive = Object.values(savedData).some(c => c?.nhan && String(c.nhan).trim() !== '' && c.nhan !== '0');
+        if (!hasAnyItem && !hasSavedReceive) {
+            return null;
         }
         
         return {
@@ -127,12 +199,30 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
         };
     }).filter(Boolean);
 
-    const manualRows = (matrixData[selectedProject] || []).filter(r => !String(r.id).startsWith('order_'));
+    const manualRows = (matrixData[selectedProject] || []).filter(r => {
+        const rid = String(r.id);
+        if (rid.startsWith('order_')) return false;
+        const hasPo = r.poBatch && String(r.poBatch).trim() !== '' && r.poBatch !== 'Đợt PO';
+        const hasReceiveDate = r.receiveDate && String(r.receiveDate).trim() !== '';
+        const hasValues = Object.values(r.data || {}).some(c => 
+            (c?.yeuCau && String(c.yeuCau).trim() !== '' && c.yeuCau !== '-' && c.yeuCau !== '0') ||
+            (c?.nhan && String(c.nhan).trim() !== '' && c.nhan !== '-' && c.nhan !== '0')
+        );
+        return r.isNewRow || hasPo || hasReceiveDate || hasValues;
+    });
     const rows = [...orderRows, ...manualRows];
 
     const handleAddRow = () => {
-        const newRow = { id: Date.now(), date: new Date().toISOString().split('T')[0], receiveDate: '', poBatch: '', data: {} };
-        const updated = { ...matrixData, [selectedProject]: [...rows, newRow] };
+        const newRow = { 
+            id: Date.now(), 
+            date: new Date().toISOString().split('T')[0], 
+            receiveDate: '', 
+            poBatch: '', 
+            data: {},
+            isNewRow: true
+        };
+        const currentSaved = matrixData[selectedProject] || [];
+        const updated = { ...matrixData, [selectedProject]: [...currentSaved, newRow] };
         saveData(updated);
     };
 
@@ -205,55 +295,92 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
         const currentSavedRows = matrixData[selectedProject] || [];
         const existingRowIndex = currentSavedRows.findIndex(r => String(r.id) === String(rowId));
         
-        let updatedRows = [...currentSavedRows];
+        let updatedRows;
         if (existingRowIndex >= 0) {
-            updatedRows[existingRowIndex] = { ...updatedRows[existingRowIndex], receiveDate };
+            updatedRows = currentSavedRows.map(r => String(r.id) === String(rowId) ? { ...r, receiveDate, isNewRow: false } : r);
         } else {
             const rowFromOrder = rows.find(r => String(r.id) === String(rowId));
-            updatedRows.push({
+            updatedRows = [...currentSavedRows, {
                 id: rowId,
-                date: rowFromOrder.date,
+                date: rowFromOrder?.date || '',
                 receiveDate: receiveDate,
-                data: rowFromOrder.data
-            });
+                poBatch: rowFromOrder?.poBatch || '',
+                data: rowFromOrder?.data || {}
+            }];
         }
         saveData({ ...matrixData, [selectedProject]: updatedRows });
     };
 
     const handlePoBatchChange = (rowId, poBatch) => {
-        const updatedRows = rows.map(r => r.id === rowId ? { ...r, poBatch } : r);
+        const currentSavedRows = matrixData[selectedProject] || [];
+        const existingRowIndex = currentSavedRows.findIndex(r => String(r.id) === String(rowId));
+        let updatedRows;
+        if (existingRowIndex >= 0) {
+            updatedRows = currentSavedRows.map(r => String(r.id) === String(rowId) ? { ...r, poBatch, isNewRow: false } : r);
+        } else {
+            const rowFromOrder = rows.find(r => String(r.id) === String(rowId));
+            updatedRows = [...currentSavedRows, {
+                id: rowId,
+                date: rowFromOrder?.date || '',
+                receiveDate: rowFromOrder?.receiveDate || '',
+                poBatch: poBatch,
+                data: rowFromOrder?.data || {}
+            }];
+        }
         saveData({ ...matrixData, [selectedProject]: updatedRows });
     };
 
     const handleCellChange = (rowId, colId, field, value) => {
         const currentSavedRows = matrixData[selectedProject] || [];
-        const existingRowIndex = currentSavedRows.findIndex(r => r.id === rowId);
+        const existingRowIndex = currentSavedRows.findIndex(r => String(r.id) === String(rowId));
         
-        let updatedRows = [...currentSavedRows];
+        let updatedRows;
         if (existingRowIndex >= 0) {
-            updatedRows[existingRowIndex] = {
-                ...updatedRows[existingRowIndex],
-                data: {
-                    ...updatedRows[existingRowIndex].data,
-                    [colId]: { ...(updatedRows[existingRowIndex].data[colId] || {}), [field]: value }
+            updatedRows = currentSavedRows.map(r => {
+                if (String(r.id) === String(rowId)) {
+                    return {
+                        ...r,
+                        isNewRow: false,
+                        data: {
+                            ...(r.data || {}),
+                            [colId]: { ...(r.data?.[colId] || {}), [field]: value }
+                        }
+                    };
                 }
-            };
-        } else {
-            const rowFromOrder = rows.find(r => r.id === rowId);
-            updatedRows.push({
-                id: rowId,
-                date: rowFromOrder.date,
-                data: {
-                    ...rowFromOrder.data,
-                    [colId]: { ...(rowFromOrder.data[colId] || {}), [field]: value }
-                }
+                return r;
             });
+        } else {
+            const rowFromOrder = rows.find(r => String(r.id) === String(rowId));
+            updatedRows = [...currentSavedRows, {
+                id: rowId,
+                date: rowFromOrder?.date || '',
+                receiveDate: rowFromOrder?.receiveDate || '',
+                poBatch: rowFromOrder?.poBatch || '',
+                data: {
+                    ...(rowFromOrder?.data || {}),
+                    [colId]: { ...(rowFromOrder?.data?.[colId] || {}), [field]: value }
+                }
+            }];
         }
         saveData({ ...matrixData, [selectedProject]: updatedRows });
     };
 
     const handleDateChange = (rowId, date) => {
-        const updatedRows = rows.map(r => r.id === rowId ? { ...r, date } : r);
+        const currentSavedRows = matrixData[selectedProject] || [];
+        const existingRowIndex = currentSavedRows.findIndex(r => String(r.id) === String(rowId));
+        let updatedRows;
+        if (existingRowIndex >= 0) {
+            updatedRows = currentSavedRows.map(r => String(r.id) === String(rowId) ? { ...r, date, isNewRow: false } : r);
+        } else {
+            const rowFromOrder = rows.find(r => String(r.id) === String(rowId));
+            updatedRows = [...currentSavedRows, {
+                id: rowId,
+                date: date,
+                receiveDate: rowFromOrder?.receiveDate || '',
+                poBatch: rowFromOrder?.poBatch || '',
+                data: rowFromOrder?.data || {}
+            }];
+        }
         saveData({ ...matrixData, [selectedProject]: updatedRows });
     };
 
@@ -313,13 +440,8 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
                 
                 if (String(rowId).startsWith('order_')) {
                     const currentSavedRows = matrixData[selectedProject] || [];
-                    let updatedRows = [...currentSavedRows];
-                    const existingIdx = updatedRows.findIndex(r => r.id === rowId);
-                    if (existingIdx >= 0) {
-                        updatedRows[existingIdx] = { ...updatedRows[existingIdx], isDeleted: true };
-                    } else {
-                        updatedRows.push({ id: rowId, isDeleted: true });
-                    }
+                    let updatedRows = currentSavedRows.filter(r => String(r.id) !== String(rowId) && String(r.parentOrderId) !== String(rowId));
+                    updatedRows.push({ id: rowId, isDeleted: true });
                     saveData({ ...matrixData, [selectedProject]: updatedRows });
                     
                     // Xóa/Xử lý đơn bên order (Soft delete)
@@ -329,7 +451,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
                     });
                 } else {
                     const currentSavedRows = matrixData[selectedProject] || [];
-                    const updatedRows = currentSavedRows.filter(r => r.id !== rowId);
+                    const updatedRows = currentSavedRows.filter(r => String(r.id) !== String(rowId) && String(r.parentOrderId) !== String(rowId));
                     saveData({ ...matrixData, [selectedProject]: updatedRows });
                 }
                 showToast('Đã xóa dòng dữ liệu thành công!');
@@ -354,6 +476,22 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
         });
         totals[col.id] = { yeuCau: yeuCauSum, nhan: nhanSum, chuaNhan: yeuCauSum - nhanSum };
     });
+
+    const handleClearProjectData = () => {
+        setConfirmModal({
+            isOpen: true,
+            title: 'Xóa toàn bộ dữ liệu kho dự án này',
+            type: 'danger',
+            message: `Bạn có chắc chắn muốn xóa toàn bộ các dòng nhập kho của dự án "${selectedProject}"? Dữ liệu các đợt nhận và dòng thêm tay sẽ được làm sạch.`,
+            confirmText: 'Xác nhận xóa',
+            onConfirm: () => {
+                setConfirmModal({ isOpen: false, message: '', onConfirm: null });
+                const updated = { ...matrixData, [selectedProject]: [] };
+                saveData(updated);
+                showToast(`Đã xóa sạch dữ liệu kho của dự án ${selectedProject}!`);
+            }
+        });
+    };
 
     return (
         <div className="w-full flex flex-col h-[calc(100vh-120px)] animate-in fade-in pb-10">
@@ -390,7 +528,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, se
                         BÁO CÁO
                     </button>
 
-                    <button className="px-4 py-2 border-2 border-red-200 text-red-600 bg-white rounded-lg font-bold flex items-center gap-2 hover:bg-red-50 transition">
+                    <button onClick={handleClearProjectData} className="px-4 py-2 border-2 border-red-200 text-red-600 bg-white rounded-lg font-bold flex items-center gap-2 hover:bg-red-50 transition">
                         Clear dữ liệu
                     </button>
                     <button className="px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold flex items-center gap-2 hover:bg-emerald-700 shadow-sm transition">

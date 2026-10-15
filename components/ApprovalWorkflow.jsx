@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw, Plus } from 'lucide-react';
-import { formatCurrency, docSoTiengViet, formatDateVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
+import { formatCurrency, docSoTiengViet, formatDateVN, formatDateTimeVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
 
@@ -126,6 +126,7 @@ export default function ApprovalWorkflow({
     onNavigateToProject,
     onNavigateToHistoryWithId,
     onUpdateDNTT,
+    onUpdateLocalDNTT,
     deleteRequests = [],
     transactions = []
 }) {
@@ -138,6 +139,23 @@ export default function ApprovalWorkflow({
     const [filter, setFilter] = useState('active'); // 'active', 'paid', 'accounted'
     const [searchTerm, setSearchTerm] = useState('');
     const [distributeItem, setDistributeItem] = useState(null); // Phiếu đang được hạch toán
+
+    // Tự động bù đắp (self-heal) nội dung lý do (reason) nếu gặp phiếu cũ bị thiếu TOAST mà không tải lại toàn trang
+    const fetchedReasonIdsRef = React.useRef(new Set());
+    useEffect(() => {
+        const missingItems = (dnttList || []).filter(d => !d.reason && d.id && !fetchedReasonIdsRef.current.has(d.id));
+        if (missingItems.length > 0) {
+            missingItems.slice(0, 5).forEach(async (m) => {
+                fetchedReasonIdsRef.current.add(m.id);
+                try {
+                    const { data } = await supabase.from('approval_requests').select('reason').eq('id', m.id).single();
+                    if (data?.reason && onUpdateLocalDNTT) {
+                        onUpdateLocalDNTT(m.id, { reason: data.reason });
+                    }
+                } catch(e) {}
+            });
+        }
+    }, [dnttList, onUpdateLocalDNTT]);
     const [distributionData, setDistributionData] = useState([]); // Dữ liệu phân bổ chi tiết
     const [distributeOption, setDistributeOption] = useState('auto'); // 'auto' hoặc 'manual'
     const [formError, setFormError] = useState('');
@@ -361,62 +379,228 @@ export default function ApprovalWorkflow({
         };
     };
 
-    const openPrintPreview = (item) => {
+    const handleApproveQS = async (targetItem, closeModal = false) => {
+        const qsSignature = currentUser?.signature_url || '';
+        const qsName = currentUser?.full_name || currentUser?.name || currentUser?.username || '';
+        
+        let currentReason = targetItem.reason;
         let parsed = null;
         try {
-            parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
+            parsed = typeof currentReason === 'string' ? JSON.parse(currentReason || '{}') : (currentReason || {});
+        } catch(e) { parsed = {}; }
+
+        if (targetItem.parsed?.items && targetItem.parsed.items.length > 0) {
+            parsed = { ...targetItem.parsed, ...parsed };
+        }
+
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            try {
+                const { data } = await supabase.from('approval_requests').select('reason').eq('id', targetItem.id).single();
+                if (data?.reason) {
+                    const dbParsed = typeof data.reason === 'string' ? JSON.parse(data.reason) : data.reason;
+                    if (dbParsed && typeof dbParsed === 'object' && Array.isArray(dbParsed.items) && dbParsed.items.length > 0) {
+                        parsed = { ...dbParsed, ...parsed };
+                    }
+                }
+            } catch(e) {}
+        }
+
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            parsed.items = [{
+                id: 1,
+                maChi: '',
+                content: targetItem.title || targetItem.notes || (targetItem.recipient ? `Thanh toán cho ${targetItem.recipient}` : 'Chi phí'),
+                amount: targetItem.total_amount || 0,
+                note: ''
+            }];
+        }
+        if (!parsed.recipient) parsed.recipient = targetItem.recipient || '';
+        if (!parsed.project) parsed.project = targetItem.project_name || '';
+        if (!parsed.docType) parsed.docType = targetItem.doc_type || 'DNTT';
+
+        parsed.qs_signature = qsSignature;
+        parsed.qs_name = qsName;
+
+        const newReasonStr = JSON.stringify(parsed);
+        if (onUpdateLocalDNTT) {
+            onUpdateLocalDNTT(targetItem.id, { reason: newReasonStr, status: STATUSES.WAITING_PRINT });
+        }
+        await onUpdateStatus(targetItem.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
+        if (closeModal) setPrintItem(null);
+    };
+
+    const handleRevertToWaitingQS = async (item) => {
+        let currentReason = item.reason;
+        let parsed = null;
+        try {
+            parsed = typeof currentReason === 'string' ? JSON.parse(currentReason || '{}') : (currentReason || {});
+        } catch(e) { parsed = {}; }
+
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            try {
+                const { data } = await supabase.from('approval_requests').select('reason').eq('id', item.id).single();
+                if (data?.reason) {
+                    const dbParsed = typeof data.reason === 'string' ? JSON.parse(data.reason) : data.reason;
+                    if (dbParsed && typeof dbParsed === 'object') {
+                        parsed = { ...dbParsed, ...parsed };
+                    }
+                }
+            } catch(e) {}
+        }
+
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            parsed.items = [{
+                id: 1,
+                maChi: '',
+                content: item.title || item.notes || (item.recipient ? `Thanh toán cho ${item.recipient}` : 'Chi phí'),
+                amount: item.total_amount || 0,
+                note: ''
+            }];
+        }
+        if (!parsed.recipient) parsed.recipient = item.recipient || '';
+        if (!parsed.project) parsed.project = item.project_name || '';
+        if (!parsed.docType) parsed.docType = item.doc_type || 'DNTT';
+
+        delete parsed.qs_signature;
+        delete parsed.qs_name;
+
+        const newReasonStr = JSON.stringify(parsed);
+        if (onUpdateLocalDNTT) {
+            onUpdateLocalDNTT(item.id, { reason: newReasonStr, status: STATUSES.WAITING_QS });
+        }
+        await onUpdateStatus(item.id, STATUSES.WAITING_QS, { reason: newReasonStr });
+    };
+
+    const openPrintPreview = async (item) => {
+        let currentReason = item.reason;
+        if (!currentReason && item.id) {
+            try {
+                const { data } = await supabase.from('approval_requests').select('reason').eq('id', item.id).single();
+                if (data?.reason) {
+                    currentReason = data.reason;
+                    if (onUpdateLocalDNTT) onUpdateLocalDNTT(item.id, { reason: data.reason });
+                }
+            } catch(e) {}
+        }
+
+        let parsed = null;
+        try {
+            if (typeof currentReason === 'string' && currentReason.trim()) {
+                parsed = JSON.parse(currentReason);
+            } else if (currentReason && typeof currentReason === 'object') {
+                parsed = currentReason;
+            }
         } catch(e) {
+            parsed = null;
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
             parsed = {
-                docType: item.doc_type === 'DNTU' ? 'DNTU' : 'DNTT',
+                docType: item.doc_type === 'DNTU' ? 'DNTU' : (item.doc_type || 'DNTT'),
                 date: item.created_at ? item.created_at.split('T')[0] : new Date().toISOString().split('T')[0],
-                recipient: item.recipient,
-                project: item.project_name,
-                items: [{ id: 1, maChi: '', content: item.reason || 'Chi phí', amount: item.total_amount, note: '' }],
+                recipient: item.recipient || '',
+                project: item.project_name || '',
+                items: [{ id: 1, maChi: '', content: (typeof currentReason === 'string' ? currentReason : '') || item.title || item.notes || 'Chi phí', amount: item.total_amount || 0, note: '' }],
                 paymentMethod: 'tien_mat',
-                bankAccountName: '',
+                bankAccountName: item.recipient || '',
                 bankAccountNumber: '',
                 bankName: '',
                 bankBranch: ''
             };
         }
-        setPrintItem({ ...item, parsed });
+        if (!parsed.docType) parsed.docType = item.doc_type || 'DNTT';
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            parsed.items = [{
+                id: 1,
+                maChi: '',
+                content: (typeof currentReason === 'string' && currentReason && !currentReason.startsWith('{') ? currentReason : '') || item.title || item.notes || (item.recipient ? `Thanh toán cho ${item.recipient}` : 'Chi phí'),
+                amount: item.total_amount || 0,
+                note: ''
+            }];
+        }
+        if (!parsed.recipient) parsed.recipient = item.recipient || '';
+        if (!parsed.project) parsed.project = item.project_name || '';
+        if (!parsed.paymentMethod) parsed.paymentMethod = 'chuyen_khoan';
+        if (!parsed.bankAccountName) parsed.bankAccountName = item.recipient || '';
+        if (!parsed.date) parsed.date = item.created_at ? item.created_at.split('T')[0] : new Date().toISOString().split('T')[0];
+
+        setPrintItem({ ...item, reason: currentReason, parsed });
     };
 
-    const openDistributeModal = (item) => {
-        let items = [];
-        let paymentMethod = 'tien_mat';
-        let orderPhase = null;
-        try {
-            const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason) : item.reason;
-            items = parsed.items || [];
-            paymentMethod = parsed.paymentMethod || 'tien_mat';
-            orderPhase = parsed.orderPhase || (parsed.items && parsed.items[0] && parsed.items[0].note ? parsed.items[0].note.split(' | ')[1] : null) || parsed.phase || null;
-            // Gom chung lại thành 1 mục đối với tất cả các phiếu
-            let combinedContent = `Thanh toán ${item.doc_type}`;
-            if (item.doc_type === 'Đơn Vật Tư') {
-                combinedContent = orderPhase ? `Thanh toán ${orderPhase}` : 'Thanh toán Đơn Vật Tư';
-            } else if (items.length > 0) {
-                combinedContent = items.map(it => it.content).filter(Boolean).join('; ');
-                if (combinedContent.length > 150) {
-                    combinedContent = combinedContent.substring(0, 147) + '...';
+    const openDistributeModal = async (item) => {
+        let currentReason = item.reason;
+        if (!currentReason && item.id) {
+            try {
+                const { data } = await supabase.from('approval_requests').select('reason').eq('id', item.id).single();
+                if (data?.reason) {
+                    currentReason = data.reason;
+                    if (onUpdateLocalDNTT) onUpdateLocalDNTT(item.id, { reason: data.reason });
                 }
-            } else {
-                combinedContent = item.reason ? `[${item.doc_type}] ${item.reason}` : `Thanh toán ${item.doc_type}`;
-            }
-
-            items = [{
-                content: combinedContent,
-                amount: item.total_amount,
-                note: orderPhase || ''
-            }];
-        } catch(e) {
-            items = [{ content: item.reason, amount: item.total_amount }];
+            } catch(e) {}
         }
+
+        let parsed = null;
+        try {
+            if (typeof currentReason === 'string' && currentReason.trim()) {
+                parsed = JSON.parse(currentReason);
+            } else if (currentReason && typeof currentReason === 'object') {
+                parsed = currentReason;
+            }
+        } catch(e) {
+            parsed = null;
+        }
+
+        if (!parsed || typeof parsed !== 'object') {
+            parsed = {
+                docType: item.doc_type || 'DNTT',
+                items: [{
+                    content: (typeof currentReason === 'string' ? currentReason : '') || item.title || item.notes || `Thanh toán ${item.doc_type || 'DNTT'}`,
+                    amount: item.total_amount || 0,
+                    note: ''
+                }],
+                paymentMethod: 'tien_mat'
+            };
+        }
+        if (!Array.isArray(parsed.items) || parsed.items.length === 0) {
+            parsed.items = [{
+                content: (typeof currentReason === 'string' ? currentReason : '') || item.title || item.notes || `Thanh toán ${item.doc_type || 'DNTT'}`,
+                amount: item.total_amount || 0,
+                note: ''
+            }];
+        }
+
+        let items = Array.isArray(parsed.items) ? parsed.items : [];
+        let paymentMethod = parsed.paymentMethod || 'tien_mat';
+        let orderPhase = parsed.orderPhase || (items[0]?.note ? items[0].note.split(' | ')[1] : null) || parsed.phase || null;
         
-        setDistributeItem({ ...item, paymentMethod, orderPhase });
-        setDistributionData(items.map(it => ({
-            content: it.content,
-            amount: parseFloat(it.amount),
+        let combinedContent = `Thanh toán ${item.doc_type || 'DNTT'}`;
+        if (item.doc_type === 'Đơn Vật Tư') {
+            combinedContent = orderPhase ? `Thanh toán ${orderPhase}` : 'Thanh toán Đơn Vật Tư';
+        } else if (items.length > 0) {
+            combinedContent = items.map(it => it?.content).filter(Boolean).join('; ');
+            if (combinedContent.length > 150) {
+                combinedContent = combinedContent.substring(0, 147) + '...';
+            }
+        } else {
+            combinedContent = (typeof currentReason === 'string' && currentReason) ? `[${item.doc_type || 'DNTT'}] ${currentReason}` : `Thanh toán ${item.doc_type || 'DNTT'}`;
+        }
+
+        if (!combinedContent) combinedContent = `Thanh toán ${item.doc_type || 'DNTT'}`;
+
+        const finalItems = items.length > 0 ? items.map(it => ({
+            content: it?.content || combinedContent,
+            amount: parseFloat(it?.amount) || parseFloat(item.total_amount) || 0,
+            note: it?.note || orderPhase || ''
+        })) : [{
+            content: combinedContent,
+            amount: parseFloat(item.total_amount) || 0,
+            note: orderPhase || ''
+        }];
+        
+        setDistributeItem({ ...item, reason: currentReason, paymentMethod, orderPhase });
+        setDistributionData(finalItems.map(it => ({
+            content: it.content || '',
+            amount: parseFloat(it.amount) || 0,
             code: '621', // Mặc định vật tư
             note: it.note || '',
             invoiceDate: new Date().toISOString().split('T')[0],
@@ -431,17 +615,22 @@ export default function ApprovalWorkflow({
         setDistributeOption(option);
         if (option === 'auto' && distributeItem) {
             try {
-                const parsed = typeof distributeItem.reason === 'string' ? JSON.parse(distributeItem.reason) : distributeItem.reason;
-                let originalItems = parsed.items || [];
+                let parsed = null;
+                if (typeof distributeItem.reason === 'string' && distributeItem.reason.trim()) {
+                    parsed = JSON.parse(distributeItem.reason);
+                } else if (distributeItem.reason && typeof distributeItem.reason === 'object') {
+                    parsed = distributeItem.reason;
+                }
+                let originalItems = (parsed && Array.isArray(parsed.items)) ? parsed.items : [];
                 if (distributeItem.doc_type === 'Đơn Vật Tư') {
-                    originalItems = [{ amount: distributeItem.total_amount }];
+                    originalItems = [{ amount: distributeItem.total_amount || 0 }];
                 }
                 setDistributionData(prev => prev.map((d, i) => ({
                     ...d,
-                    amount: originalItems[i] ? parseFloat(originalItems[i].amount) : 0
+                    amount: originalItems[i] ? (parseFloat(originalItems[i].amount) || 0) : (parseFloat(distributeItem.total_amount) || 0)
                 })));
             } catch(e) {
-                setDistributionData(prev => [{...prev[0], amount: distributeItem.total_amount}]);
+                setDistributionData(prev => [{...prev[0], amount: parseFloat(distributeItem.total_amount) || 0}]);
             }
         }
     };
@@ -539,6 +728,14 @@ export default function ApprovalWorkflow({
                 displayTitle = parsed.items[0].content || 'Đề nghị thanh toán';
             }
         } catch(e) {}
+        
+        if (displayTitle === 'Đề nghị thanh toán') {
+            if (item.title && item.title.trim() && item.title !== 'Đề nghị thanh toán') {
+                displayTitle = item.title;
+            } else if (item.notes && item.notes.trim()) {
+                displayTitle = item.notes;
+            }
+        }
         return displayTitle;
     };
 
@@ -907,7 +1104,7 @@ export default function ApprovalWorkflow({
                                                     {item.status}
                                                 </span>
                                                 <span className="font-mono text-xs text-slate-400">#{item.id.slice(0,8)}</span>
-                                                <span className="text-xs text-slate-400">{formatDateVN(item.created_at)}</span>
+                                                <span className="text-xs text-slate-400">{formatDateTimeVN(item.created_at)}</span>
                                             </div>
                                             <h4 className="font-bold text-slate-800 text-lg">
                                                 [{item.doc_type}] {displayTitle}
@@ -924,22 +1121,7 @@ export default function ApprovalWorkflow({
                                                 <>
                                                     {item.status === STATUSES.WAITING_QS && canApproveQS && (
                                                         <>
-                                                            <button onClick={async () => {
-                                                                const qsSignature = currentUser?.signature_url || '';
-                                                                const qsName = currentUser?.full_name || currentUser?.name || currentUser?.username || '';
-                                                                
-                                                                let newReasonStr = item.reason;
-                                                                try {
-                                                                    const parsed = typeof item.reason === 'string' ? JSON.parse(item.reason || '{}') : { ...item.reason };
-                                                                    parsed.qs_signature = qsSignature;
-                                                                    parsed.qs_name = qsName;
-                                                                    newReasonStr = JSON.stringify(parsed);
-                                                                } catch(e) {
-                                                                    console.error("Error parsing reason for QS approval:", e);
-                                                                }
-                                                                
-                                                                onUpdateStatus(item.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
-                                                            }} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
+                                                            <button onClick={() => handleApproveQS(item)} className="flex-1 lg:flex-none whitespace-nowrap bg-blue-600 text-white px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-1.5 sm:gap-2 justify-center shadow-lg shadow-blue-600/20"><Check size={18}/> Duyệt</button>
                                                             <button onClick={() => onUpdateStatus(item.id, STATUSES.REJECTED)} className="flex-1 lg:flex-none whitespace-nowrap bg-red-50 text-red-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-red-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-red-100"><X size={18}/> Từ chối</button>
                                                         </>
                                                     )}
@@ -952,7 +1134,7 @@ export default function ApprovalWorkflow({
                                                 </>
                                             )}
                                             {currentUser?.role?.toUpperCase() === 'ADMIN' && item.status !== STATUSES.WAITING_QS && item.status !== STATUSES.DRAFT && (
-                                                <button onClick={() => onUpdateStatus(item.id, STATUSES.WAITING_QS)} className="flex-1 lg:flex-none whitespace-nowrap bg-amber-50 text-amber-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-amber-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-amber-100" title="Hoàn tác về trạng thái ban đầu"><RotateCcw size={18}/> Hoàn tác</button>
+                                                <button onClick={() => handleRevertToWaitingQS(item)} className="flex-1 lg:flex-none whitespace-nowrap bg-amber-50 text-amber-600 px-3 sm:px-6 py-2 rounded-xl font-bold hover:bg-amber-600 hover:text-white transition flex items-center gap-1.5 sm:gap-2 justify-center border border-amber-100" title="Hoàn tác về trạng thái ban đầu"><RotateCcw size={18}/> Hoàn tác</button>
                                             )}
                                             {showApproveButtons && item.status === STATUSES.WAITING_PRINT && (
                                                 <button onClick={() => {
@@ -1210,9 +1392,9 @@ export default function ApprovalWorkflow({
                                     <h3 className="text-xl sm:text-2xl font-black uppercase tracking-tight">Hạch Toán Chi Phí</h3>
                                 </div>
                                 <p className="text-slate-400 text-xs sm:text-sm">
-                                    Phiếu: <span className="text-white font-bold">#{distributeItem.id.slice(0,8)}</span> | 
-                                    Công trình: <span className="text-white font-bold">{distributeItem.project_name}</span> | 
-                                    Tổng tiền: <span className="text-amber-400 font-black">{formatCurrency(distributeItem.total_amount)}</span>
+                                    Phiếu: <span className="text-white font-bold">#{(distributeItem?.id || '').slice(0,8)}</span> | 
+                                    Công trình: <span className="text-white font-bold">{distributeItem?.project_name || '-'}</span> | 
+                                    Tổng tiền: <span className="text-amber-400 font-black">{formatCurrency(distributeItem?.total_amount)}</span>
                                 </p>
                             </div>
                             <button onClick={() => setDistributeItem(null)} className="p-2 bg-slate-800 rounded-xl text-slate-400 hover:text-white transition"><X /></button>
@@ -1453,7 +1635,7 @@ export default function ApprovalWorkflow({
                                 </div>
                                 <div className="flex items-center justify-between sm:justify-start gap-4 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto flex-1 max-w-sm">
                                     <span className="text-amber-800 font-bold text-sm uppercase whitespace-nowrap">Tổng phân bổ:</span>
-                                    <span className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + d.amount, 0))}</span>
+                                    <span className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0))}</span>
                                 </div>
                             </div>
                             
@@ -1491,21 +1673,7 @@ export default function ApprovalWorkflow({
 
                                 {showApproveButtons && printItem.status === STATUSES.WAITING_QS && canApproveQS && (
                                     <>
-                                        <button onClick={async () => {
-                                            const qsSignature = currentUser?.signature_url || '';
-                                            const qsName = currentUser?.full_name || currentUser?.name || currentUser?.username || '';
-                                            
-                                            let newReasonStr = printItem.reason;
-                                            try {
-                                                const parsed = typeof printItem.reason === 'string' ? JSON.parse(printItem.reason || '{}') : { ...printItem.reason };
-                                                parsed.qs_signature = qsSignature;
-                                                parsed.qs_name = qsName;
-                                                newReasonStr = JSON.stringify(parsed);
-                                            } catch(e) {}
-                                            
-                                            onUpdateStatus(printItem.id, STATUSES.WAITING_PRINT, { reason: newReasonStr });
-                                            setPrintItem(null);
-                                        }} className="bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-lg"><Check size={16}/> Duyệt</button>
+                                        <button onClick={() => handleApproveQS(printItem, true)} className="bg-blue-600 text-white px-4 py-2 sm:py-2.5 rounded-xl font-bold hover:bg-blue-700 transition flex items-center gap-2 text-sm shadow-lg"><Check size={16}/> Duyệt</button>
                                         <button onClick={() => {
                                             onUpdateStatus(printItem.id, STATUSES.REJECTED);
                                             setPrintItem(null);
@@ -1569,7 +1737,7 @@ export default function ApprovalWorkflow({
                                     font-family: 'Times New Roman', Times, serif;
                                 }
                                 @media print { 
-                                    @page { size: ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'landscape' : 'portrait'}; margin: 15mm; } 
+                                    @page { size: ${printItem.parsed?.docType === 'TTL' || printItem.parsed?.docType === 'DNTUCH' ? 'landscape' : 'portrait'}; margin: 15mm; } 
                                     .print-area div.signature-wrapper {
                                         height: 96px !important;
                                         min-height: 96px !important;
@@ -1583,7 +1751,7 @@ export default function ApprovalWorkflow({
                                     }
                                 }
                             `}</style>
-                            <div className={`print-area document-view bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed.docType === 'TTL' || printItem.parsed.docType === 'DNTUCH' ? 'max-w-[1250px]' : 'max-w-[1100px]'} text-[18px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
+                            <div className={`print-area document-view bg-white p-4 sm:p-10 shadow-md border border-slate-200 w-full ${printItem.parsed?.docType === 'TTL' || printItem.parsed?.docType === 'DNTUCH' ? 'max-w-[1250px]' : 'max-w-[1100px]'} text-[18px] text-black mx-auto print:max-w-none print:w-full print:border-none print:shadow-none print:p-0 print:m-0`}>
                                 {(() => {
                                     const isMaterialOrder = printItem.doc_type === 'Đơn Vật Tư' || printItem.parsed?.docType === 'Đơn Vật Tư';
 
@@ -1895,16 +2063,27 @@ export default function ApprovalWorkflow({
                                                         </tr>
                                                     </thead>
                                                     <tbody>
-                                                        {printItem.parsed.items && printItem.parsed.items.map((item, index) => (
-                                                            <tr key={index}>
-                                                                <td className="border border-black p-2 text-center">{index + 1}</td>
-                                                                <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
+                                                        {(!printItem.parsed.items || printItem.parsed.items.length === 0) ? (
+                                                            <tr>
+                                                                <td className="border border-black p-2 text-center">1</td>
+                                                                <td className="border border-black p-2 whitespace-pre-wrap">{printItem.title || printItem.notes || (printItem.recipient ? `Thanh toán cho ${printItem.recipient}` : 'Chi phí')}</td>
                                                                 <td className="border border-black p-2 text-right font-medium">
-                                                                    {item.amount ? formatCurrency(item.amount) : '-'}
+                                                                    {formatCurrency(printItem.total_amount)}
                                                                 </td>
-                                                                <td className="border border-black p-2">{item.note || ''}</td>
+                                                                <td className="border border-black p-2"></td>
                                                             </tr>
-                                                        ))}
+                                                        ) : (
+                                                            printItem.parsed.items.map((item, index) => (
+                                                                <tr key={index}>
+                                                                    <td className="border border-black p-2 text-center">{index + 1}</td>
+                                                                    <td className="border border-black p-2 whitespace-pre-wrap">{item.content}</td>
+                                                                    <td className="border border-black p-2 text-right font-medium">
+                                                                        {item.amount ? formatCurrency(item.amount) : '-'}
+                                                                    </td>
+                                                                    <td className="border border-black p-2">{item.note || ''}</td>
+                                                                </tr>
+                                                            ))
+                                                        )}
                                                         <tr>
                                                             <td colSpan={2} className="border border-black p-2 font-bold text-center">Tổng cộng</td>
                                                             <td className="border border-black p-2 font-bold text-right text-[16px]">

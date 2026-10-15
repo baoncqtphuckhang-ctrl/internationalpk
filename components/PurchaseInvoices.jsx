@@ -99,6 +99,11 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
                     supplierOrders = data.filter(o => {
                         const isDeleted = o.is_deleted === true || o.status === 'Đã xóa' || o.status === 'Thùng rác';
                         if (isDeleted) return false;
+                        
+                        // CHỈ lấy các đơn có trạng thái "Đã đặt"
+                        const orderStatus = o.items?.[0]?._status || o.status || 'Chờ xử lý';
+                        if (orderStatus !== 'Đã đặt') return false;
+
                         return ((o.order_company || o.company) || '').trim().toLowerCase() === (selectedSupplier || '').trim().toLowerCase();
                     });
                 }
@@ -106,7 +111,13 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
 
             try {
                 const localOrders = JSON.parse(localStorage.getItem('misa_material_orders')) || [];
-                const localMatching = localOrders.filter(o => ((o.order_company || o.company) || '').trim().toLowerCase() === (selectedSupplier || '').trim().toLowerCase());
+                const localMatching = localOrders.filter(o => {
+                    const isDeleted = o.is_deleted === true || o.status === 'Đã xóa' || o.status === 'Thùng rác';
+                    if (isDeleted) return false;
+                    const orderStatus = o.items?.[0]?._status || o.status || 'Chờ xử lý';
+                    if (orderStatus !== 'Đã đặt') return false;
+                    return ((o.order_company || o.company) || '').trim().toLowerCase() === (selectedSupplier || '').trim().toLowerCase();
+                });
                 const dbIds = supplierOrders.map(o => o.id);
                 localMatching.forEach(lo => {
                     if (!dbIds.includes(lo.id)) {
@@ -116,6 +127,19 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
             } catch (e) {}
 
             let rowsChanged = false;
+
+            // Xóa bỏ các dòng tự động (auto_) của những đơn không còn hợp lệ (đã xóa hoặc đã hoàn tác / không còn là 'Đã đặt')
+            const validOrderIds = new Set(supplierOrders.map(o => o.id));
+            const filteredRows = currentRows.filter(r => {
+                if (r.order_id && !validOrderIds.has(r.order_id)) {
+                    rowsChanged = true;
+                    return false;
+                }
+                return true;
+            });
+            if (filteredRows.length !== currentRows.length) {
+                currentRows = filteredRows;
+            }
 
             supplierOrders.forEach(order => {
                 const hasOrder = currentRows.some(r => r.order_id === order.id);
@@ -368,20 +392,19 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
                     </thead>
                     <tbody>
                         {[...rows].sort((a, b) => {
-                            if (!a.ngayMua && !b.ngayMua) return 0;
-                            if (!a.ngayMua) return -1;
-                            if (!b.ngayMua) return 1;
-                            return new Date(b.ngayMua) - new Date(a.ngayMua);
+                            const dateA = a.ngayHD || a.ngayMua || '';
+                            const dateB = b.ngayHD || b.ngayMua || '';
+                            if (!dateA && !dateB) return 0;
+                            if (!dateA) return 1;
+                            if (!dateB) return -1;
+                            return new Date(dateB) - new Date(dateA);
                         }).map(row => (
                             <tr key={row.id} className="hover:bg-blue-50/30 transition group">
                                 <td className="border border-slate-200 p-0"><input type="text" value={row.soHD} onChange={e => handleCellChange(row.id, 'soHD', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[100px]" /></td>
                                 <td className="border border-slate-200 p-0"><input type="date" value={row.ngayMua} onChange={e => handleCellChange(row.id, 'ngayMua', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px]" /></td>
                                 <td className="border border-slate-200 p-0"><input type="date" value={row.ngayHD} onChange={e => handleCellChange(row.id, 'ngayHD', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px]" /></td>
-                                <td className="border border-slate-200 p-0">
-                                    <select value={row.congTrinh} onChange={e => handleCellChange(row.id, 'congTrinh', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium text-slate-600 min-w-[150px]">
-                                        <option value="">-- Chọn công trình --</option>
-                                        {projects.map(p => <option key={p.name} value={p.name}>{p.name}</option>)}
-                                    </select>
+                                <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 min-w-[150px] whitespace-nowrap bg-slate-50/40 select-none">
+                                    {row.congTrinh || '-'}
                                 </td>
                                 <td className="border border-slate-200 p-0"><input type="text" value={row.dot} onChange={e => handleCellChange(row.id, 'dot', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[80px]" /></td>
                                 <td className="border border-slate-200 p-0"><input type="text" value={row.matHang} onChange={e => handleCellChange(row.id, 'matHang', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-slate-700 min-w-[150px]" /></td>

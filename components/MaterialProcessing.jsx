@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { supabase } from '@/lib/supabase';
-import { CheckCircle, XCircle, Clock, Search, ShoppingCart, Loader2, ArrowRight } from 'lucide-react';
+import { CheckCircle, XCircle, Clock, Search, ShoppingCart, Loader2, ArrowRight, Trash2 } from 'lucide-react';
 import MaterialOrder from '@/components/MaterialOrder';
+import ConfirmModal from '@/components/ConfirmModal';
 
 export default function MaterialProcessing({ currentUser, projects, showToast, onNavigateToEdit, onNavigateToDetail }) {
     const [orders, setOrders] = useState([]);
@@ -10,6 +11,111 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
     const [previewOrder, setPreviewOrder] = useState(null);
     const [editOrder, setEditOrder] = useState(null);
     const [searchTerm, setSearchTerm] = useState('');
+    const [deletingOrder, setDeletingOrder] = useState(null);
+    const [isDeleting, setIsDeleting] = useState(false);
+
+    const moveToTrash = async (tableName, matchColumn, matchValue) => {
+        try {
+            const { data } = await supabase.from(tableName).select('*').eq(matchColumn, matchValue);
+            if (data && data.length > 0) {
+                const trashRecords = data.map(record => ({
+                    original_table: tableName,
+                    record_data: JSON.stringify(record),
+                    deleted_by: currentUser?.username || 'unknown',
+                    deleted_at: new Date().toISOString()
+                }));
+                try {
+                    await supabase.from('trash_bin').insert(trashRecords);
+                } catch (e) {
+                    const saved = localStorage.getItem('system_trash_bin');
+                    let parsed = saved ? JSON.parse(saved) : [];
+                    trashRecords.forEach((tr, idx) => parsed.unshift({ ...tr, id: `local_${Date.now()}_${idx}` }));
+                    localStorage.setItem('system_trash_bin', JSON.stringify(parsed));
+                }
+            }
+        } catch (error) {
+            console.error('Lỗi khi chuyển vào thùng rác:', error);
+        }
+    };
+
+    const cleanupOrderInvoicesAndWarehouse = (orderId) => {
+        try {
+            // 1. Dọn dẹp HĐ mua vào
+            const rawInvoices = localStorage.getItem('purchase_invoices_matrix');
+            if (rawInvoices) {
+                const parsed = JSON.parse(rawInvoices);
+                let hasChanged = false;
+                const rawId = String(orderId);
+                Object.keys(parsed).forEach(supp => {
+                    if (Array.isArray(parsed[supp])) {
+                        const beforeLen = parsed[supp].length;
+                        parsed[supp] = parsed[supp].filter(r => {
+                            const rOrderId = String(r.order_id || '');
+                            const rId = String(r.id || '');
+                            return rOrderId !== rawId && rOrderId !== `order_${rawId}` && rId !== `auto_${rawId}`;
+                        });
+                        if (parsed[supp].length !== beforeLen) hasChanged = true;
+                    }
+                });
+                if (hasChanged) {
+                    localStorage.setItem('purchase_invoices_matrix', JSON.stringify(parsed));
+                }
+            }
+
+            // 2. Dọn dẹp Kho vật tư (matrixData)
+            const rawWarehouse = localStorage.getItem('material_warehouse_matrix');
+            if (rawWarehouse) {
+                const parsedW = JSON.parse(rawWarehouse);
+                let wChanged = false;
+                const targetOrderId = `order_${orderId}`;
+                const rawOrderId = String(orderId);
+                Object.keys(parsedW).forEach(proj => {
+                    if (Array.isArray(parsedW[proj])) {
+                        const beforeLen = parsedW[proj].length;
+                        parsedW[proj] = parsedW[proj].filter(r => {
+                            const rid = String(r.id || '');
+                            const pId = String(r.parentOrderId || '');
+                            if (rid === targetOrderId || rid === rawOrderId) return false;
+                            if (pId === targetOrderId || pId === rawOrderId) return false;
+                            return true;
+                        });
+                        if (parsedW[proj].length !== beforeLen) wChanged = true;
+                    }
+                });
+                if (wChanged) {
+                    localStorage.setItem('material_warehouse_matrix', JSON.stringify(parsedW));
+                }
+            }
+            if (typeof window !== 'undefined') {
+                window.dispatchEvent(new Event('material_warehouse_sync'));
+            }
+        } catch (e) {
+            console.error('Lỗi dọn dẹp hóa đơn & kho:', e);
+        }
+    };
+
+    const handleDeleteOrder = async () => {
+        if (!deletingOrder) return;
+        setIsDeleting(true);
+        try {
+            const orderId = deletingOrder.id;
+            await moveToTrash('material_orders', 'id', orderId);
+            const { error } = await supabase.from('material_orders').delete().eq('id', orderId);
+            if (error) throw error;
+
+            // Xóa luôn các dòng trong HĐ mua vào & Công nợ NCC & Kho vật tư nếu đơn này đã được đồng bộ
+            cleanupOrderInvoicesAndWarehouse(orderId);
+
+            setOrders(prev => prev.filter(o => o.id !== orderId));
+            if (previewOrder?.id === orderId) setPreviewOrder(null);
+            showToast('Đã xóa đơn đặt hàng thành công');
+            setDeletingOrder(null);
+        } catch (error) {
+            showToast('Lỗi khi xóa đơn: ' + error.message, 'error');
+        } finally {
+            setIsDeleting(false);
+        }
+    };
 
     const fetchOrders = async () => {
         setIsLoading(true);
@@ -49,6 +155,11 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
 
             if (error) throw error;
             
+            // Nếu hủy đặt / hoàn tác về trạng thái khác 'Đã đặt', xóa khỏi bảng HĐ mua vào, Công nợ NCC và Kho vật tư
+            if (newStatus !== 'Đã đặt') {
+                cleanupOrderInvoicesAndWarehouse(orderId);
+            }
+
             setOrders(prev => prev.map(o => o.id === orderId ? { ...o, items: updatedItems } : o));
             showToast(`Đã chuyển trạng thái sang: ${newStatus}`);
         } catch (error) {
@@ -188,22 +299,34 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
                             </div>
                             
                             <div className="p-4 bg-slate-50 flex-1 flex flex-col justify-end">
-                                <div className="flex flex-wrap gap-2">
-                                    {getNextActions(activeTab).map(action => (
-                                        <button
-                                            key={action.label}
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                if (action.isEdit) { setEditOrder(order); } else {
-                                                    updateStatus(order.id, action.value);
-                                                }
-                                            }}
-                                            className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-white font-bold text-sm transition ${action.color}`}
-                                        >
-                                            {action.label}
-                                            <ArrowRight className="w-4 h-4" />
-                                        </button>
-                                    ))}
+                                <div className="flex items-center gap-2">
+                                    <div className="flex-1 flex flex-wrap gap-2">
+                                        {getNextActions(activeTab).map(action => (
+                                            <button
+                                                key={action.label}
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    if (action.isEdit) { setEditOrder(order); } else {
+                                                        updateStatus(order.id, action.value);
+                                                    }
+                                                }}
+                                                className={`flex-1 flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-white font-bold text-sm transition ${action.color}`}
+                                            >
+                                                {action.label}
+                                                <ArrowRight className="w-4 h-4" />
+                                            </button>
+                                        ))}
+                                    </div>
+                                    <button
+                                        onClick={(e) => {
+                                            e.stopPropagation();
+                                            setDeletingOrder(order);
+                                        }}
+                                        title="Xóa đơn đặt hàng"
+                                        className="p-2.5 rounded-xl border border-red-200 bg-red-50 text-red-600 hover:bg-red-600 hover:text-white transition shrink-0 flex items-center justify-center"
+                                    >
+                                        <Trash2 className="w-4 h-4" />
+                                    </button>
                                 </div>
                             </div>
                         </div>
@@ -324,6 +447,14 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
                                     {action.label} {action.value === 'Chờ xử lý' && '→'}
                                 </button>
                             ))}
+                            <button
+                                onClick={() => setDeletingOrder(previewOrder)}
+                                className="px-4 py-2.5 rounded-xl font-bold bg-red-50 text-red-600 hover:bg-red-600 hover:text-white border border-red-200 transition flex items-center gap-1.5"
+                                title="Xóa đơn hàng"
+                            >
+                                <Trash2 className="w-4 h-4" />
+                                Xóa
+                            </button>
                             <button onClick={() => setPreviewOrder(null)} className="px-6 py-2.5 rounded-xl font-bold bg-white border border-slate-300 text-slate-700 hover:bg-slate-50 transition">Đóng</button>
                         </div>
                     </div>
@@ -350,6 +481,19 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
                     </div>
                 </div>
             )}
+
+            {/* CONFIRM DELETE MODAL */}
+            <ConfirmModal
+                isOpen={!!deletingOrder}
+                title="Xác nhận xóa đơn đặt hàng"
+                message={`Bạn có chắc chắn muốn xóa đơn đặt hàng của công trình "${deletingOrder?.project_name}" (${deletingOrder?.order_phase})? Đơn hàng sẽ được chuyển vào thùng rác.`}
+                confirmText={isDeleting ? "Đang xóa..." : "Xác nhận xóa"}
+                type="danger"
+                onConfirm={handleDeleteOrder}
+                onCancel={() => {
+                    if (!isDeleting) setDeletingOrder(null);
+                }}
+            />
         </div>
     );
 }

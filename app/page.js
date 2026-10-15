@@ -461,6 +461,7 @@ export default function Home() {
     useEffect(() => {
         if (!currentUser) return;
         const updateOnlineStatus = async () => {
+            if (typeof document !== 'undefined' && document.hidden) return; // Không ping Supabase nếu tab đang ẩn để tiết kiệm quota gói free
             try {
                 await supabase.from('users').update({ last_online: new Date().toISOString() }).eq('id', currentUser.id);
             } catch (err) {}
@@ -1391,7 +1392,14 @@ export default function Home() {
                     setTransactions(prev => prev.some(x => x.id === norm.id) ? prev : [norm, ...prev]);
                 } else if (eventType === 'UPDATE') {
                     const norm = normalize(newRow);
-                    setTransactions(prev => prev.map(item => item.id === norm.id ? norm : item));
+                    setTransactions(prev => prev.map(item => {
+                        if (item.id !== norm.id) return item;
+                        return {
+                            ...item,
+                            ...norm,
+                            note: (norm.note !== null && norm.note !== undefined) ? norm.note : item.note
+                        };
+                    }));
                 } else if (eventType === 'DELETE') {
                     setTransactions(prev => prev.filter(item => item.id !== oldRow.id));
                 }
@@ -1399,15 +1407,58 @@ export default function Home() {
                 if (eventType === 'INSERT') {
                     setIncomes(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
-                    setIncomes(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                    setIncomes(prev => prev.map(item => item.id === newRow.id ? { ...item, ...newRow } : item));
                 } else if (eventType === 'DELETE') {
                     setIncomes(prev => prev.filter(item => item.id !== oldRow.id));
                 }
             } else if (table === 'approval_requests') {
                 if (eventType === 'INSERT') {
-                    setDnttList(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
+                    if (newRow && !newRow.reason && newRow.id) {
+                        supabase.from('approval_requests')
+                            .select('id, code, title, amount, doc_type, project_name, recipient, requester, total_amount, reason, status, category, priority, notes, cashier_approved, created_by, created_at')
+                            .eq('id', newRow.id)
+                            .single()
+                            .then(({ data }) => {
+                                if (data) {
+                                    setDnttList(prev => prev.some(x => x.id === data.id) ? prev.map(x => x.id === data.id ? data : x) : [data, ...prev]);
+                                }
+                            });
+                    } else {
+                        setDnttList(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
+                    }
                 } else if (eventType === 'UPDATE') {
-                    setDnttList(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                    setDnttList(prev => prev.map(item => {
+                        if (item.id !== newRow.id) return item;
+                        return {
+                            ...item,
+                            ...newRow,
+                            // Giữ lại nội dung TOAST (reason, notes) nếu PostgreSQL Realtime trả về null do không đổi cột này
+                            reason: (newRow.reason !== null && newRow.reason !== undefined && newRow.reason !== '') 
+                                ? newRow.reason 
+                                : item.reason,
+                            notes: (newRow.notes !== null && newRow.notes !== undefined && newRow.notes !== '')
+                                ? newRow.notes
+                                : item.notes
+                        };
+                    }));
+                    if (!newRow.reason) {
+                        setDnttList(prev => {
+                            const existing = prev.find(x => x.id === newRow.id);
+                            if (!existing?.reason) {
+                                // Chỉ fetch đúng 1 bản ghi này nếu cả 2 đều không có reason để tiết kiệm tuyệt đối quota Supabase
+                                supabase.from('approval_requests')
+                                    .select('reason')
+                                    .eq('id', newRow.id)
+                                    .single()
+                                    .then(({ data }) => {
+                                        if (data?.reason) {
+                                            setDnttList(cur => cur.map(it => it.id === newRow.id ? { ...it, reason: data.reason } : it));
+                                        }
+                                    });
+                            }
+                            return prev;
+                        });
+                    }
                 } else if (eventType === 'DELETE') {
                     setDnttList(prev => prev.filter(item => item.id !== oldRow.id));
                 }
@@ -1415,7 +1466,7 @@ export default function Home() {
                 if (eventType === 'INSERT') {
                     setDeleteRequests(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
-                    setDeleteRequests(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                    setDeleteRequests(prev => prev.map(item => item.id === newRow.id ? { ...item, ...newRow } : item));
                 } else if (eventType === 'DELETE') {
                     setDeleteRequests(prev => prev.filter(item => item.id !== oldRow.id));
                 }
@@ -1423,7 +1474,15 @@ export default function Home() {
                 if (eventType === 'INSERT') {
                     setPartnerDebts(prev => prev.some(x => x.id === newRow.id) ? prev : [newRow, ...prev]);
                 } else if (eventType === 'UPDATE') {
-                    setPartnerDebts(prev => prev.map(item => item.id === newRow.id ? newRow : item));
+                    setPartnerDebts(prev => prev.map(item => {
+                        if (item.id !== newRow.id) return item;
+                        return {
+                            ...item,
+                            ...newRow,
+                            note: (newRow.note !== null && newRow.note !== undefined) ? newRow.note : item.note,
+                            notes: (newRow.notes !== null && newRow.notes !== undefined) ? newRow.notes : item.notes
+                        };
+                    }));
                 } else if (eventType === 'DELETE') {
                     setPartnerDebts(prev => prev.filter(item => item.id !== oldRow.id));
                 }
@@ -2589,8 +2648,19 @@ export default function Home() {
     const handleUpdateApprovalStatus = async (id, newStatus, extraData = {}) => {
         setIsLoading(true);
         try {
-            let requestDetails = null;
-            if (newStatus === STATUSES.REJECTED) {
+            // 1. Cập nhật optimistic ngay lập tức trên frontend để giao diện không bị giật, không mất nội dung/reason
+            setDnttList(prev => prev.map(item => {
+                if (item.id !== id) return item;
+                return {
+                    ...item,
+                    status: newStatus,
+                    ...extraData,
+                    reason: extraData.reason !== undefined ? extraData.reason : item.reason
+                };
+            }));
+
+            let requestDetails = dnttList.find(d => d.id === id);
+            if (!requestDetails && newStatus === STATUSES.REJECTED) {
                 const { data, error: fetchErr } = await supabase
                     .from('approval_requests')
                     .select('created_by, doc_type, project_name, recipient, total_amount')
@@ -2618,10 +2688,13 @@ export default function Home() {
                 });
             }
 
-            fetchData();
+            // KHÔNG gọi fetchData() toàn bộ bảng ở đây để tiết kiệm tối đa băng thông (egress) gói Free của Supabase
         } catch (error) {
             console.error('Error updating approval status:', error);
             showToast('Lỗi khi cập nhật!', 'error');
+            // Nếu có lỗi, đồng bộ lại danh sách
+            loadedDataSourcesRef.current.delete('đề nghị thanh toán');
+            fetchApprovalRequestsData();
         } finally {
             setIsLoading(false);
         }
@@ -2644,15 +2717,16 @@ export default function Home() {
                 await syncMaterialOrderInvoicesFromDntt(id, distribution);
             }
 
-            // 2. Cập nhật trạng thái DNTT sang ACCOUNTED (và cập nhật tổng tiền hạch toán thực tế)
-            const totalSum = (distribution || []).reduce((sum, d) => sum + (d.debit || 0), 0);
+            // 2. Cập nhật optimistic trạng thái DNTT sang ACCOUNTED trên state
+            setDnttList(prev => prev.map(item => item.id === id ? { ...item, status: STATUSES.ACCOUNTED } : item));
+
             const { error: statusError } = await supabase.from('approval_requests').update({ 
                 status: STATUSES.ACCOUNTED
             }).eq('id', id);
             
             if (statusError) throw statusError;
             logActivity('Hạch toán', 'Đề nghị thanh toán', `Hạch toán phiếu (ID: ${id})${distribution && distribution[0]?.recipient ? ` (Người nhận: ${distribution[0].recipient})` : ''}`);
-            fetchData();
+            showToast('Đã hoàn tất phân bổ & hạch toán phiếu!');
         } catch (error) {
             console.error('HANDLE ACCOUNT DNTT ERROR', JSON.stringify(error));
             showToast('Lỗi khi hạch toán!', 'error');
@@ -3601,6 +3675,7 @@ export default function Home() {
                         transactions={transactions}
                         onAddDNTT={handleAddDNTT}
                         onUpdateDNTT={handleUpdateDNTT}
+                        onUpdateLocalDNTT={(id, updates) => setDnttList(prev => prev.map(item => item.id === id ? { ...item, ...updates } : item))}
                         onUpdateStatus={handleUpdateApprovalStatus}
                         onAccountDNTT={handleAccountDNTT}
                         onDeleteApproval={handleDeleteApproval}

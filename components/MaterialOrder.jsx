@@ -175,12 +175,10 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
     useEffect(() => {
         if (actionOrder) {
-            if (actionOrder.action === 'edit') {
-                setView('create');
-                setSelectedOrder(actionOrder.order);
-            } else if (actionOrder.action === 'detail') {
-                setView('detail');
-                setSelectedOrder(actionOrder.order);
+            if (actionOrder.action === 'edit' && actionOrder.order) {
+                openEdit(actionOrder.order);
+            } else if (actionOrder.action === 'detail' && actionOrder.order) {
+                openDetail(actionOrder.order);
             }
             if (onActionComplete) onActionComplete();
         }
@@ -644,6 +642,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
             payload.items[0]._price_batch = pbName;
             payload.items[0]._order_company = formData.order_company || '';
+            payload.items[0]._status = 'Chờ xử lý';
         }
 
         try {
@@ -655,6 +654,55 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                         .update(payload)
                         .eq('id', formData.id);
                     if (error) throw error;
+
+                    // Nếu sửa phiếu / hoàn tác về Chờ xử lý, dọn dẹp khỏi bảng HĐ mua vào và Kho vật tư
+                    try {
+                        const rawInvoices = localStorage.getItem('purchase_invoices_matrix');
+                        if (rawInvoices) {
+                            const parsed = JSON.parse(rawInvoices);
+                            let hasChanged = false;
+                            const rawId = String(formData.id);
+                            Object.keys(parsed).forEach(supp => {
+                                if (Array.isArray(parsed[supp])) {
+                                    const beforeLen = parsed[supp].length;
+                                    parsed[supp] = parsed[supp].filter(r => {
+                                        const rOrderId = String(r.order_id || '');
+                                        const rId = String(r.id || '');
+                                        return rOrderId !== rawId && rOrderId !== `order_${rawId}` && rId !== `auto_${rawId}`;
+                                    });
+                                    if (parsed[supp].length !== beforeLen) hasChanged = true;
+                                }
+                            });
+                            if (hasChanged) localStorage.setItem('purchase_invoices_matrix', JSON.stringify(parsed));
+                        }
+                        const rawWarehouse = localStorage.getItem('material_warehouse_matrix');
+                        if (rawWarehouse) {
+                            const parsedW = JSON.parse(rawWarehouse);
+                            let wChanged = false;
+                            const targetOrderId = `order_${formData.id}`;
+                            const rawOrderId = String(formData.id);
+                            Object.keys(parsedW).forEach(proj => {
+                                if (Array.isArray(parsedW[proj])) {
+                                    const beforeLen = parsedW[proj].length;
+                                    parsedW[proj] = parsedW[proj].filter(r => {
+                                        const rid = String(r.id || '');
+                                        const pId = String(r.parentOrderId || '');
+                                        if (rid === targetOrderId || rid === rawOrderId) return false;
+                                        if (pId === targetOrderId || pId === rawOrderId) return false;
+                                        return true;
+                                    });
+                                    if (parsedW[proj].length !== beforeLen) wChanged = true;
+                                }
+                            });
+                            if (wChanged) localStorage.setItem('material_warehouse_matrix', JSON.stringify(parsedW));
+                        }
+                        if (typeof window !== 'undefined') {
+                            window.dispatchEvent(new Event('material_warehouse_sync'));
+                        }
+                    } catch (cleanErr) {
+                        console.error('Lỗi dọn dẹp hóa đơn và kho:', cleanErr);
+                    }
+
                     showToast('Cập nhật đơn đặt hàng thành công!');
                 } else {
                     const { data: insertedOrder, error } = await supabase
