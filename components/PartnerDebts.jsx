@@ -760,7 +760,8 @@ export default function PartnerDebts({
 
                                 const vat = subtotal > 0 ? Math.round(subtotal * 0.08) : 0;
                                 const totalAfterTax = subtotal > 0 ? (subtotal + vat) : (parseFloat(viewDnttModal.total_amount || parsed?.totalAmount) || 0);
-                                const orderPhaseStr = parsed?.orderPhase || (viewDnttModal.note?.match(/(?:ĐỢT|Đợt)\s*\d+/i)?.[0]) || '';
+                                const noteStr = typeof viewDnttModal?.note === 'string' ? viewDnttModal.note : '';
+                                const orderPhaseStr = String(parsed?.orderPhase || (noteStr ? noteStr.match(/(?:ĐỢT|Đợt)\s*\d+/i)?.[0] : '') || '');
 
                                 return (
                                     <div className="bg-white p-6 sm:p-8 rounded-2xl border border-slate-200 shadow-sm print:p-0 print:border-none print:shadow-none font-sans">
