@@ -1,7 +1,126 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+
+const formatDateInputDisplay = (dateVal = '') => {
+    if (!dateVal) return '';
+    const s = String(dateVal).trim().split('T')[0];
+    if (s.includes('-')) {
+        const parts = s.split('-');
+        if (parts.length === 3) {
+            const [y, m, d] = parts;
+            if (y.length === 4) {
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            }
+        }
+    }
+    if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            if (parts[0].length === 4) {
+                return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+            }
+            return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+        }
+    }
+    return s;
+};
+
+const normalizeDateTextInput = (value = '') => {
+    const digits = String(value).replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const parseDateDisplayToIso = (value = '') => {
+    if (!value) return '';
+    const clean = String(value).trim();
+    const match = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!match) return '';
+    let [, day, month, year] = match;
+    const d = parseInt(day, 10);
+    const m = parseInt(month, 10);
+    if (d < 1 || d > 31 || m < 1 || m > 12) return '';
+    day = String(d).padStart(2, '0');
+    month = String(m).padStart(2, '0');
+    if (year.length === 2) year = '20' + year;
+    return `${year}-${month}-${day}`;
+};
+
+function DateInputCell({ value, onChange, disabled = false, className = '' }) {
+    const [text, setText] = useState(() => formatDateInputDisplay(value));
+
+    useEffect(() => {
+        setText(formatDateInputDisplay(value));
+    }, [value]);
+
+    const handleTextChange = (e) => {
+        const raw = e.target.value;
+        if (e.nativeEvent?.inputType?.includes('delete')) {
+            setText(raw);
+            if (!raw) onChange('');
+            return;
+        }
+        const normalized = normalizeDateTextInput(raw);
+        setText(normalized);
+        if (normalized.length === 10) {
+            const iso = parseDateDisplayToIso(normalized);
+            if (iso) onChange(iso);
+        }
+    };
+
+    const handleBlur = () => {
+        if (!text) {
+            onChange('');
+            return;
+        }
+        const iso = parseDateDisplayToIso(text);
+        if (iso) {
+            onChange(iso);
+            setText(formatDateInputDisplay(iso));
+        } else {
+            setText(formatDateInputDisplay(value));
+        }
+    };
+
+    const handlePickerChange = (e) => {
+        const val = e.target.value;
+        if (val) {
+            onChange(val);
+            setText(formatDateInputDisplay(val));
+        }
+    };
+
+    const pickerValue = value ? String(value).split('T')[0] : '';
+
+    return (
+        <div className={`relative w-full h-full flex items-center group/date ${className}`}>
+            <input
+                type="text"
+                disabled={disabled}
+                value={text}
+                onChange={handleTextChange}
+                onBlur={handleBlur}
+                placeholder="dd/mm/yyyy"
+                className={`w-full h-full p-2 pr-7 outline-none bg-transparent text-center font-medium text-slate-700 text-sm ${disabled ? 'cursor-not-allowed' : ''}`}
+            />
+            {!disabled && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                    <input
+                        type="date"
+                        value={pickerValue}
+                        onChange={handlePickerChange}
+                        className="opacity-0 absolute inset-0 cursor-pointer w-6 h-6 z-10"
+                        tabIndex={-1}
+                    />
+                    <Calendar size={15} className="text-slate-400 group-hover/date:text-blue-600 transition pointer-events-none" />
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function SupplierDebt({ currentUser, projects, showToast }) {
     const defaultSuppliers = [
@@ -217,19 +336,19 @@ export default function SupplierDebt({ currentUser, projects, showToast }) {
                                     <input type="text" value={row.soHD} disabled className="w-full h-full p-2 outline-none bg-transparent text-center font-bold min-w-[120px] cursor-not-allowed" />
                                 </td>
                                 <td className="border border-slate-200 p-0 bg-slate-50/50">
-                                    <input type="date" value={row.ngayHD} disabled className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px] cursor-not-allowed [&::-webkit-calendar-picker-indicator]:opacity-0" />
+                                    <input type="text" value={formatDateInputDisplay(row.ngayHD)} disabled placeholder="-" className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px] cursor-not-allowed text-slate-700" />
                                 </td>
                                 <td className="border border-slate-200 p-0 bg-slate-50/50">
                                     <input type="text" value={row.congTrinh} disabled className="w-full h-full p-2 outline-none bg-transparent text-center font-medium text-slate-600 min-w-[150px] cursor-not-allowed" />
                                 </td>
                                 <td className="border border-slate-200 p-0 relative">
-                                    <input type="date" value={row.hanTT} onChange={e => handleCellChange(row.id, 'hanTT', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px] hover:bg-slate-50 focus:bg-slate-50 cursor-pointer" />
+                                    <DateInputCell value={row.hanTT} onChange={val => handleCellChange(row.id, 'hanTT', val)} />
                                 </td>
                                 <td className="border border-slate-200 p-0 bg-slate-50/50">
                                     <input type="text" value={row.giaTri} disabled className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-rose-600 min-w-[120px] cursor-not-allowed" />
                                 </td>
                                 <td className="border border-slate-200 p-0 relative">
-                                    <input type="date" value={row.ngayTra} onChange={e => handleCellChange(row.id, 'ngayTra', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px] hover:bg-slate-50 focus:bg-slate-50 cursor-pointer" />
+                                    <DateInputCell value={row.ngayTra} onChange={val => handleCellChange(row.id, 'ngayTra', val)} />
                                 </td>
                                 <td className="border border-slate-200 p-0">
                                     <select value={row.trangThai} onChange={e => handleCellChange(row.id, 'trangThai', e.target.value)} className={`w-full h-full p-2 outline-none bg-transparent text-center font-bold cursor-pointer min-w-[120px] hover:bg-slate-50 ${row.trangThai === 'Đã trả' ? 'text-emerald-600' : row.trangThai === 'Đã trừ CK' ? 'text-blue-600' : 'text-slate-700'}`}>

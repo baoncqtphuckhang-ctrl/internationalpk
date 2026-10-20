@@ -129,6 +129,15 @@ export default function Trash({ onRestore, isLoading, setIsLoading, showToast, a
             if (data.project_name || data.project || data.name) {
                 content.push(<div key="1"><b>Công trình:</b> {data.project_name || data.project || data.name}</div>);
             }
+            if (data.order_phase) {
+                content.push(<div key="phase"><b>Đợt đặt hàng:</b> {data.order_phase}</div>);
+            }
+            if (data.order_date) {
+                content.push(<div key="order_date"><b>Ngày đặt:</b> {data.order_date}</div>);
+            }
+            if (Array.isArray(data.items) && data.items.length > 0) {
+                content.push(<div key="order_items"><b>Số mục vật tư:</b> {data.items.length}</div>);
+            }
             if (data.doc_type || data.type || data.category) {
                 content.push(<div key="2"><b>Loại:</b> {data.doc_type || data.type || data.category}</div>);
             }

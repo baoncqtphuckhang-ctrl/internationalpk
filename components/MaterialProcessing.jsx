@@ -4,8 +4,17 @@ import { CheckCircle, XCircle, Clock, Search, ShoppingCart, Loader2, ArrowRight,
 import MaterialOrder from '@/components/MaterialOrder';
 import ConfirmModal from '@/components/ConfirmModal';
 
-export default function MaterialProcessing({ currentUser, projects, showToast, onNavigateToEdit, onNavigateToDetail }) {
+const getSignatureName = (name) => {
+    if (!name) return '';
+    const parts = name.trim().split(/\s+/);
+    let lastWord = parts[parts.length - 1];
+    lastWord = lastWord.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/đ/g, "d").replace(/Đ/g, "D");
+    return lastWord.charAt(0).toUpperCase() + lastWord.slice(1).toLowerCase();
+};
+
+export default function MaterialProcessing({ currentUser, usersList: propUsersList, projects, showToast, onCreateAccountingRequest, onUpdateAccountingRequest, dnttList, onNavigateToEdit, onNavigateToDetail }) {
     const [orders, setOrders] = useState([]);
+    const [usersList, setUsersList] = useState(propUsersList || []);
     const [isLoading, setIsLoading] = useState(true);
     const [activeTab, setActiveTab] = useState('Chờ xử lý'); // 'Chờ xử lý', 'Phê duyệt', 'Đã đặt', 'Từ chối'
     const [previewOrder, setPreviewOrder] = useState(null);
@@ -13,6 +22,22 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
     const [searchTerm, setSearchTerm] = useState('');
     const [deletingOrder, setDeletingOrder] = useState(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    useEffect(() => {
+        if (propUsersList && propUsersList.length > 0) {
+            setUsersList(propUsersList);
+        } else {
+            const fetchUsers = async () => {
+                try {
+                    const { data } = await supabase.from('users').select('username, full_name, role, signature_url');
+                    if (data && data.length > 0) setUsersList(data);
+                } catch (err) {
+                    console.error("Error fetching users in MaterialProcessing:", err);
+                }
+            };
+            fetchUsers();
+        }
+    }, [propUsersList]);
 
     const moveToTrash = async (tableName, matchColumn, matchValue) => {
         try {
@@ -383,49 +408,95 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
                             </div>
                             
                             {/* Categories & Items */}
-                            {previewOrder.items && previewOrder.items.map((cat, idx) => {
-                                const validItems = cat.items?.filter(item => (parseFloat(item.quantity) || 0) > 0) || [];
-                                if (validItems.length === 0) return null;
-                                
-                                return (
-                                    <div key={idx} className="mb-8">
-                                        <h3 className="font-bold uppercase text-[16px] mb-2 pl-0 sm:pl-10">- {cat.name}</h3>
-                                        <table className="w-full border-collapse border border-black text-[15px] sm:w-[calc(100%-5rem)] mx-auto">
-                                            <thead>
-                                                <tr>
-                                                    <th className="border border-black p-2 bg-slate-100">STT</th>
-                                                    <th className="border border-black p-2 bg-slate-100">Tên vật tư</th>
-                                                    <th className="border border-black p-2 bg-slate-100">Mã màu</th>
-                                                    <th className="border border-black p-2 bg-slate-100 w-24">ĐVT</th>
-                                                    <th className="border border-black p-2 bg-slate-100 w-24">Số lượng</th>
-                                                </tr>
-                                            </thead>
-                                            <tbody>
-                                                {validItems.map((item, i) => (
-                                                    <tr key={i}>
-                                                        <td className="border border-black p-2 text-center">{i + 1}</td>
-                                                        <td className="border border-black p-2">{item.name}</td>
-                                                        <td className="border border-black p-2 text-center">{item.colorCode || '-'}</td>
-                                                        <td className="border border-black p-2 text-center">{item.unit || '-'}</td>
-                                                        <td className="border border-black p-2 text-center font-bold text-blue-700">{item.quantity}</td>
-                                                    </tr>
-                                                ))}
-                                            </tbody>
-                                        </table>
-                                    </div>
+                            {(() => {
+                                const hasAnyItems = previewOrder.items?.some(cat => 
+                                    cat.items?.some(item => (parseFloat(item.quantity) || 0) > 0)
                                 );
-                            })}
+                                if (!hasAnyItems) {
+                                    return (
+                                        <div className="py-6 px-4 text-center text-rose-600 bg-rose-50 border border-rose-200 rounded-2xl mx-auto my-6 sm:w-[calc(100%-5rem)] font-sans font-medium text-sm flex items-center justify-center gap-2">
+                                            <span>⚠️ Đơn hàng này hiện chưa có vật tư nào có số lượng! Vui lòng bấm <b>"Sửa phiếu →"</b> để cập nhật số lượng vật tư.</span>
+                                        </div>
+                                    );
+                                }
+                                return previewOrder.items.map((cat, idx) => {
+                                    const validItems = cat.items?.filter(item => (parseFloat(item.quantity) || 0) > 0) || [];
+                                    if (validItems.length === 0) return null;
+                                    
+                                    return (
+                                        <div key={idx} className="mb-8">
+                                            <h3 className="font-bold uppercase text-[16px] mb-2 pl-0 sm:pl-10">- {cat.name}</h3>
+                                            <table className="w-full border-collapse border border-black text-[15px] sm:w-[calc(100%-5rem)] mx-auto">
+                                                <thead>
+                                                    <tr>
+                                                        <th className="border border-black p-2 bg-slate-100">STT</th>
+                                                        <th className="border border-black p-2 bg-slate-100">Tên vật tư</th>
+                                                        <th className="border border-black p-2 bg-slate-100">Mã màu</th>
+                                                        <th className="border border-black p-2 bg-slate-100 w-24">ĐVT</th>
+                                                        <th className="border border-black p-2 bg-slate-100 w-24">Số lượng</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                                                    {validItems.map((item, i) => (
+                                                        <tr key={i}>
+                                                            <td className="border border-black p-2 text-center">{i + 1}</td>
+                                                            <td className="border border-black p-2">{item.name}</td>
+                                                            <td className="border border-black p-2 text-center">{item.colorCode || '-'}</td>
+                                                            <td className="border border-black p-2 text-center">{item.unit || '-'}</td>
+                                                            <td className="border border-black p-2 text-center font-bold text-blue-700">{item.quantity}</td>
+                                                        </tr>
+                                                    ))}
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                    );
+                                });
+                            })()}
                             
                             {/* Footer/Signatures */}
-                            <div className="mt-12 flex justify-end">
-                                <div className="text-center w-64 space-y-1">
-                                    <p className="text-xs uppercase font-extrabold tracking-widest text-slate-400">
-                                        NGÀY {new Date(previewOrder.order_date).getDate().toString().padStart(2, '0')} THÁNG {(new Date(previewOrder.order_date).getMonth() + 1).toString().padStart(2, '0')} NĂM {new Date(previewOrder.order_date).getFullYear()}
+                            <div className="mt-12 flex justify-end font-['Times_New_Roman',_serif] pr-2 sm:pr-8">
+                                <div className="text-center w-72 space-y-1">
+                                    <p className="text-[15px] font-medium text-slate-600">
+                                        {(() => {
+                                            const d = previewOrder.order_date ? new Date(previewOrder.order_date) : new Date();
+                                            const day = isNaN(d.getTime()) ? '' : d.getDate().toString().padStart(2, '0');
+                                            const month = isNaN(d.getTime()) ? '' : (d.getMonth() + 1).toString().padStart(2, '0');
+                                            const year = isNaN(d.getTime()) ? '' : d.getFullYear();
+                                            return `NGÀY ${day} THÁNG ${month} NĂM ${year}`;
+                                        })()}
                                     </p>
-                                    <p className="font-bold text-sm text-slate-800">NGƯỜI LẬP</p>
-                                    <p className="font-bold text-[16px] text-black uppercase mt-12 pt-4">
-                                        {previewOrder.created_by || 'ADMIN'}
-                                    </p>
+                                    <p className="font-bold text-[16px] text-black tracking-wide">NGƯỜI LẬP</p>
+                                    
+                                    {(() => {
+                                        const creatorUsername = previewOrder.created_by || currentUser?.username;
+                                        const creatorUser = usersList?.find(u => u.username?.toLowerCase() === creatorUsername?.toLowerCase());
+                                        const signatureUrl = creatorUser?.signature_url;
+                                        const displayName = creatorUser?.full_name || creatorUsername || 'ADMIN';
+                                        
+                                        return (
+                                            <>
+                                                <div className="h-24 flex items-center justify-center my-1">
+                                                    {previewOrder.show_signature !== false && signatureUrl ? (
+                                                        <img 
+                                                            src={signatureUrl} 
+                                                            className="max-h-20 object-contain opacity-95 animate-in fade-in duration-300" 
+                                                            style={{ mixBlendMode: 'multiply', filter: 'contrast(1.2)' }} 
+                                                            alt="Chữ ký người lập" 
+                                                        />
+                                                    ) : previewOrder.show_signature !== false ? (
+                                                        <div className="font-['Brush_Script_MT',_cursive,_sans-serif] text-4xl text-blue-800 select-none animate-in fade-in duration-300">
+                                                            {getSignatureName(displayName)}
+                                                        </div>
+                                                    ) : (
+                                                        <div className="h-12"></div>
+                                                    )}
+                                                </div>
+                                                <p className="font-bold text-[16px] text-black uppercase">
+                                                    {displayName}
+                                                </p>
+                                            </>
+                                        );
+                                    })()}
                                 </div>
                             </div>
                         </div>
@@ -472,10 +543,18 @@ export default function MaterialProcessing({ currentUser, projects, showToast, o
                             </h2>
                             <MaterialOrder 
                                 currentUser={currentUser}
+                                usersList={usersList}
                                 projects={projects}
+                                showToast={showToast}
                                 actionOrder={{ order: editOrder, action: 'edit' }}
                                 asModal={true}
-                                onCloseModal={() => setEditOrder(null)}
+                                onCreateAccountingRequest={onCreateAccountingRequest}
+                                onUpdateAccountingRequest={onUpdateAccountingRequest}
+                                dnttList={dnttList}
+                                onCloseModal={() => {
+                                    setEditOrder(null);
+                                    fetchOrders();
+                                }}
                             />
                         </div>
                     </div>

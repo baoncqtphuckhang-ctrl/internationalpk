@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-    Edit3, Trash2, Plus, Save
+    Edit3, Trash2, Plus, Save, Lock, Unlock, X
 } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { DEFAULT_CATEGORIES } from './MaterialOrder';
@@ -11,9 +11,9 @@ export default function MaterialCatalog({ projects, showToast }) {
     const [configProjectName, setConfigProjectName] = useState(projects[0]?.name || '');
     const [allTemplates, setAllTemplates] = useState({});
     
-    // Always edit state
     const [categories, setCategories] = useState([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isEditing, setIsEditing] = useState(false);
 
     const loadTemplatesFromDb = async () => {
         setIsLoading(true);
@@ -51,6 +51,7 @@ export default function MaterialCatalog({ projects, showToast }) {
 
     const handleProjectChange = (proj, tMap = allTemplates) => {
         setConfigProjectName(proj);
+        setIsEditing(false); // Reset to view-only mode on project switch
         const data = tMap[proj] || {};
         if (data.versions && data.versions.length > 0) {
             // Pick the latest version's categories to edit
@@ -86,6 +87,7 @@ export default function MaterialCatalog({ projects, showToast }) {
             if (error) throw error;
             
             setAllTemplates(prev => ({ ...prev, [configProjectName]: newData }));
+            setIsEditing(false);
             showToast('Đã lưu cấu hình vật tư thành công!');
         } catch (err) {
             console.error(err);
@@ -125,30 +127,85 @@ export default function MaterialCatalog({ projects, showToast }) {
                             ))}
                         </select>
                     </div>
-                    <div className="flex items-end mt-2 md:mt-0">
-                        <button onClick={handleSave} className="px-8 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-blue-600/20 whitespace-nowrap h-[52px]">
+                    
+                    {/* ACTION BUTTONS: Edit vật tư & Lưu cấu hình */}
+                    <div className="flex items-center gap-3 mt-2 md:mt-0">
+                        {!isEditing ? (
+                            <button 
+                                type="button"
+                                onClick={() => setIsEditing(true)} 
+                                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white rounded-xl font-bold transition flex items-center gap-2 shadow-lg shadow-amber-500/20 whitespace-nowrap h-[52px]"
+                            >
+                                <Edit3 size={20} /> Edit vật tư
+                            </button>
+                        ) : (
+                            <button 
+                                type="button"
+                                onClick={() => {
+                                    handleProjectChange(configProjectName);
+                                    setIsEditing(false);
+                                }} 
+                                className="px-5 py-3 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl font-bold transition flex items-center gap-2 whitespace-nowrap h-[52px]"
+                            >
+                                <X size={18} /> Hủy
+                            </button>
+                        )}
+                        
+                        <button 
+                            type="button"
+                            disabled={!isEditing}
+                            onClick={handleSave} 
+                            className={`px-8 py-3 rounded-xl font-bold transition flex items-center gap-2 whitespace-nowrap h-[52px] ${
+                                isEditing 
+                                    ? 'bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-600/20 active:scale-95 cursor-pointer' 
+                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed opacity-60 border border-slate-300'
+                            }`}
+                        >
                             <Save size={20} /> Lưu cấu hình
                         </button>
                     </div>
                 </div>
 
-                <div className="p-6 space-y-6 bg-white">
+                {/* STATUS BAR */}
+                <div className="px-6 py-2.5 bg-slate-50/80 border-b border-slate-200 flex items-center justify-between text-xs font-semibold">
+                    <div className="flex items-center gap-2">
+                        {!isEditing ? (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-200 text-slate-600">
+                                <Lock size={13} className="text-slate-500" /> Chế độ xem: Đang làm mờ (Bấm &quot;Edit vật tư&quot; để cho phép chỉnh sửa)
+                            </span>
+                        ) : (
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 font-bold">
+                                <Unlock size={13} className="text-emerald-600" /> Đang trong chế độ chỉnh sửa vật tư
+                            </span>
+                        )}
+                    </div>
+                    {!isEditing && (
+                        <span className="text-slate-400 hidden sm:inline">Khóa chỉnh sửa để tránh sửa nhầm</span>
+                    )}
+                </div>
+
+                {/* TABLES CONTAINER - DIMMED/BLURRED WHEN NOT EDITING */}
+                <div className={`p-6 space-y-6 bg-white transition-all duration-300 ${
+                    !isEditing ? 'opacity-40 pointer-events-none select-none filter blur-[0.25px]' : 'opacity-100'
+                }`}>
                     {categories.map((cat, catIdx) => (
                         <div key={catIdx} className="border-2 border-slate-200 rounded-2xl overflow-hidden group">
                             <div className="bg-slate-100 p-3 border-b-2 border-slate-200 flex items-center justify-between">
                                 <input
                                     type="text"
+                                    disabled={!isEditing}
                                     value={cat.name || ''}
                                     onChange={(e) => {
                                         const updated = [...categories];
                                         updated[catIdx].name = e.target.value;
                                         setCategories(updated);
                                     }}
-                                    className="font-bold text-blue-900 outline-none w-1/2 rounded px-2 py-1 border-b border-blue-300 focus:ring-2 focus:ring-blue-500 bg-white"
+                                    className="font-bold text-blue-900 outline-none w-1/2 rounded px-2 py-1 border-b border-blue-300 focus:ring-2 focus:ring-blue-500 bg-white disabled:bg-slate-100"
                                     placeholder="Tên hạng mục..."
                                 />
                                 <button 
                                     type="button" 
+                                    disabled={!isEditing}
                                     onClick={() => {
                                         if (categories.length <= 1) {
                                             showToast('Cần ít nhất một hạng mục!', 'error');
@@ -158,7 +215,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                         updated.splice(catIdx, 1);
                                         setCategories(updated);
                                     }}
-                                    className="text-red-500 hover:bg-red-200 p-1.5 rounded transition"
+                                    className="text-red-500 hover:bg-red-200 p-1.5 rounded transition disabled:opacity-40 disabled:cursor-not-allowed"
                                 >
                                     <Trash2 size={16} />
                                 </button>
@@ -185,6 +242,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                 <td className="px-4 py-2">
                                                     <input 
                                                         type="text" 
+                                                        disabled={!isEditing}
                                                         value={item.name || ''}
                                                         onChange={(e) => {
                                                             const updated = [...categories];
@@ -192,12 +250,13 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                             setCategories(updated);
                                                         }}
                                                         placeholder="Nhập tên vật tư..."
-                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none font-medium text-slate-700"
+                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none font-medium text-slate-700 disabled:text-slate-500"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <input 
                                                         type="text" 
+                                                        disabled={!isEditing}
                                                         value={item.colorCode || ''}
                                                         onChange={(e) => {
                                                             const updated = [...categories];
@@ -205,18 +264,19 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                             setCategories(updated);
                                                         }}
                                                         placeholder="VD: TRẮNG"
-                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-slate-600"
+                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-slate-600 disabled:text-slate-500"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-2">
                                                     <select
+                                                        disabled={!isEditing}
                                                         value={item.unit || ''}
                                                         onChange={(e) => {
                                                             const updated = [...categories];
                                                             updated[catIdx].items[itemIdx].unit = e.target.value;
                                                             setCategories(updated);
                                                         }}
-                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-center text-slate-600 font-bold cursor-pointer hover:bg-slate-50 transition"
+                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-center text-slate-600 font-bold cursor-pointer hover:bg-slate-50 transition disabled:cursor-not-allowed"
                                                     >
                                                         <option value="">Trống</option>
                                                         <option value="Bao/40kg">Bao/40kg</option>
@@ -236,6 +296,7 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                 <td className="px-4 py-2">
                                                     <input 
                                                         type="text" 
+                                                        disabled={!isEditing}
                                                         value={item.quantity || ''}
                                                         onChange={(e) => {
                                                             const updated = [...categories];
@@ -243,18 +304,19 @@ export default function MaterialCatalog({ projects, showToast }) {
                                                             setCategories(updated);
                                                         }}
                                                         placeholder="Định mức"
-                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-center font-bold text-blue-600"
+                                                        className="w-full p-2 bg-transparent border-b border-slate-200 focus:border-blue-500 outline-none text-center font-bold text-blue-600 disabled:text-slate-500"
                                                     />
                                                 </td>
                                                 <td className="px-4 py-2 text-center">
                                                     <button 
                                                         type="button"
+                                                        disabled={!isEditing}
                                                         onClick={() => {
                                                             const updated = [...categories];
                                                             updated[catIdx].items.splice(itemIdx, 1);
                                                             setCategories(updated);
                                                         }}
-                                                        className="text-slate-300 hover:text-red-500 p-1.5 rounded transition"
+                                                        className="text-slate-300 hover:text-red-500 p-1.5 rounded transition disabled:opacity-30 disabled:cursor-not-allowed"
                                                     >
                                                         <Trash2 size={16} />
                                                     </button>
@@ -266,13 +328,14 @@ export default function MaterialCatalog({ projects, showToast }) {
                                 <div className="p-3 bg-slate-50 border-t border-slate-200">
                                     <button 
                                         type="button" 
+                                        disabled={!isEditing}
                                         onClick={() => {
                                             const updated = [...categories];
                                             if (!updated[catIdx].items) updated[catIdx].items = [];
                                             updated[catIdx].items.push({ stt: updated[catIdx].items.length + 1, name: '', unit: '', quantity: '', colorCode: '' });
                                             setCategories(updated);
                                         }}
-                                        className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition"
+                                        className="text-sm font-bold text-blue-600 hover:text-blue-800 flex items-center gap-1 transition disabled:opacity-40 disabled:cursor-not-allowed"
                                     >
                                         <Plus size={16} /> Thêm vật tư
                                     </button>
@@ -283,12 +346,13 @@ export default function MaterialCatalog({ projects, showToast }) {
                     
                     <button 
                         type="button" 
+                        disabled={!isEditing}
                         onClick={() => {
                             const updated = [...categories];
                             updated.push({ name: 'Hạng mục mới', items: [{ stt: 1, name: '', unit: '', quantity: '', colorCode: '' }] });
                             setCategories(updated);
                         }}
-                        className="mt-6 text-sm font-bold text-slate-600 hover:text-slate-800 border-2 border-dashed border-slate-300 w-full py-4 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition flex items-center justify-center gap-2"
+                        className="mt-6 text-sm font-bold text-slate-600 hover:text-slate-800 border-2 border-dashed border-slate-300 w-full py-4 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed"
                     >
                         <Plus size={20} /> Thêm Hạng Mục Mới
                     </button>

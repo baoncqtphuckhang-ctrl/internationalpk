@@ -29,29 +29,12 @@ export const DEFAULT_CATEGORIES = [
 
 const normalizeText = (value) => String(value || '').trim().toLowerCase();
 
-const getMaterialOrderPhaseSources = (projectName, ordersList = [], dnttList = []) => {
+const getMaterialOrderPhaseSources = (projectName, ordersList = []) => {
     if (!projectName) return [];
     const normalizedProjectName = normalizeText(projectName);
-    const projectOrders = (ordersList || []).filter(o =>
+    return (ordersList || []).filter(o =>
         normalizeText(o.project_name) === normalizedProjectName && !o.is_deleted
     );
-
-    const dnttOrders = (dnttList || []).reduce((acc, d) => {
-        if (d.doc_type !== 'Đơn Vật Tư' || normalizeText(d.project_name) !== normalizedProjectName) return acc;
-        try {
-            const parsed = JSON.parse(d.reason || '{}');
-            if (parsed.orderPhase) {
-                acc.push({
-                    project_name: d.project_name,
-                    order_phase: parsed.orderPhase,
-                    is_deleted: d.status === 'Deleted' || d.status === 'Đã xóa'
-                });
-            }
-        } catch (e) {}
-        return acc;
-    }, []);
-
-    return [...projectOrders, ...dnttOrders].filter(o => !o.is_deleted);
 };
 
 const getNextOrderPhaseForProject = (projectName, ordersList = [], dnttList = []) => {
@@ -170,8 +153,108 @@ const calculateMaterialTotals = (categories = []) => {
     };
 };
 
-export default function MaterialOrder({ currentUser, usersList, projects, showToast, onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion, actionOrder, onActionComplete, asModal, onCloseModal }) {
-    const [view, setView] = useState('list'); // 'list', 'create', 'detail'
+const calculateTotalQuantity = (categories = []) => {
+    return (Array.isArray(categories) ? categories : []).reduce((total, cat) => {
+        const items = Array.isArray(cat?.items) ? cat.items : [];
+        return total + items.reduce((sum, item) => {
+            const qty = parseFloat(item.quantity) || 0;
+            return sum + (qty > 0 ? qty : 0);
+        }, 0);
+    }, 0);
+};
+
+const getInitialFormData = (actOrder) => {
+    if (actOrder?.action === 'edit' && actOrder.order) {
+        const order = actOrder.order;
+        let pb = '';
+        if (order.items && order.items.length > 0 && order.items[0]._price_batch) {
+            pb = order.items[0]._price_batch;
+        }
+        let orderCompany = 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG';
+        if (order.items && order.items.length > 0 && order.items[0]._order_company) {
+            orderCompany = order.items[0]._order_company;
+        } else if (order.order_company) {
+            orderCompany = order.order_company;
+        }
+        return {
+            id: order.id,
+            project_name: order.project_name || '',
+            order_phase: order.order_phase || '',
+            order_date: order.order_date || new Date().toISOString().split('T')[0],
+            address: order.address || '',
+            category: order.category || 'SƠN NƯỚC',
+            company: order.company || '',
+            order_company: orderCompany,
+            recipient: order.recipient || '',
+            categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+            show_signature: order.show_signature !== undefined ? order.show_signature : true,
+            configVersionId: pb
+        };
+    }
+    return {
+        id: null,
+        project_name: '',
+        order_phase: '',
+        order_date: new Date().toISOString().split('T')[0],
+        address: '',
+        category: 'SƠN NƯỚC',
+        company: '',
+        order_company: 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG',
+        recipient: '',
+        categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+        show_signature: true,
+        configVersionId: ''
+    };
+};
+
+export default function MaterialOrder({ currentUser, usersList, projects, showToast = (msg) => console.log(msg), onCreateAccountingRequest, dnttList, onUpdateAccountingRequest, realtimeVersion, actionOrder, onActionComplete, asModal, onCloseModal }) {
+    const [view, setView] = useState(() => {
+        if (actionOrder?.action === 'edit') return 'create';
+        if (actionOrder?.action === 'detail') return 'detail';
+        return 'list';
+    });
+
+    const [selectedOrder, setSelectedOrder] = useState(() => {
+        if (actionOrder?.action === 'detail' && actionOrder.order) return actionOrder.order;
+        return null;
+    });
+
+    // Form state initialized directly from actionOrder if editing
+    const [formData, setFormData] = useState(() => getInitialFormData(actionOrder));
+
+    const openDetail = (order) => {
+        setSelectedOrder(order);
+        setView('detail');
+    };
+
+    const openEdit = (order) => {
+        if (!order) return;
+        let pb = '';
+        if (order.items && order.items.length > 0 && order.items[0]._price_batch) {
+            pb = order.items[0]._price_batch;
+        }
+        let orderCompany = 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG';
+        if (order.items && order.items.length > 0 && order.items[0]._order_company) {
+            orderCompany = order.items[0]._order_company;
+        } else if (order.order_company) {
+            orderCompany = order.order_company;
+        }
+        setFormData({
+            id: order.id,
+            project_name: order.project_name || '',
+            order_phase: order.order_phase || '',
+            order_date: order.order_date || new Date().toISOString().split('T')[0],
+            address: order.address || '',
+            category: order.category || 'SƠN NƯỚC',
+            company: order.company || '',
+            order_company: orderCompany,
+            recipient: order.recipient || '',
+            categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
+            show_signature: order.show_signature !== undefined ? order.show_signature : true,
+            configVersionId: pb
+        });
+        setView('create');
+    };
 
     useEffect(() => {
         if (actionOrder) {
@@ -185,7 +268,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     }, [actionOrder]);
 
     const [orders, setOrders] = useState([]);
-    const [selectedOrder, setSelectedOrder] = useState(null);
     const [isDbStorage, setIsDbStorage] = useState(false);
     const [showSqlModal, setShowSqlModal] = useState(false);
     const [isLoading, setIsLoading] = useState(false);
@@ -226,21 +308,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const [isCustomOrderCompany, setIsCustomOrderCompany] = useState(false);
     const orderCompanyInputRef = useRef(null);
 
-    // Form state
-    const [formData, setFormData] = useState({
-        id: null,
-        project_name: '',
-        order_phase: '',
-        order_date: new Date().toISOString().split('T')[0],
-        address: '',
-        category: '',
-        company: '',
-        order_company: 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG',
-        recipient: '',
-        categories: JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-        show_signature: true,
-        configVersionId: ''
-    });
 
     const projectPersonnel = useMemo(() => {
         if (!formData?.project_name || !projects) return [];
@@ -283,12 +350,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         }));
     };
 
-    // Auto-update initial project selections on asynchronous projects load
+    // Auto-update initial project selections on asynchronous projects load (ONLY for NEW orders)
     useEffect(() => {
-        if (projects?.length > 0 && !formData.id && !formData.project_name) {
+        if (actionOrder?.order || formData.id || formData.project_name) return;
+        if (projects?.length > 0) {
             updateFormDataForProject(projects[0].name, allTemplates);
         }
-    }, [projects, orders, allTemplates]);
+    }, [projects, orders, allTemplates, formData.id, formData.project_name, actionOrder]);
 
     const sqlScript = `CREATE TABLE IF NOT EXISTS material_orders (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -364,12 +432,14 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             
             setOrders(data || []);
             setIsDbStorage(true);
+            try { localStorage.setItem('misa_material_orders', JSON.stringify(data || [])); } catch(e) {}
 
-            // Auto-update initial phase and categories for the selected project once orders load
-            if (projects?.length > 0 && data) {
+            // Auto-update initial phase and categories for the selected project once orders load (ONLY for NEW orders)
+            if (!actionOrder?.order && projects?.length > 0 && data) {
                 const firstProj = projects[0];
                 setFormData(prev => {
-                    if (!prev.id && !prev.project_name) {
+                    if (prev.id || actionOrder?.order) return prev;
+                    if (!prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, templatesMap);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
@@ -387,7 +457,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
                                 : '')
                         };
-                    } else if (!prev.id) {
+                    } else {
                         // Project name already set by state default, let's update phase and template
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, data, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, templatesMap);
@@ -401,7 +471,6 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             categories: template
                         };
                     }
-                    return prev;
                 });
             }
         } catch (err) {
@@ -417,10 +486,11 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
             }
 
             // Auto-update initial phase and categories for the selected project once orders load (local)
-            if (projects?.length > 0) {
+            if (!actionOrder?.order && projects?.length > 0) {
                 const firstProj = projects[0];
                 setFormData(prev => {
-                    if (!prev.id && !prev.project_name) {
+                    if (prev.id || actionOrder?.order) return prev;
+                    if (!prev.project_name) {
                         const nextPhase = getNextOrderPhaseForProject(firstProj.name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(firstProj.name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
@@ -438,7 +508,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                                 ? (firstProj.cht_phone ? `${firstProj.cht_name} (SĐT: ${firstProj.cht_phone})` : firstProj.cht_name) 
                                 : '')
                         };
-                    } else if (!prev.id) {
+                    } else {
                         const nextPhase = getNextOrderPhaseForProject(prev.project_name, loadedOrders, dnttList);
                         const templateData = getProjectMaterialTemplateData(prev.project_name, allTemplates);
                         const activeVerId = templateData.activeVersionId || (templateData.versions?.[0]?.id) || '';
@@ -518,27 +588,35 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                             </tr>
                         </thead>
                         <tbody>
-                            {categoriesToRender.map((cat, catIdx) => (
-                                <React.Fragment key={catIdx}>
-                                    <tr>
-                                        <td colSpan="4" className="border border-black p-2 text-center font-bold text-[16px] text-black bg-transparent">
-                                            {cat.name}
-                                        </td>
-                                    </tr>
-                                    {cat.items.map((item, itemIdx) => (
-                                        <tr key={itemIdx}>
-                                            <td className="border border-black p-2 text-center text-[16px] font-medium">{item.stt}</td>
-                                            <td className="border border-black p-2 pl-4 text-[16px]">
-                                                {item.name} {item.colorCode ? `(${item.colorCode})` : ''}
-                                            </td>
-                                            <td className="border border-black p-2 text-center text-[16px]">{item.unit}</td>
-                                            <td className="border border-black p-2 text-right pr-4 text-[16px]">
-                                                {item.quantity || ''}
+                            {categoriesToRender.length === 0 ? (
+                                <tr>
+                                    <td colSpan="4" className="border border-black p-6 text-center text-slate-500 italic text-[15px]">
+                                        Không có vật tư nào có số lượng trong đơn hàng này
+                                    </td>
+                                </tr>
+                            ) : (
+                                categoriesToRender.map((cat, catIdx) => (
+                                    <React.Fragment key={catIdx}>
+                                        <tr>
+                                            <td colSpan="4" className="border border-black p-2 text-center font-bold text-[16px] text-black bg-transparent">
+                                                {cat.name}
                                             </td>
                                         </tr>
-                                    ))}
-                                </React.Fragment>
-                            ))}
+                                        {cat.items.map((item, itemIdx) => (
+                                            <tr key={itemIdx}>
+                                                <td className="border border-black p-2 text-center text-[16px] font-medium">{item.stt}</td>
+                                                <td className="border border-black p-2 pl-4 text-[16px]">
+                                                    {item.name} {item.colorCode ? `(${item.colorCode})` : ''}
+                                                </td>
+                                                <td className="border border-black p-2 text-center text-[16px]">{item.unit}</td>
+                                                <td className="border border-black p-2 text-right pr-4 text-[16px]">
+                                                    {item.quantity || ''}
+                                                </td>
+                                            </tr>
+                                        ))}
+                                    </React.Fragment>
+                                ))
+                            )}
                         </tbody>
                     </table>
                 </div>
@@ -609,6 +687,13 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
 
         if (existingPhaseOrder) {
             showToast(`Dự án này đã có Đơn đặt hàng cho ${formData.order_phase}! Vui lòng chọn đợt khác.`, 'error');
+            return;
+        }
+
+        // Kiểm tra số lượng vật tư: Bắt buộc phải có ít nhất 1 vật tư có số lượng > 0
+        const totalQuantity = calculateTotalQuantity(formData.categories);
+        if (totalQuantity <= 0) {
+            showToast('Đơn đặt hàng chưa có số lượng vật tư nào! Vui lòng nhập số lượng trước khi đặt hàng.', 'error');
             return;
         }
 
@@ -809,7 +894,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
     const handleDelete = async (id) => {
         setConfirmModal({
             isOpen: true,
-            message: 'Bạn có chắc chắn muốn chuyển đơn vật tư này (và các yêu cầu thanh toán liên quan) vào thùng rác?',
+            message: 'Bạn có chắc chắn muốn chuyển đơn vật tư này vào thùng rác? Thông tin chi phí đã ghi nhận sẽ được bảo lưu an toàn.',
             onConfirm: async () => {
                 setConfirmModal({ isOpen: false, message: '', onConfirm: null });
                 setIsLoading(true);
@@ -834,20 +919,19 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
                              if (dntts) {
                                   for (const dntt of dntts) {
                                       if (dntt.reason && dntt.reason.includes(orderToDelete.order_date)) {
-                                           const { data: relatedTransactions } = await supabase
-                                               .from('transactions')
-                                               .select('*')
-                                               .ilike('note', `%[ID:${dntt.id}]%`);
-                                           await moveRecordsToTrash('approval_requests', [dntt]);
-                                           await moveRecordsToTrash('transactions', relatedTransactions || []);
-                                           await supabase.from('approval_requests').delete().eq('id', dntt.id);
-                                           await supabase.from('transactions').delete().ilike('note', `%[ID:${dntt.id}]%`);
+                                          try {
+                                              const parsed = JSON.parse(dntt.reason || '{}');
+                                              parsed.archived_material_order_id = parsed.material_order_id || id;
+                                              delete parsed.material_order_id;
+                                              parsed.disconnected_from_order = true;
+                                              await supabase.from('approval_requests').update({ reason: JSON.stringify(parsed) }).eq('id', dntt.id);
+                                          } catch(e) {}
                                       }
                                  }
                              }
                         }
                         
-                        showToast('Đã chuyển đơn đặt hàng và dữ liệu đồng bộ vào thùng rác!');
+                        showToast('Đã chuyển đơn đặt hàng vào thùng rác, chi phí được bảo lưu an toàn!');
                     } else {
                         const localOrders = orders.filter(o => o.id !== id);
                         localStorage.setItem('misa_material_orders', JSON.stringify(localOrders));
@@ -893,38 +977,7 @@ export default function MaterialOrder({ currentUser, usersList, projects, showTo
         setView('create');
     };
 
-    const openDetail = (order) => {
-        setSelectedOrder(order);
-        setView('detail');
-    };
 
-    const openEdit = (order) => {
-        let pb = '';
-        if (order.items && order.items.length > 0 && order.items[0]._price_batch) {
-            pb = order.items[0]._price_batch;
-        }
-        let orderCompany = 'CÔNG TY TNHH XDTM TTNT QT PHÚC KHANG';
-        if (order.items && order.items.length > 0 && order.items[0]._order_company) {
-            orderCompany = order.items[0]._order_company;
-        } else if (order.order_company) {
-            orderCompany = order.order_company;
-        }
-        setFormData({
-            id: order.id,
-            project_name: order.project_name,
-            order_phase: order.order_phase,
-            order_date: order.order_date,
-            address: order.address,
-            category: order.category,
-            company: order.company,
-            order_company: orderCompany,
-            recipient: order.recipient,
-            categories: Array.isArray(order.items) ? JSON.parse(JSON.stringify(order.items)) : JSON.parse(JSON.stringify(DEFAULT_CATEGORIES)),
-            show_signature: order.show_signature !== undefined ? order.show_signature : true,
-            configVersionId: pb
-        });
-        setView('create');
-    };
 
     // Form logic helpers
     const handleItemChange = (catIdx, itemIdx, field, value) => {

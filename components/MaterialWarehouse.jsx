@@ -138,18 +138,34 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
 
     // Derived columns
     const columns = [];
+    const usedIds = new Map();
     if (selectedProject && allTemplates[selectedProject]) {
         const tmpl = allTemplates[selectedProject];
-        const activeVer = tmpl.versions[tmpl.versions.length - 1]; // pick latest
+        const activeVer = tmpl.versions?.[tmpl.versions.length - 1]; // pick latest
         if (activeVer && activeVer.categories) {
             activeVer.categories.forEach(cat => {
-                cat.items.forEach(item => {
+                (cat.items || []).forEach(item => {
                     if (item.name) {
+                        const baseKey = `${item.name.trim()}_${(item.colorCode || '').trim()}_${(item.unit || '').trim()}`;
+                        const legacyKey = `${item.name.trim()}_${(item.colorCode || '').trim()}`;
+                        
+                        let id = baseKey;
+                        if (usedIds.has(id)) {
+                            const count = usedIds.get(id) + 1;
+                            usedIds.set(id, count);
+                            id = `${id}__${count}`;
+                        } else {
+                            usedIds.set(id, 1);
+                        }
+
                         columns.push({
-                            id: `${item.name}_${item.colorCode||''}`,
+                            id,
+                            baseKey,
+                            legacyKey,
                             category: cat.name,
                             name: item.name,
-                            color: item.colorCode
+                            color: item.colorCode,
+                            unit: item.unit
                         });
                     }
                 });
@@ -173,7 +189,11 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                 if (!cat.items) return;
                 cat.items.forEach(item => {
                     if (item.name) {
-                        const colId = `${item.name}_${item.colorCode||''}`;
+                        const itemKey = `${item.name.trim()}_${(item.colorCode || '').trim()}_${(item.unit || '').trim()}`;
+                        const legacyKey = `${item.name.trim()}_${(item.colorCode || '').trim()}`;
+                        const matchingCol = columns.find(c => c.baseKey === itemKey) || columns.find(c => c.legacyKey === legacyKey);
+                        const colId = matchingCol ? matchingCol.id : itemKey;
+
                         if (!rowData[colId]) rowData[colId] = {};
                         if (item.quantity && String(item.quantity).trim() !== '' && item.quantity !== '0') {
                             rowData[colId].yeuCau = item.quantity;
@@ -236,9 +256,9 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
         // Check if the parent row ALREADY has any 'nhan' values
         let parentHasNhan = false;
         if (existingRowIndex >= 0) {
-            const data = updatedRows[existingRowIndex].data;
+            const data = updatedRows[existingRowIndex].data || {};
             columns.forEach(col => {
-                if (data[col.id]?.nhan) parentHasNhan = true;
+                if (data[col.id]?.nhan || (col.legacyKey && data[col.legacyKey]?.nhan)) parentHasNhan = true;
             });
         }
 
@@ -470,7 +490,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
         let yeuCauSum = 0;
         let nhanSum = 0;
         rows.forEach(r => {
-            const cell = r.data[col.id] || {};
+            const cell = r.data[col.id] || (col.legacyKey && r.data[col.legacyKey]) || {};
             yeuCauSum += parseNumber(cell.yeuCau);
             nhanSum += parseNumber(cell.nhan);
         });
@@ -550,6 +570,11 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                             {columns.map(col => (
                                 <th key={col.id} className="border border-slate-300 p-2 text-center text-[11px] break-words bg-[var(--col-bg)] text-white w-[180px] leading-tight" style={{ '--col-bg': getStringColor(col.id) }} colSpan={2}>
                                     <div className="font-black uppercase">{col.name}</div>
+                                    {(col.color || col.unit) && (
+                                        <div className="text-[10px] font-normal opacity-90 mt-0.5">
+                                            {[col.color && col.color !== '-' ? col.color : null, col.unit].filter(Boolean).join(' - ')}
+                                        </div>
+                                    )}
                                 </th>
                             ))}
                             <th className="border border-slate-300 p-2 text-center align-middle bg-slate-100 w-12" rowSpan={2}></th>
@@ -576,7 +601,7 @@ export default function MaterialWarehouse({ currentUser, projects, showToast, re
                                     <input type="text" value={row.poBatch || ''} onChange={e => handlePoBatchChange(row.id, e.target.value)} disabled={row.isOrder} className="w-full h-full p-2.5 outline-none bg-transparent font-medium text-slate-600 text-center" placeholder="Đợt PO" />
                                 </td>
                                 {columns.map(col => {
-                                    const cell = row.data[col.id] || {};
+                                    const cell = row.data[col.id] || (col.legacyKey && row.data[col.legacyKey]) || {};
                                     return (
                                         <React.Fragment key={col.id}>
                                             <td className={`border border-slate-200 p-0 ${cell.yeuCau ? 'bg-slate-50/50' : ''}`}>
@@ -675,13 +700,15 @@ const QuickReceiveModal = ({ isOpen, onClose, rows, columns, onSave }) => {
         const remaining = {};
         let hasRequest = false;
         columns.forEach(col => {
-            const y = parseNum(parentRow.data[col.id]?.yeuCau);
+            const parentCell = parentRow.data[col.id] || (col.legacyKey && parentRow.data[col.legacyKey]) || {};
+            const y = parseNum(parentCell.yeuCau);
             if (y > 0) hasRequest = true;
             
-            let n = parseNum(parentRow.data[col.id]?.nhan);
+            let n = parseNum(parentCell.nhan);
             const children = rows.filter(r => String(r.parentOrderId) === String(rowId));
             children.forEach(child => {
-                n += parseNum(child.data[col.id]?.nhan);
+                const childCell = child.data[col.id] || (col.legacyKey && child.data[col.legacyKey]) || {};
+                n += parseNum(childCell.nhan);
             });
             
             remaining[col.id] = { yeuCau: y, nhanToDate: n, chuaNhan: Math.max(0, y - n) };
@@ -791,7 +818,14 @@ const QuickReceiveModal = ({ isOpen, onClose, rows, columns, onSave }) => {
 
                                     return (
                                         <div key={col.id} className="p-3 border border-slate-200 rounded-lg bg-slate-50 flex flex-col gap-2">
-                                            <div className="font-bold text-sm text-slate-700 truncate" title={col.name}>{col.name}</div>
+                                            <div className="font-bold text-sm text-slate-700 truncate" title={`${col.name}${col.color ? ` (${col.color})` : ''}${col.unit ? ` - ${col.unit}` : ''}`}>
+                                                {col.name}
+                                                {(col.color || col.unit) && (
+                                                    <span className="text-xs font-normal text-slate-500 ml-1">
+                                                        ({[col.color && col.color !== '-' ? col.color : null, col.unit].filter(Boolean).join(' - ')})
+                                                    </span>
+                                                )}
+                                            </div>
                                             <div className="flex items-center gap-2">
                                                 <div className="flex-1">
                                                     <span className="text-xs text-slate-500 block mb-1">Cần nhận thêm</span>

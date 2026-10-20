@@ -3745,8 +3745,12 @@ export default function Home() {
                         ) : materialSubTab === 'processing' ? (
                             <MaterialProcessing 
                                 currentUser={currentUser} 
+                                usersList={usersList}
                                 projects={allowedProjects} 
                                 showToast={showToast} 
+                                onCreateAccountingRequest={handleCreateAccountingRequest}
+                                onUpdateAccountingRequest={handleUpdateAccountingRequest}
+                                dnttList={allowedDnttList}
                                 onNavigateToEdit={(order) => {
                                     setMaterialActionOrder({ order, action: 'edit' });
                                     setMaterialSubTab('order');
@@ -3762,6 +3766,8 @@ export default function Home() {
                                     usersList={usersList}
                                     projects={allowedProjects}
                                     showToast={showToast}
+                                    actionOrder={materialActionOrder}
+                                    onActionComplete={() => setMaterialActionOrder(null)}
                                     onCreateAccountingRequest={handleCreateAccountingRequest}
                                     dnttList={allowedDnttList}
                                     onUpdateAccountingRequest={handleUpdateAccountingRequest}

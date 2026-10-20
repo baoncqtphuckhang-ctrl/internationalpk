@@ -254,6 +254,11 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         parsed = JSON.parse(d.reason);
                     } catch(e) { return; }
                     
+                    // Do not resurrect disconnected, archived or finished DNTT orders as orphans
+                    if (parsed.disconnected_from_order || parsed.archived_material_order_id || parsed.is_disconnected || !parsed.material_order_id) {
+                        return;
+                    }
+                    
                     const hasOrder = list.some(o => 
                         (parsed.material_order_id && o.id === parsed.material_order_id) || 
                         (o.project_name === d.project_name && o.order_date === parsed.date)
@@ -507,7 +512,7 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
             title: 'Xác nhận xóa',
             type: 'danger',
             requirePassword: true,
-            message: 'Bạn có chắc chắn muốn xóa đơn đặt hàng này không? Dữ liệu này, cùng với Lịch sử chi tiền (nếu có) sẽ được chuyển vào thùng rác.',
+            message: 'Bạn có chắc chắn muốn chuyển đơn đặt hàng này vào thùng rác? Thông tin chi phí & Lịch sử chi tiền đã ghi nhận sẽ được ngắt kết nối và bảo lưu an toàn.',
             onConfirm: async (pwd) => {
                 if (pwd !== adminPassword) {
                     showToast('Mật khẩu không đúng!', 'error');
@@ -532,31 +537,19 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                         } catch(err) { console.error('Trash error', err); }
                     };
 
+                    // Disconnect linked DNTT instead of deleting transactions/debts
                     if (reqId) {
-                        // Delete transactions linked to this reqId
-                        const { data: txs } = await supabase
-                            .from('transactions')
-                            .select('id')
-                            .ilike('note', `%[ID:${reqId}]%`);
-                            
-                        if (txs && txs.length > 0) {
-                            for (const tx of txs) {
-                                await moveToTrashLocal('transactions', 'id', tx.id);
-                                await supabase.from('transactions').delete().eq('id', tx.id);
+                        try {
+                            const { data: dnttRec } = await supabase.from('approval_requests').select('reason').eq('id', reqId).single();
+                            if (dnttRec) {
+                                const parsed = JSON.parse(dnttRec.reason || '{}');
+                                parsed.archived_material_order_id = parsed.material_order_id || orderId;
+                                delete parsed.material_order_id;
+                                parsed.disconnected_from_order = true;
+                                await supabase.from('approval_requests').update({ reason: JSON.stringify(parsed) }).eq('id', reqId);
                             }
-                        }
-                        
-                        // Delete partner_debts linked to this reqId
-                        const { data: debts } = await supabase
-                            .from('partner_debts')
-                            .select('id')
-                            .ilike('note', `%[ID:${reqId}]%`);
-                            
-                        if (debts && debts.length > 0) {
-                            for (const d of debts) {
-                                await moveToTrashLocal('partner_debts', 'id', d.id);
-                                await supabase.from('partner_debts').delete().eq('id', d.id);
-                            }
+                        } catch(e) {
+                            console.warn('Lỗi ngắt kết nối DNTT:', e);
                         }
                     }
 
@@ -567,14 +560,6 @@ export default function MaterialOrderManager({ currentUser, usersList, projects,
                             .delete()
                             .eq('id', orderId);
                         if (error) throw error;
-                    }
-                    if (reqId) {
-                        await moveToTrashLocal('approval_requests', 'id', reqId);
-                        const { error: reqErr } = await supabase
-                            .from('approval_requests')
-                            .delete()
-                            .eq('id', reqId);
-                        if (reqErr) throw reqErr;
                     }
 
                     // Xóa luôn các bản ghi nhập kho trong material_warehouse liên quan đến đơn này

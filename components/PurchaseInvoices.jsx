@@ -1,7 +1,127 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Calendar } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
+import ConfirmModal from '@/components/ConfirmModal';
+
+const formatDateInputDisplay = (dateVal = '') => {
+    if (!dateVal) return '';
+    const s = String(dateVal).trim().split('T')[0];
+    if (s.includes('-')) {
+        const parts = s.split('-');
+        if (parts.length === 3) {
+            const [y, m, d] = parts;
+            if (y.length === 4) {
+                return `${d.padStart(2, '0')}/${m.padStart(2, '0')}/${y}`;
+            }
+        }
+    }
+    if (s.includes('/')) {
+        const parts = s.split('/');
+        if (parts.length === 3) {
+            if (parts[0].length === 4) {
+                return `${parts[2].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[0]}`;
+            }
+            return `${parts[0].padStart(2, '0')}/${parts[1].padStart(2, '0')}/${parts[2]}`;
+        }
+    }
+    return s;
+};
+
+const normalizeDateTextInput = (value = '') => {
+    const digits = String(value).replace(/\D/g, '').slice(0, 8);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 4) return `${digits.slice(0, 2)}/${digits.slice(2)}`;
+    return `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+};
+
+const parseDateDisplayToIso = (value = '') => {
+    if (!value) return '';
+    const clean = String(value).trim();
+    const match = clean.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (!match) return '';
+    let [, day, month, year] = match;
+    const d = parseInt(day, 10);
+    const m = parseInt(month, 10);
+    if (d < 1 || d > 31 || m < 1 || m > 12) return '';
+    day = String(d).padStart(2, '0');
+    month = String(m).padStart(2, '0');
+    if (year.length === 2) year = '20' + year;
+    return `${year}-${month}-${day}`;
+};
+
+function DateInputCell({ value, onChange, disabled = false, className = '' }) {
+    const [text, setText] = useState(() => formatDateInputDisplay(value));
+
+    useEffect(() => {
+        setText(formatDateInputDisplay(value));
+    }, [value]);
+
+    const handleTextChange = (e) => {
+        const raw = e.target.value;
+        if (e.nativeEvent?.inputType?.includes('delete')) {
+            setText(raw);
+            if (!raw) onChange('');
+            return;
+        }
+        const normalized = normalizeDateTextInput(raw);
+        setText(normalized);
+        if (normalized.length === 10) {
+            const iso = parseDateDisplayToIso(normalized);
+            if (iso) onChange(iso);
+        }
+    };
+
+    const handleBlur = () => {
+        if (!text) {
+            onChange('');
+            return;
+        }
+        const iso = parseDateDisplayToIso(text);
+        if (iso) {
+            onChange(iso);
+            setText(formatDateInputDisplay(iso));
+        } else {
+            setText(formatDateInputDisplay(value));
+        }
+    };
+
+    const handlePickerChange = (e) => {
+        const val = e.target.value;
+        if (val) {
+            onChange(val);
+            setText(formatDateInputDisplay(val));
+        }
+    };
+
+    const pickerValue = value ? String(value).split('T')[0] : '';
+
+    return (
+        <div className={`relative w-full h-full flex items-center group/date ${className}`}>
+            <input
+                type="text"
+                disabled={disabled}
+                value={text}
+                onChange={handleTextChange}
+                onBlur={handleBlur}
+                placeholder="dd/mm/yyyy"
+                className={`w-full h-full p-2 pr-7 outline-none bg-transparent text-center font-medium text-slate-700 text-sm ${disabled ? 'cursor-not-allowed' : ''}`}
+            />
+            {!disabled && (
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center justify-center">
+                    <input
+                        type="date"
+                        value={pickerValue}
+                        onChange={handlePickerChange}
+                        className="opacity-0 absolute inset-0 cursor-pointer w-6 h-6 z-10"
+                        tabIndex={-1}
+                    />
+                    <Calendar size={15} className="text-slate-400 group-hover/date:text-blue-600 transition pointer-events-none" />
+                </div>
+            )}
+        </div>
+    );
+}
 
 export default function PurchaseInvoices({ currentUser, projects, showToast }) {
     const defaultSuppliers = [
@@ -18,6 +138,7 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
     const [suppliers, setSuppliers] = useState(defaultSuppliers);
     const [selectedSupplier, setSelectedSupplier] = useState(defaultSuppliers[0]);
     const [rows, setRows] = useState([]);
+    const [deletingRow, setDeletingRow] = useState(null);
 
     useEffect(() => {
         const fetchSuppliers = async () => {
@@ -278,16 +399,16 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
             id: Date.now(),
             order_id: row.order_id,
             soHD: '',
-            ngayMua: '',
+            ngayMua: row.ngayMua || '',
             ngayHD: '',
-            congTrinh: row.congTrinh,
-            dot: '',
-            matHang: '',
-            dvt: '',
+            congTrinh: row.congTrinh || '',
+            dot: row.dot || '',
+            matHang: row.matHang || '',
+            dvt: row.dvt || '',
             soLuong: '',
-            donGia: '',
+            donGia: row.donGia || '',
             giaTriTruocThue: '',
-            vat: '',
+            vat: row.vat || '',
             tienVAT: '',
             giaTriSauThue: ''
         };
@@ -340,9 +461,15 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
         saveData(updated);
     };
 
-    const handleDeleteRow = (id) => {
-        if (!confirm('Bạn có chắc muốn xóa dòng này?')) return;
-        saveData(rows.filter(r => r.id !== id));
+    const handleDeleteRow = (row) => {
+        setDeletingRow(row);
+    };
+
+    const confirmDeleteRow = () => {
+        if (!deletingRow) return;
+        saveData(rows.filter(r => r.id !== deletingRow.id));
+        setDeletingRow(null);
+        if (showToast) showToast('Đã xóa dòng hóa đơn thành công!');
     };
 
     return (
@@ -374,20 +501,20 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
                 <table className="w-full text-sm border-collapse min-w-max">
                     <thead className="sticky top-0 z-20 bg-slate-100 shadow-sm">
                         <tr>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Số HĐ</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Ngày mua</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Ngày HĐ</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Công trình</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Đợt</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Mặt hàng</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">ĐVT</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Số lượng</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">Đơn giá</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 min-w-[120px]">Giá trị chưa thuế</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700">VAT (%)</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 min-w-[100px]">Thuế GTGT</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 min-w-[120px]">Giá trị sau VAT</th>
-                            <th className="border border-slate-300 p-2 text-center bg-slate-100 w-12"></th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-28 min-w-[110px]">Số HĐ</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-32 min-w-[125px]">Ngày mua</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-32 min-w-[125px]">Ngày HĐ</th>
+                            <th className="border border-slate-300 p-2 text-left pl-4 bg-slate-100 font-black text-slate-700 min-w-[200px] max-w-[260px]">Công trình</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-20 min-w-[80px] max-w-[90px]">Đợt</th>
+                            <th className="border border-slate-300 p-2 text-left pl-4 bg-slate-100 font-black text-slate-700 min-w-[320px]">Tên vật tư</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-24 min-w-[85px] max-w-[95px]">ĐVT</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-24 min-w-[85px] max-w-[95px]">Số lượng</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-28 min-w-[110px] max-w-[125px]">Đơn giá</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-36 min-w-[130px]">Giá trị chưa thuế</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-20 min-w-[70px] max-w-[80px]">VAT (%)</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-32 min-w-[120px]">Thuế GTGT</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 font-black text-slate-700 w-36 min-w-[135px]">Giá trị sau VAT</th>
+                            <th className="border border-slate-300 p-2 text-center bg-slate-100 w-12 min-w-[56px]"></th>
                         </tr>
                     </thead>
                     <tbody>
@@ -400,30 +527,40 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
                             return new Date(dateB) - new Date(dateA);
                         }).map(row => (
                             <tr key={row.id} className="hover:bg-blue-50/30 transition group">
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.soHD} onChange={e => handleCellChange(row.id, 'soHD', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[100px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="date" value={row.ngayMua} onChange={e => handleCellChange(row.id, 'ngayMua', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="date" value={row.ngayHD} onChange={e => handleCellChange(row.id, 'ngayHD', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[120px]" /></td>
-                                <td className="border border-slate-200 p-2 text-center font-bold text-slate-700 min-w-[150px] whitespace-nowrap bg-slate-50/40 select-none">
+                                <td className="border border-slate-200 p-0 w-28 min-w-[110px]"><input type="text" value={row.soHD} onChange={e => handleCellChange(row.id, 'soHD', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium" placeholder="Số HĐ" /></td>
+                                <td className="border border-slate-200 p-0 w-32 min-w-[125px]">
+                                    <DateInputCell 
+                                        value={row.ngayMua} 
+                                        onChange={val => handleCellChange(row.id, 'ngayMua', val)} 
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-0 w-32 min-w-[125px]">
+                                    <DateInputCell 
+                                        value={row.ngayHD} 
+                                        onChange={val => handleCellChange(row.id, 'ngayHD', val)} 
+                                    />
+                                </td>
+                                <td className="border border-slate-200 p-2.5 text-left pl-3 font-bold text-slate-800 min-w-[200px] max-w-[260px] bg-slate-50/40 select-none break-words" title={row.congTrinh}>
                                     {row.congTrinh || '-'}
                                 </td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.dot} onChange={e => handleCellChange(row.id, 'dot', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[80px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.matHang} onChange={e => handleCellChange(row.id, 'matHang', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-slate-700 min-w-[150px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.dvt} onChange={e => handleCellChange(row.id, 'dvt', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[60px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.soLuong} onChange={e => handleCellChange(row.id, 'soLuong', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[80px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.donGia} onChange={e => handleCellChange(row.id, 'donGia', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[100px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.giaTriTruocThue} onChange={e => handleCellChange(row.id, 'giaTriTruocThue', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-amber-600 min-w-[120px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.vat} onChange={e => handleCellChange(row.id, 'vat', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium min-w-[60px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.tienVAT} onChange={e => handleCellChange(row.id, 'tienVAT', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium text-slate-600 min-w-[100px]" /></td>
-                                <td className="border border-slate-200 p-0"><input type="text" value={row.giaTriSauThue} onChange={e => handleCellChange(row.id, 'giaTriSauThue', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-rose-600 min-w-[120px]" /></td>
-                                <td className="border border-slate-200 p-1 text-center whitespace-nowrap">
+                                <td className="border border-slate-200 p-0 w-20 min-w-[80px] max-w-[90px]"><input type="text" value={row.dot} onChange={e => handleCellChange(row.id, 'dot', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium" /></td>
+                                <td className="border border-slate-200 p-0 min-w-[320px]"><input type="text" value={row.matHang} title={row.matHang} onChange={e => handleCellChange(row.id, 'matHang', e.target.value)} className="w-full h-full p-2.5 outline-none bg-transparent text-left pl-3 font-bold text-slate-800 text-sm" placeholder="Nhập tên vật tư..." /></td>
+                                <td className="border border-slate-200 p-0 w-24 min-w-[85px] max-w-[95px]"><input type="text" value={row.dvt} onChange={e => handleCellChange(row.id, 'dvt', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium text-slate-600" /></td>
+                                <td className="border border-slate-200 p-0 w-24 min-w-[85px] max-w-[95px]"><input type="text" value={row.soLuong} onChange={e => handleCellChange(row.id, 'soLuong', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-blue-700" /></td>
+                                <td className="border border-slate-200 p-0 w-28 min-w-[110px] max-w-[125px]"><input type="text" value={row.donGia} onChange={e => handleCellChange(row.id, 'donGia', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-semibold text-slate-800" /></td>
+                                <td className="border border-slate-200 p-0 w-36 min-w-[130px]"><input type="text" value={row.giaTriTruocThue} onChange={e => handleCellChange(row.id, 'giaTriTruocThue', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-amber-600" /></td>
+                                <td className="border border-slate-200 p-0 w-20 min-w-[70px] max-w-[80px]"><input type="text" value={row.vat} onChange={e => handleCellChange(row.id, 'vat', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium" /></td>
+                                <td className="border border-slate-200 p-0 w-32 min-w-[120px]"><input type="text" value={row.tienVAT} onChange={e => handleCellChange(row.id, 'tienVAT', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-medium text-slate-600" /></td>
+                                <td className="border border-slate-200 p-0 w-36 min-w-[135px]"><input type="text" value={row.giaTriSauThue} onChange={e => handleCellChange(row.id, 'giaTriSauThue', e.target.value)} className="w-full h-full p-2 outline-none bg-transparent text-center font-bold text-rose-600" /></td>
+                                <td className="border border-slate-200 p-1 text-center whitespace-nowrap w-12 min-w-[56px]">
                                     <button onClick={() => handleSplitRow(row)} className="text-emerald-500 hover:text-emerald-700 p-1.5 rounded-lg hover:bg-emerald-50 transition mr-1" title="Tách thêm hóa đơn cho đơn hàng này"><Plus size={16}/></button>
-                                    <button onClick={() => handleDeleteRow(row.id)} className="text-slate-300 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition" title="Xóa dòng này"><Trash2 size={16}/></button>
+                                    <button onClick={() => handleDeleteRow(row)} className="text-slate-300 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition" title="Xóa dòng này"><Trash2 size={16}/></button>
                                 </td>
                             </tr>
                         ))}
                         {rows.length === 0 && (
                             <tr>
-                                <td colSpan={15} className="border border-slate-200 p-12 text-center text-slate-500 bg-slate-50/50">
+                                <td colSpan={14} className="border border-slate-200 p-12 text-center text-slate-500 bg-slate-50/50">
                                     Chưa có dữ liệu. Bấm <b>Thêm dòng</b> để bắt đầu nhập liệu.
                                 </td>
                             </tr>
@@ -431,6 +568,16 @@ export default function PurchaseInvoices({ currentUser, projects, showToast }) {
                     </tbody>
                 </table>
             </div>
+
+            <ConfirmModal
+                isOpen={!!deletingRow}
+                title="Xác nhận xóa dòng hóa đơn"
+                message={`Bạn có chắc chắn muốn xóa dòng hóa đơn này${deletingRow?.matHang ? ` (${deletingRow.matHang})` : ''}? Dữ liệu sẽ được loại bỏ khỏi bảng.`}
+                type="danger"
+                confirmText="Xác nhận xóa"
+                onConfirm={confirmDeleteRow}
+                onCancel={() => setDeletingRow(null)}
+            />
         </div>
     );
 }
