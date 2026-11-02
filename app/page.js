@@ -2708,7 +2708,7 @@ export default function Home() {
                 const transactionRows = distribution.map(({ material_invoice_files, invoiceFiles, ...d }) => ({
                     ...d,
                     note: `[ID:${id}] ${d.note}`,
-                    accounting_date: new Date().toISOString().split('T')[0],
+                    accounting_date: d.accounting_date || d.accountingDate || new Date().toISOString().split('T')[0],
                     created_by: currentUser.username
                 }));
                 const { error: transError } = await supabase.from('transactions').insert(transactionRows);

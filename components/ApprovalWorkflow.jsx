@@ -1,11 +1,12 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw, Plus } from 'lucide-react';
+import { FileSignature, CheckCircle2, Clock, XCircle, DollarSign, Coins, User, FileText, Send, Check, X, Trash2, Tag, Archive, AlertCircle, Search, Printer, RotateCcw, Plus, Calendar, Paperclip, ExternalLink } from 'lucide-react';
 import { formatCurrency, docSoTiengViet, formatDateVN, formatDateTimeVN, EXPENSE_CATEGORIES, parseVietnameseNumber } from '@/lib/utils';
 import { supabase } from '@/lib/supabase';
 import ConfirmModal from './ConfirmModal';
 import ErrorBoundary from './ErrorBoundary';
+import ExplanationDocViewer from './ExplanationDocViewer';
 
 const BANK_OPTIONS = [
     { value: 'VCB', label: 'VCB - Vietcombank' },
@@ -93,6 +94,57 @@ const readInvoiceFile = (file) => new Promise((resolve, reject) => {
     reader.readAsDataURL(file);
 });
 
+const uploadExplanationFile = async (file, projectName) => {
+    try {
+        const originalName = file.name || 'giai_trinh.pdf';
+        const dotIndex = originalName.lastIndexOf('.');
+        const fileExt = dotIndex !== -1 ? originalName.slice(dotIndex + 1) : 'pdf';
+        const baseName = dotIndex !== -1 ? originalName.slice(0, dotIndex) : originalName;
+        const sanitizedName = baseName.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const sanitizedProject = (projectName || 'DNTT').replace(/[^a-zA-Z0-9.\-_]/g, '_');
+        const fileName = `gt_${Date.now()}_${Math.random().toString(36).slice(2, 7)}_${sanitizedName}.${fileExt}`;
+        const filePath = `${sanitizedProject}/giai_trinh/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+            .from('invoices')
+            .upload(filePath, file, { cacheControl: '3600', upsert: false });
+
+        if (!uploadError) {
+            const { data } = supabase.storage.from('invoices').getPublicUrl(filePath);
+            if (data?.publicUrl) {
+                return {
+                    name: file.name,
+                    url: data.publicUrl,
+                    size: file.size,
+                    type: file.type
+                };
+            }
+        }
+    } catch (err) {
+        console.warn('Storage upload error, fallback to dataURL:', err);
+    }
+
+    const dataUrl = await new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onload = (e) => resolve(e.target.result);
+        reader.readAsDataURL(file);
+    });
+    return {
+        name: file.name,
+        url: dataUrl,
+        size: file.size,
+        type: file.type
+    };
+};
+
+const formatFileSize = (bytes) => {
+    if (!bytes || bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+};
+
 const MaChiSelect = ({ value, onChange }) => {
     return (
         <select 
@@ -167,6 +219,8 @@ export default function ApprovalWorkflow({
     const [formError, setFormError] = useState('');
     const [confirmModal, setConfirmModal] = useState({ isOpen: false, message: '', onConfirm: null });
     const [hachToanThanhToanStatus, setHachToanThanhToanStatus] = useState('CHƯA XONG');
+    const [hachToanDate, setHachToanDate] = useState(new Date().toISOString().split('T')[0]);
+    const [isUploadingExplanation, setIsUploadingExplanation] = useState(false);
     const [printItem, setPrintItem] = useState(null); // Phiếu đang xem in
     const [hidePrices, setHidePrices] = useState(false); // Ẩn đơn giá và thành tiền khi in đơn vật tư
     const [qrPaymentModal, setQrPaymentModal] = useState(null); // Phiếu đang chờ thanh toán qua QR
@@ -183,7 +237,8 @@ export default function ApprovalWorkflow({
         bankAccountName: '',
         bankAccountNumber: '',
         bankName: '',
-        bankBranch: ''
+        bankBranch: '',
+        explanationFiles: []
     });
 
     const suggestedRecipients = useMemo(() => {
@@ -224,7 +279,8 @@ export default function ApprovalWorkflow({
             bankAccountName: '',
             bankAccountNumber: '',
             bankName: '',
-            bankBranch: ''
+            bankBranch: '',
+            explanationFiles: []
         });
         setEditingId(null);
     };
@@ -298,6 +354,35 @@ export default function ApprovalWorkflow({
         setDnttData(prev => ({ ...prev, items: newItems })); 
     };
 
+    const handleExplanationFilesUpload = async (e) => {
+        const files = Array.from(e.target.files || []);
+        e.target.value = '';
+        if (files.length === 0) return;
+
+        setIsUploadingExplanation(true);
+        try {
+            const uploaded = await Promise.all(
+                files.map(file => uploadExplanationFile(file, dnttData.project))
+            );
+            setDnttData(prev => ({
+                ...prev,
+                explanationFiles: [...(prev.explanationFiles || []), ...uploaded]
+            }));
+        } catch (err) {
+            console.error('Error uploading explanation files:', err);
+            setFormError('Lỗi khi tải file giải trình: ' + (err.message || ''));
+        } finally {
+            setIsUploadingExplanation(false);
+        }
+    };
+
+    const handleRemoveExplanationFile = (index) => {
+        setDnttData(prev => ({
+            ...prev,
+            explanationFiles: (prev.explanationFiles || []).filter((_, i) => i !== index)
+        }));
+    };
+
     const dnttTotalAmount = dnttData.items.reduce((sum, item) => sum + (parseFloat(item.amount) || 0), 0);
 
     const handleSubmit = async (e) => {
@@ -321,7 +406,8 @@ export default function ApprovalWorkflow({
 
         const cleanedDnttData = {
             ...dnttData,
-            items: activeItems
+            items: activeItems,
+            explanationFiles: dnttData.explanationFiles || []
         };
 
         if (cleanedDnttData.docType === 'TTL' || cleanedDnttData.docType === 'DNTUCH') {
@@ -365,7 +451,8 @@ export default function ApprovalWorkflow({
                 bankAccountName: parsed.bankAccountName || '',
                 bankAccountNumber: parsed.bankAccountNumber || '',
                 bankName: parsed.bankName || '',
-                bankBranch: parsed.bankBranch || ''
+                bankBranch: parsed.bankBranch || '',
+                explanationFiles: Array.isArray(parsed?.explanationFiles) ? parsed.explanationFiles : []
             });
             setEditingId(item.id);
             setView('create');
@@ -606,13 +693,16 @@ export default function ApprovalWorkflow({
             note: orderPhase || ''
         }];
         
+        const today = new Date().toISOString().split('T')[0];
+        setHachToanDate(today);
         setDistributeItem({ ...item, reason: currentReason, paymentMethod, orderPhase });
         setDistributionData(finalItems.map(it => ({
             content: it.content || '',
             amount: parseFloat(it.amount) || 0,
             code: '621', // Mặc định vật tư
             note: it.note || '',
-            invoiceDate: new Date().toISOString().split('T')[0],
+            accountingDate: today,
+            invoiceDate: today,
             invoiceNumber: '',
             correspondingAccount: item.doc_type === 'Đơn Vật Tư' ? '331' : (paymentMethod === 'tien_mat' ? '1111' : '1121'),
             invoiceFiles: []
@@ -669,6 +759,7 @@ export default function ApprovalWorkflow({
             note: `[${distributeItem.orderPhase ? distributeItem.orderPhase : `Đợt ${distributeItem.phase || 1}`}] [${distributeItem.doc_type}] ${d.content}`,
             recipient: (d.recipient !== undefined && d.recipient !== null && d.recipient !== '') ? d.recipient : distributeItem.recipient,
             corresponding_account: d.correspondingAccount || (distributeItem.paymentMethod === 'tien_mat' ? '1111' : '1121'),
+            accounting_date: d.accountingDate || hachToanDate || new Date().toISOString().split('T')[0],
             invoice_date: d.invoiceDate || null,
             invoice_no: d.invoiceNumber,
             material_invoice_files: d.invoiceFiles || []
@@ -969,7 +1060,7 @@ export default function ApprovalWorkflow({
                     <div className="grid grid-cols-4 gap-2 text-center font-bold font-sans mt-8">
                         {(() => {
                             const isAdmin = currentUser?.role?.toUpperCase() === 'ADMIN' || currentUser?.username === 'admin' || currentUser?.username?.toUpperCase() === 'ADMIN';
-                            const roleLabel = dnttData.docType === 'TTL' || dnttData.docType === 'DNTUCH' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
+                            const roleLabel = dnttData.docType === 'TTL' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 
                             if (isAdmin && currentUser?.username === 'admin') {
                                 return (
@@ -1011,6 +1102,81 @@ export default function ApprovalWorkflow({
                             <div>GIÁM ĐỐC</div>
                             <div className="h-24"></div>
                         </div>
+                    </div>
+
+                    {/* File PDF / Hồ sơ giải trình đính kèm */}
+                    <div className="mt-8 pt-6 border-t-2 border-dashed border-slate-200 font-sans">
+                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 mb-3">
+                            <div>
+                                <h4 className="text-sm font-black text-slate-800 uppercase flex items-center gap-2">
+                                    <FileText className="text-red-500" size={18} />
+                                    File PDF / Hồ sơ giải trình đính kèm
+                                </h4>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                    Đính kèm file PDF giải trình, bảng kê hoặc hóa đơn để kế toán in kèm phiếu
+                                </p>
+                            </div>
+                            <label className={`cursor-pointer bg-blue-50 hover:bg-blue-100 text-blue-600 font-bold px-4 py-2.5 rounded-xl border border-blue-200 transition flex items-center gap-2 text-sm shadow-sm shrink-0 ${isUploadingExplanation ? 'opacity-60 cursor-not-allowed' : ''}`}>
+                                {isUploadingExplanation ? (
+                                    <>
+                                        <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin"></div>
+                                        <span>Đang tải lên...</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Plus size={16} />
+                                        <span>Thêm file PDF giải trình</span>
+                                    </>
+                                )}
+                                <input 
+                                    type="file" 
+                                    multiple 
+                                    accept="application/pdf,image/*" 
+                                    className="hidden" 
+                                    disabled={isUploadingExplanation}
+                                    onChange={handleExplanationFilesUpload} 
+                                />
+                            </label>
+                        </div>
+
+                        {/* File list */}
+                        {Array.isArray(dnttData.explanationFiles) && dnttData.explanationFiles.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mt-3">
+                                {dnttData.explanationFiles.map((file, fIdx) => (
+                                    <div key={fIdx} className="flex items-center justify-between p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs hover:bg-slate-100/80 transition">
+                                        <div className="flex items-center gap-2.5 overflow-hidden mr-2">
+                                            <FileText size={18} className="text-red-500 shrink-0"/>
+                                            <div className="overflow-hidden">
+                                                <p className="font-bold text-slate-800 truncate" title={file.name}>{file.name}</p>
+                                                {file.size ? <p className="text-[10px] text-slate-400 font-medium">{formatFileSize(file.size)}</p> : null}
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-1.5 shrink-0">
+                                            <a 
+                                                href={file.url} 
+                                                target="_blank" 
+                                                rel="noopener noreferrer" 
+                                                className="px-2.5 py-1.5 bg-blue-50 text-blue-600 font-bold rounded-lg hover:bg-blue-100 transition text-[11px] flex items-center gap-1"
+                                            >
+                                                Xem / In
+                                            </a>
+                                            <button 
+                                                type="button" 
+                                                onClick={() => handleRemoveExplanationFile(fIdx)} 
+                                                className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition"
+                                                title="Xóa file"
+                                            >
+                                                <X size={15}/>
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="p-4 border border-dashed border-slate-200 rounded-xl bg-slate-50/60 text-center">
+                                <p className="text-xs text-slate-400 italic">Chưa có file PDF giải trình nào được đính kèm.</p>
+                            </div>
+                        )}
                     </div>
 
                     {formError && (
@@ -1129,6 +1295,32 @@ export default function ApprovalWorkflow({
                                                 <div className="flex items-center gap-1.5"><span className="font-bold text-blue-700">{formatCurrency(item.total_amount)} VNĐ</span></div>
                                                 <div className="flex items-center gap-1.5 bg-slate-50 px-2 py-0.5 rounded border text-slate-500">{item.project_name}</div>
                                             </div>
+                                            {(() => {
+                                                let parsedReason = {};
+                                                try { parsedReason = typeof item.reason === 'string' ? JSON.parse(item.reason) : (item.reason || {}); } catch(e){}
+                                                const explanationFiles = Array.isArray(parsedReason?.explanationFiles) ? parsedReason.explanationFiles : [];
+                                                if (explanationFiles.length === 0) return null;
+                                                return (
+                                                    <div className="flex flex-wrap items-center gap-2 pt-1" onClick={(e) => e.stopPropagation()}>
+                                                        <span className="text-[11px] font-bold text-red-600 bg-red-50 border border-red-200 px-2 py-0.5 rounded-md flex items-center gap-1">
+                                                            <FileText size={12} /> {explanationFiles.length} file giải trình:
+                                                        </span>
+                                                        {explanationFiles.map((f, fIdx) => (
+                                                            <a 
+                                                                key={fIdx} 
+                                                                href={f.url} 
+                                                                target="_blank" 
+                                                                rel="noopener noreferrer" 
+                                                                className="text-xs font-bold text-blue-600 hover:text-blue-800 hover:bg-blue-100 bg-blue-50 border border-blue-200 px-2 py-0.5 rounded-md flex items-center gap-1 transition shadow-sm"
+                                                                title={`Mở file giải trình: ${f.name}`}
+                                                            >
+                                                                <FileText size={12} className="text-red-500" />
+                                                                <span className="max-w-[150px] truncate">{f.name || `File ${fIdx + 1}`}</span>
+                                                            </a>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })()}
                                         </div>
 
                                         <div onClick={(e) => e.stopPropagation()} className="flex flex-wrap items-center gap-3 w-full lg:w-auto mt-4 lg:mt-0">
@@ -1420,6 +1612,50 @@ export default function ApprovalWorkflow({
                         </header>
                         
                         <div className="p-4 sm:p-8 max-h-[60vh] overflow-y-auto custom-scrollbar bg-slate-50">
+                            {(() => {
+                                let expFiles = [];
+                                try {
+                                    if (typeof distributeItem?.reason === 'string' && distributeItem.reason.startsWith('{')) {
+                                        const parsed = JSON.parse(distributeItem.reason);
+                                        if (Array.isArray(parsed?.explanationFiles)) expFiles = parsed.explanationFiles;
+                                    } else if (distributeItem?.reason && typeof distributeItem.reason === 'object') {
+                                        if (Array.isArray(distributeItem.reason.explanationFiles)) expFiles = distributeItem.reason.explanationFiles;
+                                    }
+                                } catch (e) {}
+                                if (expFiles.length === 0) return null;
+                                return (
+                                    <div className="mb-6 p-4 bg-amber-50/90 border-2 border-amber-200/80 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                                        <div className="flex items-center gap-3">
+                                            <div className="p-2.5 bg-amber-500 text-white rounded-xl shrink-0 shadow-sm">
+                                                <FileText size={20} />
+                                            </div>
+                                            <div>
+                                                <span className="font-black text-amber-950 text-sm uppercase tracking-wide flex items-center gap-2">
+                                                    File PDF Giải Trình Đính Kèm ({expFiles.length} file)
+                                                </span>
+                                                <p className="text-xs text-amber-800 mt-0.5">Kế toán có thể bấm mở để xem hoặc in trực tiếp hồ sơ giải trình chi phí</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+                                            {expFiles.map((file, idx) => (
+                                                <a
+                                                    key={idx}
+                                                    href={file.url}
+                                                    target="_blank"
+                                                    rel="noreferrer"
+                                                    className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-amber-300 rounded-xl text-xs font-bold text-amber-900 hover:bg-amber-100 hover:border-amber-400 transition shadow-sm"
+                                                    title={`Xem file: ${file.name}`}
+                                                >
+                                                    <Paperclip size={13} className="text-amber-600 shrink-0" />
+                                                    <span className="max-w-[160px] truncate">{file.name}</span>
+                                                    <ExternalLink size={12} className="text-amber-500 shrink-0" />
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })()}
+
                             {distributeItem.doc_type === 'Đơn Vật Tư' && (
                                 <div className="mb-6 flex flex-wrap gap-6 bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
                                     <label className="flex items-center gap-2 cursor-pointer font-bold text-slate-700">
@@ -1487,8 +1723,27 @@ export default function ApprovalWorkflow({
                                                 />
                                             </div>
                                         </div>
-                                        <div className="flex flex-col md:flex-row gap-4 sm:gap-6 pt-4 border-t border-slate-100">
-                                            <div className="flex-1">
+                                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4 pt-4 border-t border-slate-100">
+                                            <div>
+                                                <p className="text-[10px] text-blue-600 font-black uppercase mb-1.5 ml-1 flex items-center gap-1">
+                                                    <Calendar size={12} className="text-blue-500"/> Ngày hạch toán
+                                                </p>
+                                                <input 
+                                                    type="date"
+                                                    value={d.accountingDate || hachToanDate}
+                                                    onChange={(e) => {
+                                                        const val = e.target.value;
+                                                        const newData = [...distributionData];
+                                                        newData[idx].accountingDate = val;
+                                                        setDistributionData(newData);
+                                                        if (distributionData.length === 1) {
+                                                            setHachToanDate(val);
+                                                        }
+                                                    }}
+                                                    className="w-full bg-blue-50/40 border-2 border-blue-100 rounded-xl px-4 py-3 text-sm font-bold text-blue-900 outline-none focus:border-blue-500 focus:bg-white transition"
+                                                />
+                                            </div>
+                                            <div>
                                                 <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Ngày hóa đơn</p>
                                                 <input 
                                                     type="date"
@@ -1501,7 +1756,7 @@ export default function ApprovalWorkflow({
                                                     className="w-full bg-slate-50 border-2 border-slate-100 rounded-xl px-4 py-3 text-sm font-bold text-slate-700 outline-none focus:border-blue-500 focus:bg-white transition"
                                                 />
                                             </div>
-                                            <div className="flex-1">
+                                            <div>
                                                 <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Số hóa đơn</p>
                                                 <input 
                                                     type="text"
@@ -1515,7 +1770,7 @@ export default function ApprovalWorkflow({
                                                     placeholder="Nhập số hóa đơn..."
                                                 />
                                             </div>
-                                            <div className="flex-1">
+                                            <div>
                                                 <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Tài khoản đối ứng</p>
                                                 <select
                                                     value={d.correspondingAccount}
@@ -1534,7 +1789,7 @@ export default function ApprovalWorkflow({
                                                     <option value="3388">3388 - Phải trả, phải nộp khác</option>
                                                 </select>
                                             </div>
-                                            <div className="flex-1">
+                                            <div>
                                                 <p className="text-[10px] text-slate-400 font-black uppercase mb-1.5 ml-1">Tên đối tượng</p>
                                                 <input 
                                                     type="text"
@@ -1639,22 +1894,38 @@ export default function ApprovalWorkflow({
                         </div>
 
                         <footer className="p-4 sm:p-6 bg-white border-t-2 border-slate-100 flex flex-col gap-5">
-                            {/* Row 1: Select & Total */}
-                            <div className="flex flex-col sm:flex-row justify-between items-center gap-4 w-full">
-                                <div className="flex items-center justify-between sm:justify-start gap-3 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 w-full sm:w-auto flex-1">
+                            {/* Row 1: Date, Status & Total */}
+                            <div className="flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-3 w-full">
+                                <div className="flex items-center justify-between sm:justify-start gap-2.5 bg-blue-50/50 px-4 py-3 rounded-2xl border border-blue-100 flex-1">
+                                    <span className="text-blue-900 font-bold text-sm whitespace-nowrap flex items-center gap-1.5">
+                                        <Calendar size={16} className="text-blue-600 shrink-0" />
+                                        Ngày hạch toán:
+                                    </span>
+                                    <input 
+                                        type="date"
+                                        value={hachToanDate}
+                                        onChange={e => {
+                                            const newDate = e.target.value;
+                                            setHachToanDate(newDate);
+                                            setDistributionData(prev => prev.map(d => ({ ...d, accountingDate: newDate })));
+                                        }}
+                                        className="bg-white border-2 border-blue-200/80 rounded-xl px-2.5 py-1.5 text-sm font-bold text-blue-900 outline-none focus:border-blue-500 transition-colors w-full sm:w-auto"
+                                    />
+                                </div>
+                                <div className="flex items-center justify-between sm:justify-start gap-2.5 bg-slate-50 px-4 py-3 rounded-2xl border border-slate-200 flex-1">
                                     <span className="text-slate-500 font-bold text-sm whitespace-nowrap">Trạng thái thanh toán:</span>
                                     <select 
                                         value={hachToanThanhToanStatus}
                                         onChange={e => setHachToanThanhToanStatus(e.target.value)}
-                                        className="bg-white border-2 border-slate-200 rounded-xl px-2 py-1.5 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors w-full sm:w-auto min-w-[140px]"
+                                        className="bg-white border-2 border-slate-200 rounded-xl px-2 py-1.5 text-sm font-bold text-slate-700 outline-none focus:border-indigo-500 transition-colors w-full sm:w-auto min-w-[130px]"
                                     >
                                         <option value="ĐÃ XONG">Đã thanh toán</option>
                                         <option value="CHƯA XONG">Chưa thanh toán</option>
                                     </select>
                                 </div>
-                                <div className="flex items-center justify-between sm:justify-start gap-4 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 w-full sm:w-auto flex-1 max-w-sm">
+                                <div className="flex items-center justify-between sm:justify-center gap-3 bg-amber-50 px-5 py-3 rounded-2xl border border-amber-100 flex-1">
                                     <span className="text-amber-800 font-bold text-sm uppercase whitespace-nowrap">Tổng phân bổ:</span>
-                                    <span className="text-xl sm:text-2xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0))}</span>
+                                    <span className="text-lg sm:text-xl font-black text-amber-900 whitespace-nowrap">{formatCurrency(distributionData.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0))}</span>
                                 </div>
                             </div>
                             
@@ -1737,9 +2008,13 @@ export default function ApprovalWorkflow({
                                     )}
                                     <button 
                                         onClick={() => window.print()}
-                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-5 py-2 sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm"
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 sm:px-6 py-2 sm:py-2.5 rounded-xl font-bold transition flex items-center gap-2 text-sm shadow-lg shadow-blue-600/25"
+                                        title="In toàn bộ phiếu và các trang giải trình đính kèm"
                                     >
-                                        <Printer size={16} /> In Phiếu (A4)
+                                        <Printer size={16} /> 
+                                        {Array.isArray(printItem.parsed?.explanationFiles) && printItem.parsed.explanationFiles.length > 0 
+                                            ? 'In Phiếu & Giải Trình (A4)' 
+                                            : 'In Phiếu (A4)'}
                                     </button>
                                     <button 
                                         onClick={() => setPrintItem(null)} 
@@ -1750,14 +2025,14 @@ export default function ApprovalWorkflow({
                                 </div>
                             </header>
 
-                            <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex justify-center print:block print:p-0 print:bg-white print:max-h-none print:overflow-visible">
+                            <div className="p-4 sm:p-8 bg-slate-100 max-h-[75vh] overflow-y-auto custom-scrollbar flex flex-col items-center gap-6 print:block print:p-0 print:bg-white print:max-h-none print:overflow-visible">
                                 <style>{`
                                     /* Bỏ qua cache globals.css bằng bộ chọn có độ ưu tiên cao */
                                     .print-area.document-view, .print-area.document-view * {
                                         font-family: 'Times New Roman', Times, serif;
                                     }
                                     @media print { 
-                                        @page { size: ${printItem.parsed?.docType === 'TTL' || printItem.parsed?.docType === 'DNTUCH' ? 'landscape' : 'portrait'}; margin: 15mm; } 
+                                        @page { size: ${printItem.parsed?.docType === 'TTL' || printItem.parsed?.docType === 'DNTUCH' ? 'landscape' : 'portrait'}; margin: 10mm; } 
                                         .print-area div.signature-wrapper {
                                             height: 96px !important;
                                             min-height: 96px !important;
@@ -1768,6 +2043,18 @@ export default function ApprovalWorkflow({
                                             color: #1d4ed8 !important;
                                             -webkit-print-color-adjust: exact !important;
                                             print-color-adjust: exact !important;
+                                        }
+                                        .print-page-break {
+                                            page-break-before: always !important;
+                                            break-before: page !important;
+                                            display: block !important;
+                                            width: 100% !important;
+                                            margin: 0 !important;
+                                            padding: 0 !important;
+                                        }
+                                        .print-page-break img {
+                                            max-width: 100% !important;
+                                            height: auto !important;
                                         }
                                     }
                                 `}</style>
@@ -1976,6 +2263,36 @@ export default function ApprovalWorkflow({
 
                                         return (
                                             <div>
+                                                {/* Alert Hồ sơ giải trình đính kèm (ẩn khi in ra giấy) */}
+                                                {Array.isArray(parsedData.explanationFiles) && parsedData.explanationFiles.length > 0 && (
+                                                    <div className="mb-6 p-4 bg-blue-50/90 border-2 border-blue-200 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 font-sans print:hidden shadow-sm">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="p-2.5 bg-blue-600 text-white rounded-xl shrink-0 shadow-sm">
+                                                                <FileText size={20} />
+                                                            </div>
+                                                            <div>
+                                                                <p className="font-black text-blue-950 text-sm">Hồ Sơ / File PDF Giải Trình Đính Kèm ({parsedData.explanationFiles.length} file)</p>
+                                                                <p className="text-xs text-blue-800">Các trang giải trình đã được nạp sẵn ở bên dưới phiếu. Nhấn <strong>[In Phiếu & Giải Trình (A4)]</strong> để in toàn bộ một lần.</p>
+                                                            </div>
+                                                        </div>
+                                                        <div className="flex flex-wrap items-center gap-2">
+                                                            {parsedData.explanationFiles.map((file, idx) => (
+                                                                <a
+                                                                    key={idx}
+                                                                    href={file.url}
+                                                                    target="_blank"
+                                                                    rel="noreferrer"
+                                                                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-blue-300 rounded-xl text-xs font-bold text-blue-900 hover:bg-blue-100 transition shadow-sm"
+                                                                    title={`Mở file gốc: ${file.name}`}
+                                                                >
+                                                                    <ExternalLink size={12} className="text-blue-500 shrink-0" />
+                                                                    <span className="max-w-[140px] truncate">{file.name}</span>
+                                                                </a>
+                                                            ))}
+                                                        </div>
+                                                    </div>
+                                                )}
+
                                                 {/* Company Header */}
                                                 <div className="flex justify-between items-start mb-8 print:mb-2">
                                                     <div className="text-center flex-1">
@@ -2000,8 +2317,11 @@ export default function ApprovalWorkflow({
                                                 {isTTL ? (
                                                     <div className="text-center mb-6 print:mb-2 mt-4 print:mt-2">
                                                         <h2 className="text-2xl font-bold mb-2 uppercase">
-                                                            {docType === 'TTL' ? 'THANH TOÁN LƯƠNG' : 'THANH TOÁN CƠ HỮU'}
+                                                            {docType === 'TTL' ? 'THANH TOÁN LƯƠNG' : (docType === 'DNTUCH' ? 'ĐỀ NGHỊ TẠM ỨNG CƠ HỮU' : 'THANH TOÁN CƠ HỮU')}
                                                         </h2>
+                                                        <div className="text-[14px]">
+                                                            {`Ngày ${dateParts.day} Tháng ${dateParts.month} Năm ${dateParts.year}`}
+                                                        </div>
                                                     </div>
                                                 ) : (
                                                     <div className="text-center mb-6 print:mb-2">
@@ -2203,7 +2523,7 @@ export default function ApprovalWorkflow({
                                                             const creatorUsername = printItem.created_by || currentUser?.username;
                                                             const creator = (currentUser?.username === creatorUsername ? currentUser : usersList?.find(u => u.username === creatorUsername)) || null;
                                                             const isAdmin = creator?.role?.toUpperCase() === 'ADMIN' || creatorUsername === 'admin' || creatorUsername?.toUpperCase() === 'ADMIN';
-                                                            const roleLabel = isTTL ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
+                                                            const roleLabel = docType === 'TTL' ? 'CHT' : 'NGƯỜI ĐỀ NGHỊ';
 
                                                             if (isAdmin && creatorUsername === 'admin') {
                                                                 return (
@@ -2261,6 +2581,9 @@ export default function ApprovalWorkflow({
                                         );
                                     })()}
                                 </div>
+
+                                {/* Các trang tài liệu / file PDF giải trình đính kèm hiển thị ngay bên dưới và in kèm 1 lần */}
+                                <ExplanationDocViewer files={printItem.parsed?.explanationFiles || []} />
                             </div>
                         </ErrorBoundary>
                     </div>
